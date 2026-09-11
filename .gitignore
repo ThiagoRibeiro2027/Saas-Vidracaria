@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# backups — dados reais de tenant (Fase 5), nunca versionar
+/backups
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
