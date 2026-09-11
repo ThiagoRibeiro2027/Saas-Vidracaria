@@ -1,8 +1,8 @@
--- Seed da Fase 2 — apenas o catálogo de permissões e os templates de papel
--- necessários para a própria fundação de segurança funcionar (gestão de
--- empresa, usuários, papéis e auditoria). Nenhuma permissão de módulo
--- operacional (Tópicos 2-14) é inventada aqui — isso pertence às fases
--- futuras, quando cada módulo for implementado.
+-- Seed das fases de segurança (Fase 2 fundação, Fase 3 storage) — catálogo
+-- de permissões e templates de papel necessários para a própria plataforma
+-- funcionar (empresa, usuários, papéis, auditoria, arquivos). Nenhuma
+-- permissão de módulo operacional (Tópicos 2-14) é inventada aqui — isso
+-- pertence às fases futuras, quando cada módulo for implementado.
 
 insert into public.permissions (resource, action, description) values
   ('company', 'view', 'Visualizar dados da própria empresa'),
@@ -11,7 +11,10 @@ insert into public.permissions (resource, action, description) values
   ('users', 'manage', 'Criar, editar e desativar usuários da empresa'),
   ('roles', 'view', 'Visualizar papéis e permissões da empresa'),
   ('roles', 'manage', 'Criar/editar papéis e atribuir permissões'),
-  ('activity_logs', 'read', 'Consultar o log de auditoria da empresa')
+  ('activity_logs', 'read', 'Consultar o log de auditoria da empresa'),
+  ('files', 'read', 'Consultar arquivos anexados da empresa'),
+  ('files', 'upload', 'Enviar novos arquivos para a empresa'),
+  ('files', 'delete', 'Remover (soft delete) arquivos da empresa')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
