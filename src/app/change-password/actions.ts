@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { getClientContext } from "@/lib/audit/log";
 
 const MIN_LENGTH = 10; // placeholder até o Tópico 15 tornar a política configurável
 
@@ -23,7 +24,11 @@ export async function changePasswordAction(
   const { error: updateError } = await supabase.auth.updateUser({ password });
   if (updateError) return { error: "Não foi possível trocar a senha. Tente novamente." };
 
-  const { error: flagError } = await supabase.rpc("complete_password_change");
+  const { ip, userAgent } = await getClientContext();
+  const { error: flagError } = await supabase.rpc("complete_password_change", {
+    p_ip_address: ip,
+    p_user_agent: userAgent,
+  });
   if (flagError) return { error: "Senha trocada, mas houve um erro ao concluir. Contate o suporte." };
 
   redirect("/");

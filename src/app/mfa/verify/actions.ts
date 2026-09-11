@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { getClientContext } from "@/lib/audit/log";
 
 const INVALID_CODE = "Código inválido ou expirado.";
 
@@ -28,6 +29,15 @@ export async function verifyStepUpAction(
     code,
   });
   if (verifyError) return { error: INVALID_CODE };
+
+  const { ip, userAgent } = await getClientContext();
+  await supabase.rpc("log_activity", {
+    p_action: "auth.mfa_verified",
+    p_entity_type: "auth",
+    p_entity_id: null,
+    p_ip_address: ip,
+    p_user_agent: userAgent,
+  });
 
   redirect("/");
 }

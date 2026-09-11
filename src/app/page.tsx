@@ -33,7 +33,7 @@ export default async function Home() {
     >
       <div style={{ maxWidth: "480px", margin: "0 auto" }}>
         <p style={{ fontSize: "12px", letterSpacing: ".05em", color: "#1f5d57", fontFamily: "monospace" }}>
-          FASE 3 — STORAGE E ARQUIVOS
+          FASE 4 — AUDITORIA
         </p>
         <h1 style={{ fontSize: "24px", marginBottom: "4px" }}>
           Olá, {profile?.display_name ?? "usuário"}
@@ -57,6 +57,11 @@ export default async function Home() {
         <p style={{ marginTop: "24px" }}>
           <a href="/files" style={{ color: "#1f5d57", fontSize: "13px" }}>
             Central de arquivos →
+          </a>
+        </p>
+        <p style={{ marginTop: "4px" }}>
+          <a href="/audit" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Central de auditoria →
           </a>
         </p>
 
