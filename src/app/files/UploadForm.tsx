@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
+import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
 import { uploadFileAction } from "./actions";
 
 export default function UploadForm() {
@@ -31,13 +31,27 @@ export default function UploadForm() {
     const failed: string[] = [];
     let ok = 0;
     for (const file of files) {
-      const singleFileData = new FormData();
-      singleFileData.set("file", file);
-      const result = await uploadFileAction(singleFileData);
-      if (result.ok) {
-        ok++;
-      } else {
-        failed.push(`${result.name}: ${result.error}`);
+      // Checagem client-side só para feedback rápido (evita gastar uma
+      // requisição inteira num arquivo obviamente grande demais) — quem
+      // decide de verdade é sempre o servidor (Prompt Mestre item 15).
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        failed.push(`${file.name}: excede o limite de ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MiB.`);
+        continue;
+      }
+      try {
+        const singleFileData = new FormData();
+        singleFileData.set("file", file);
+        const result = await uploadFileAction(singleFileData);
+        if (result.ok) {
+          ok++;
+        } else {
+          failed.push(`${result.name}: ${result.error}`);
+        }
+      } catch {
+        // A Server Action pode nunca chegar a rodar (ex.: corpo da
+        // requisição cortado por exceder o limite do framework) — isso
+        // chega aqui como uma promise rejeitada, não como { ok: false }.
+        failed.push(`${file.name}: falha ao enviar (arquivo grande demais ou conexão interrompida).`);
       }
     }
 
