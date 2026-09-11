@@ -93,8 +93,13 @@ async function main() {
   const tenantA = await createTenant("storage-a-test", "Storage A Teste", "9101");
   const tenantB = await createTenant("storage-b-test", "Storage B Teste", "9102");
 
-  const pathA = `${tenantA.company.id}/geral/geral/teste-a.png`;
-  const pathB = `${tenantB.company.id}/geral/geral/teste-b.png`;
+  // Sufixo único por execução: soft delete (item 16) mantém o objeto físico
+  // no Storage entre execuções, e files_storage_path_unique impediria
+  // re-registrar o mesmo caminho — caminhos fixos tornariam este script
+  // não-idempotente entre rodadas sem um reset completo do banco.
+  const runId = crypto.randomUUID();
+  const pathA = `${tenantA.company.id}/geral/geral/${runId}-teste-a.png`;
+  const pathB = `${tenantB.company.id}/geral/geral/${runId}-teste-b.png`;
 
   console.log("\n1. Upload no próprio prefixo — permitido");
   {

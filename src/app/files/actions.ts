@@ -9,26 +9,29 @@ import { uploadCompanyFiles } from "@/lib/storage/upload";
 // até essa ligação existir.
 const ENTITY_TYPE = "geral";
 
-export async function uploadFilesAction(
-  _prevState: { error?: string; success?: boolean } | undefined,
+// Um arquivo por chamada, nunca o lote inteiro: o limite de corpo de uma
+// Server Action é dimensionado para 1 arquivo (ver next.config.ts) — juntar
+// vários no mesmo FormData estouraria esse limite ou exigiria afrouxá-lo a
+// ponto de virar vetor de abuso (Prompt Mestre item 25/26). O client
+// (UploadForm) chama esta action uma vez por arquivo selecionado.
+export async function uploadFileAction(
   formData: FormData,
-) {
-  const files = formData
-    .getAll("files")
-    .filter((f): f is File => f instanceof File && f.size > 0);
-  if (files.length === 0) return { error: "Selecione ao menos um arquivo." };
+): Promise<{ name: string; ok: true; fileId: string } | { name: string; ok: false; error: string }> {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { name: "arquivo", ok: false, error: "Nenhum arquivo enviado." };
+  }
 
   try {
-    const results = await uploadCompanyFiles(files, ENTITY_TYPE, null);
+    const [result] = await uploadCompanyFiles([file], ENTITY_TYPE, null);
     revalidatePath("/files");
-
-    const failed = results.filter((r) => !r.ok);
-    if (failed.length > 0) {
-      return { error: failed.map((f) => `${f.name}: ${f.error}`).join(" | ") };
-    }
-    return { success: true };
+    return result;
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Erro ao enviar arquivos." };
+    return {
+      name: file.name,
+      ok: false,
+      error: err instanceof Error ? err.message : "Erro ao enviar arquivo.",
+    };
   }
 }
 

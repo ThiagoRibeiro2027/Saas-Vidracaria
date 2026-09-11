@@ -1,14 +1,13 @@
 import { fileTypeFromBuffer } from "file-type";
 import sharp from "sharp";
+import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from "./constants";
 
-// Prompt Mestre de Segurança item 21: limite de tamanho, MIME, extensão e
-// proteção contra arquivos maliciosos — nunca confiar no que o navegador
-// declara (Content-Type, extensão do nome), sempre inspecionar os bytes.
-export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // espelha o limite do bucket company-files
-export const MAX_FILES_PER_UPLOAD = 10; // proteção técnica contra abuso (item 25), não é regra de negócio de módulo
+export { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "./constants";
 
+// Nunca confiar no que o navegador declara (Content-Type, extensão do
+// nome) — sempre inspecionar os bytes (Prompt Mestre item 15/21).
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const ALLOWED_MIME_TYPES = new Set([...IMAGE_MIME_TYPES, "application/pdf"]);
+const ALLOWED_MIME_TYPES_SET = new Set<string>(ALLOWED_MIME_TYPES);
 const EXTENSION_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -44,7 +43,7 @@ export async function validateAndProcessFile(input: Buffer): Promise<ProcessedFi
   }
 
   const detected = await fileTypeFromBuffer(input);
-  if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
+  if (!detected || !ALLOWED_MIME_TYPES_SET.has(detected.mime)) {
     throw new FileValidationError(
       "Tipo de arquivo não permitido (aceitos: JPEG, PNG, WEBP, PDF).",
     );
