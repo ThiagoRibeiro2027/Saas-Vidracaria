@@ -12,12 +12,14 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Todas as telas do app (login, home, arquivos, auditoria, MFA) são cards
+   claros com cores fixas no estilo inline — nenhuma delas foi desenhada
+   para tema escuro. A regra de prefers-color-scheme original (sobra do
+   template padrão do Create Next App) trocava a cor de texto padrão do
+   body para um cinza bem claro no modo escuro do sistema, deixando
+   ilegível qualquer texto que herdasse a cor do body (ex.: células de
+   tabela) sobre os cards de fundo branco. Removida até o app ter um tema
+   escuro de verdade. */
 
 body {
   background: var(--background);
