@@ -33,7 +33,7 @@ export default async function Home() {
     >
       <div style={{ maxWidth: "480px", margin: "0 auto" }}>
         <p style={{ fontSize: "12px", letterSpacing: ".05em", color: "#1f5d57", fontFamily: "monospace" }}>
-          FASE 4 — AUDITORIA
+          FASE 6 — SAAS GOVERNANCE
         </p>
         <h1 style={{ fontSize: "24px", marginBottom: "4px" }}>
           Olá, {profile?.display_name ?? "usuário"}
@@ -62,6 +62,16 @@ export default async function Home() {
         <p style={{ marginTop: "4px" }}>
           <a href="/audit" style={{ color: "#1f5d57", fontSize: "13px" }}>
             Central de auditoria →
+          </a>
+        </p>
+        <p style={{ marginTop: "4px" }}>
+          <a href="/governance" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Empresas e assinaturas →
+          </a>
+        </p>
+        <p style={{ marginTop: "4px" }}>
+          <a href="/export" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Exportar dados →
           </a>
         </p>
 

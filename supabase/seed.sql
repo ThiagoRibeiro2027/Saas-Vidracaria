@@ -14,7 +14,8 @@ insert into public.permissions (resource, action, description) values
   ('activity_logs', 'read', 'Consultar o log de auditoria da empresa'),
   ('files', 'read', 'Consultar arquivos anexados da empresa'),
   ('files', 'upload', 'Enviar novos arquivos para a empresa'),
-  ('files', 'delete', 'Remover (soft delete) arquivos da empresa')
+  ('files', 'delete', 'Remover (soft delete) arquivos da empresa'),
+  ('export', 'company_data', 'Exportar os dados da própria empresa')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).

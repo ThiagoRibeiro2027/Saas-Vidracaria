@@ -91,6 +91,22 @@ async function main() {
     if (userRoleError) throw userRoleError;
   }
 
+  // Assinatura (Fase 6 / ADR-006 §3.2): JR Box já está operacional no
+  // piloto (ADR-003), então entra direto em "active" — sem trial, já que a
+  // duração de trial é uma decisão comercial ainda não tomada (ADR-006).
+  // Plano "piloto" é um placeholder sem limites, não uma definição comercial.
+  const { data: pilotPlan, error: planError } = await admin
+    .from("plans")
+    .select("id")
+    .eq("key", "piloto")
+    .single();
+  if (planError) throw planError;
+
+  await admin.from("subscriptions").upsert(
+    { company_id: company.id, plan_id: pilotPlan.id, status: "active" },
+    { onConflict: "company_id" },
+  );
+
   console.log("Tenant de teste criado com sucesso:");
   console.log(`  Empresa (slug): ${COMPANY_SLUG}`);
   console.log(`  Matrícula:      ${LOGIN_IDENTIFIER}`);
