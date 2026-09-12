@@ -1,4 +1,4 @@
-**PROMPT TÓPICO 17 — RH**
+**TÓPICO 17 — RH**
 
 *Sistema de Gestão Operacional da Fábrica de Vidraçaria*
 

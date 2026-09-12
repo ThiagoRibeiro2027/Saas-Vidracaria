@@ -1,4 +1,4 @@
-**PROMPT TÓPICO 18 — CONTRATOS**
+**TÓPICO 18 — CONTRATOS**
 
 *Sistema de Gestão Operacional da Fábrica de Vidraçaria*
 
