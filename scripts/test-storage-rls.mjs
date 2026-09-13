@@ -212,6 +212,30 @@ async function main() {
     check("bucket rejeita MIME fora da allow-list mesmo com RLS satisfeita", !!mimeError);
   }
 
+  console.log("\n8. UPDATE (upsert em path já existente) — Security Gate Fase 8");
+  {
+    // upload(..., {upsert:true}) para um path que já existe vira internamente
+    // um INSERT ... ON CONFLICT DO UPDATE. Até 20260912150000 não havia
+    // policy de UPDATE em storage.objects: o próprio dono do arquivo era
+    // barrado de reenviar/substituir o próprio objeto (bug real, encontrado
+    // no Security Gate da Fase 8 — sem policy, RLS nega por padrão).
+    const { error: ownUpdateError } = await tenantA.client.storage
+      .from(BUCKET)
+      .upload(pathA, PNG_1X1, { contentType: "image/png", upsert: true });
+    check(
+      "tenant A consegue sobrescrever (UPDATE) o próprio objeto já existente",
+      !ownUpdateError,
+    );
+
+    const { error: foreignUpdateError } = await tenantB.client.storage
+      .from(BUCKET)
+      .upload(pathA, PNG_1X1, { contentType: "image/png", upsert: true });
+    check(
+      "tenant B não consegue sobrescrever (UPDATE) o objeto existente do tenant A",
+      !!foreignUpdateError,
+    );
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

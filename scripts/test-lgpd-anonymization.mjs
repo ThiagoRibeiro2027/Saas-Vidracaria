@@ -239,13 +239,17 @@ async function main() {
     );
     check("created_at do fato não mudou", after.created_at === before.created_at);
 
-    const { data: anonEvent } = await admin
+    const { data: anonEvents } = await admin
       .from("activity_logs")
       .select("id, action, entity_id, description")
       .eq("action", "lgpd.activity_logs_anonymized")
       .eq("entity_id", tenant.userId)
-      .maybeSingle();
-    check("a anonimização em si ficou registrada na trilha de auditoria", !!anonEvent);
+      .order("created_at", { ascending: false })
+      .limit(1);
+    // .maybeSingle() quebraria em reexecuções do script (tenant reaproveitado
+    // via upsert por slug acumula um evento de anonimização por rodada) —
+    // pegar só o mais recente é o que importa para esta asserção.
+    check("a anonimização em si ficou registrada na trilha de auditoria", (anonEvents ?? []).length === 1);
   }
 
   console.log("\n6. Rodar de novo não reanonimiza nem duplica (idempotência por anonymized_at)");
@@ -256,6 +260,102 @@ async function main() {
       { p_user_id: tenant.userId, p_reason: "segunda chamada" },
     );
     check("segunda chamada não reprocessa linha já anonimizada", rowsAnonymizedAgain === 0);
+  }
+
+  console.log(
+    "\n7. Extensão ADR-010 §6 (Security Gate Fase 8, item 2.2) — profiles e auth.users",
+  );
+  {
+    const subject = await createTenant("lgpd-profile-test", "LGPD Profile Teste", "9403");
+    const originalEmail = `9403.lgpd-profile-test@users.internal`;
+
+    // FK estrutural que referencia o titular por fora de activity_logs —
+    // exatamente o que este item resolve (files.uploaded_by/deleted_by
+    // continuam apontando pro mesmo UUID depois da anonimização).
+    const PNG_1X1 = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const storagePath = `${subject.company.id}/geral/geral/${crypto.randomUUID()}-lgpd-profile.png`;
+    await subject.client.storage
+      .from("company-files")
+      .upload(storagePath, PNG_1X1, { contentType: "image/png", upsert: true });
+    const { data: fileId } = await subject.client.rpc("register_file", {
+      p_entity_type: "geral",
+      p_entity_id: null,
+      p_storage_path: storagePath,
+      p_original_name: "lgpd-profile.png",
+      p_mime_type: "image/png",
+      p_size_bytes: PNG_1X1.byteLength,
+      p_width: 1,
+      p_height: 1,
+    });
+
+    const platformAdmin = await createPlatformAdmin("9402");
+    const { error: anonError } = await platformAdmin.client.rpc(
+      "anonymize_activity_logs_for_user",
+      { p_user_id: subject.userId, p_reason: "titular pediu exclusão — teste automatizado" },
+    );
+    check("RPC de anonimização aceita o pedido", !anonError);
+
+    // Passo que o Postgres não alcança sozinho (ADR-010 comentário na
+    // migration 20260913090000): e-mail em auth.users só muda via Admin API.
+    const { error: authUpdateError } = await admin.auth.admin.updateUserById(subject.userId, {
+      email: `anon-${subject.userId}@anonimizado.invalid`,
+      email_confirm: true,
+    });
+    check("Admin API aceita a troca do e-mail em auth.users", !authUpdateError);
+
+    console.log("\n  7.1 profiles não retém mais o dado original");
+    {
+      const { data: profile } = await admin
+        .from("profiles")
+        .select("display_name, contact_email, login_identifier")
+        .eq("id", subject.userId)
+        .single();
+      check("display_name não é mais o original", profile.display_name !== "LGPD Profile Teste");
+      check("contact_email foi removido", profile.contact_email === null);
+      check("login_identifier não é mais o original", profile.login_identifier !== "9403");
+    }
+
+    console.log("\n  7.2 FK estrutural (files) continua íntegra, mas o join não expõe identidade original");
+    {
+      // files.uploaded_by referencia auth.users(id), não public.profiles(id)
+      // diretamente — sem FK direta entre as duas tabelas para o PostgREST
+      // embutir automaticamente, então o "join" aqui é feito manualmente
+      // (é exatamente o que qualquer código de aplicação precisaria fazer).
+      const { data: file } = await admin
+        .from("files")
+        .select("id, uploaded_by")
+        .eq("id", fileId)
+        .single();
+      check("files.uploaded_by continua apontando para o mesmo UUID do titular", file.uploaded_by === subject.userId);
+
+      const { data: joinedProfile } = await admin
+        .from("profiles")
+        .select("display_name, contact_email, login_identifier")
+        .eq("id", file.uploaded_by)
+        .single();
+      check(
+        "join files -> profiles não expõe mais nome/e-mail/identificador originais",
+        joinedProfile.display_name === "Titular anonimizado" &&
+          joinedProfile.contact_email === null &&
+          joinedProfile.login_identifier !== "9403",
+      );
+    }
+
+    console.log("\n  7.3 login do titular anonimizado deixa de funcionar com as credenciais antigas");
+    {
+      const freshClient = createClient(url, anonKey);
+      const { error: loginError } = await freshClient.auth.signInWithPassword({
+        email: originalEmail,
+        password: "senha-de-teste-123456",
+      });
+      check(
+        "login com o e-mail original passa a falhar (esperado — e-mail não existe mais em auth.users)",
+        !!loginError,
+      );
+    }
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

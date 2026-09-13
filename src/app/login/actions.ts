@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -10,12 +11,27 @@ import { getClientContext } from "@/lib/audit/log";
 // "proteção contra enumeração").
 const GENERIC_ERROR = "Empresa, matrícula/e-mail ou senha inválidos.";
 
+// ADR-010 §6 / Security Gate Fase 8, item 2.1: o identificador digitado no
+// login pode ser e-mail real — nunca gravar em texto puro num log que não
+// tem user_id (e por isso nunca passa por anonymize_activity_logs_for_user()).
+// Hash estável (sem salt) preserva a única utilidade real do campo — agrupar
+// tentativas para detecção de força bruta/rate limiting — sem reter o valor
+// em claro.
+function hashIdentifier(identifier: string): string {
+  return createHash("sha256").update(identifier).digest("hex").slice(0, 32);
+}
+
 // Sem sessão (a tentativa falhou), log_activity() não pode ser chamada —
 // exige o papel `authenticated`. A gravação usa a service role direto,
 // mesmo padrão já estabelecido para operações sem usuário autenticado
-// (Auditoria Fase 1, item 02) — nunca grava senha, só o identificador
-// tentado (Prompt Mestre item 18: nada de senhas/tokens/secrets nos logs).
-async function logLoginFailure(companyId: string | null, metadata: Record<string, unknown>) {
+// (Auditoria Fase 1, item 02) — nunca grava senha nem identificador em claro,
+// só o hash dele (Prompt Mestre item 18: nada de senhas/tokens/secrets nos
+// logs; ADR-010 §6: nada de PII em claro fora do alcance da anonimização).
+async function logLoginFailure(
+  companyId: string | null,
+  identifier: string,
+  extra: Record<string, unknown> = {},
+) {
   const { ip, userAgent } = await getClientContext();
   const admin = createAdminClient();
   await admin.from("activity_logs").insert({
@@ -23,7 +39,7 @@ async function logLoginFailure(companyId: string | null, metadata: Record<string
     user_id: null,
     action: "auth.login_failed",
     entity_type: "auth",
-    metadata,
+    metadata: { identifier_hash: hashIdentifier(identifier), ...extra },
     ip_address: ip,
     user_agent: userAgent,
   });
@@ -66,7 +82,7 @@ export async function signInAction(
       password,
     });
     if (error) {
-      await logLoginFailure(null, { identifier });
+      await logLoginFailure(null, identifier);
       return { error: GENERIC_ERROR };
     }
     await logLoginSuccess(supabase);
@@ -87,7 +103,7 @@ export async function signInAction(
     .maybeSingle();
 
   if (!company) {
-    await logLoginFailure(null, { identifier, company_slug: companySlug });
+    await logLoginFailure(null, identifier, { company_slug: companySlug });
     return { error: GENERIC_ERROR };
   }
 
@@ -102,13 +118,13 @@ export async function signInAction(
     .maybeSingle();
 
   if (!profile) {
-    await logLoginFailure(company.id, { identifier });
+    await logLoginFailure(company.id, identifier);
     return { error: GENERIC_ERROR };
   }
 
   const { data: authUser } = await admin.auth.admin.getUserById(profile.id);
   if (!authUser?.user?.email) {
-    await logLoginFailure(company.id, { identifier });
+    await logLoginFailure(company.id, identifier);
     return { error: GENERIC_ERROR };
   }
 
@@ -118,7 +134,7 @@ export async function signInAction(
   });
 
   if (error) {
-    await logLoginFailure(company.id, { identifier });
+    await logLoginFailure(company.id, identifier);
     return { error: GENERIC_ERROR };
   }
 
