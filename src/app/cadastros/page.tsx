@@ -41,11 +41,18 @@ export default async function CadastrosPage() {
     );
   }
 
+  // ObrasSection precisa de pessoas + papéis pra montar o <select> de
+  // cliente da obra, mesmo quando o papel do usuário só dá obras.view/manage
+  // sem pessoas.view — RLS já libera a leitura de pessoas pra qualquer
+  // autenticado da empresa (pessoas.view gate é só a exibição da seção
+  // Pessoas em si, mais abaixo), então isso não vaza nenhum dado que a
+  // policy já não deixasse ler.
+  const precisaPessoas = canViewPessoas || canViewObras;
   const [{ data: pessoas }, { data: papeis }, { data: obras }, { data: itens }] = await Promise.all([
-    canViewPessoas
+    precisaPessoas
       ? supabase.from("pessoas").select("*").order("nome")
       : Promise.resolve({ data: [] }),
-    canViewPessoas
+    precisaPessoas
       ? supabase.from("pessoa_papeis").select("*")
       : Promise.resolve({ data: [] }),
     canViewObras ? supabase.from("obras").select("*").order("nome") : Promise.resolve({ data: [] }),

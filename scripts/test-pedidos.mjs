@@ -168,6 +168,12 @@ async function main() {
     check("segunda conversão do mesmo orçamento é rejeitada", !!error);
   }
 
+  console.log("\n4.1 Orçamento já convertido não pode mais ser cancelado (achado do code-review)");
+  {
+    const { error } = await admTenant.client.rpc("cancelar_orcamento", { p_id: massa.orcamentoId });
+    check("cancelar_orcamento é rejeitado quando já existe pedido convertido", !!error);
+  }
+
   console.log("\n5. Conferência e pendência");
   let pendenciaId;
   {
@@ -234,6 +240,52 @@ async function main() {
 
     const { data: row } = await admin.from("pedidos").select("status").eq("id", pedidoId2).single();
     check("status vira 'cancelado'", row?.status === "cancelado");
+  }
+
+  console.log("\n8.1 Pendência de pedido cancelado não pode ser resolvida (achado do code-review)");
+  {
+    const massa3 = await prepararOrcamentoAprovado(admTenant, "3");
+    const { data: pedidoId3 } = await admTenant.client.rpc("converter_orcamento_em_pedido", {
+      p_orcamento_id: massa3.orcamentoId,
+    });
+    await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoId3 });
+    const { data: pendId3 } = await admTenant.client.rpc("abrir_pendencia_pedido", {
+      p_id: pedidoId3, p_descricao: "Pendência que vai ficar órfã",
+    });
+    const { error: cancelError } = await admTenant.client.rpc("cancelar_pedido", { p_id: pedidoId3 });
+    check("pedido 'pendente' pode ser cancelado (com pendência ainda aberta)", !cancelError);
+
+    const { error: resolverError } = await admTenant.client.rpc("resolver_pendencia_pedido", {
+      p_pendencia_id: pendId3, p_resolucao: "tarde demais",
+    });
+    check("resolver pendência de pedido cancelado é rejeitado", !!resolverError);
+  }
+
+  console.log("\n8.2 Conversão revalida itens ativos do orçamento (achado do code-review)");
+  {
+    const massa4 = await prepararOrcamentoAprovado(admTenant, "4");
+    await admTenant.client.rpc("upsert_item", {
+      p_id: massa4.itemId, p_codigo: `VD-4`, p_descricao: "Vidro temperado 10mm",
+      p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
+      p_situacao: "inativo",
+    });
+    const { error } = await admTenant.client.rpc("converter_orcamento_em_pedido", {
+      p_orcamento_id: massa4.orcamentoId,
+    });
+    check("conversão é rejeitada quando um item do orçamento foi desativado", !!error);
+  }
+
+  console.log("\n8.3 next_document_number() exige pedidos.manage (achado do code-review)");
+  {
+    const { error: semPermError } = await noPermTenant.client.rpc("next_document_number", {
+      p_document_type: "pedido",
+    });
+    check("sem pedidos.manage não emite número de pedido direto via RPC", !!semPermError);
+
+    const { data: numero, error } = await admTenant.client.rpc("next_document_number", {
+      p_document_type: "pedido",
+    });
+    check("com pedidos.manage emite número normalmente", !error && !!numero);
   }
 
   console.log("\n9. Isolamento entre tenants");

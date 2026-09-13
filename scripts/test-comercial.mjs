@@ -321,6 +321,27 @@ async function main() {
     check("orcamento_cancelado registrado", actions.has("comercial.orcamento_cancelado"));
   }
 
+  console.log("\n11. orcamento_valor_total() — fonte única usada por decidir_orcamento e pela UI");
+  {
+    const { data: total, error } = await admTenant.client.rpc("orcamento_valor_total", {
+      p_orcamento_id: orcamentoId,
+    });
+    check("total calculado corretamente (10 * 150.5)", !error && Number(total) === 1505);
+  }
+
+  console.log("\n12. next_document_number() exige permissão do módulo (achado do code-review)");
+  {
+    const { error: semPermError } = await noPermTenant.client.rpc("next_document_number", {
+      p_document_type: "orcamento",
+    });
+    check("sem orcamentos.manage não emite número de orçamento direto via RPC", !!semPermError);
+
+    const { data: numero, error } = await admTenant.client.rpc("next_document_number", {
+      p_document_type: "orcamento",
+    });
+    check("com orcamentos.manage emite número normalmente", !error && !!numero);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

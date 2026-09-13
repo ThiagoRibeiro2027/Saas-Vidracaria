@@ -10,8 +10,14 @@ import {
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 
 type Pessoa = { id: string; nome: string };
-type Obra = { id: string; nome: string; pessoa_id: string };
-type Item = { id: string; codigo: string; descricao: string; unidade_principal: string };
+type Obra = { id: string; nome: string; pessoa_id: string; situacao: "ativo" | "inativo" };
+type Item = {
+  id: string;
+  codigo: string;
+  descricao: string;
+  unidade_principal: string;
+  situacao: "ativo" | "inativo";
+};
 
 type Orcamento = {
   id: string;
@@ -47,6 +53,7 @@ const currency = (v: number) =>
 export default function OrcamentosSection({
   orcamentos,
   itensPorOrcamento,
+  totais,
   clientesElegiveis,
   todasPessoas,
   obras,
@@ -55,6 +62,7 @@ export default function OrcamentosSection({
 }: {
   orcamentos: Orcamento[];
   itensPorOrcamento: Map<string, OrcamentoItem[]>;
+  totais: Map<string, number>;
   clientesElegiveis: Pessoa[];
   todasPessoas: Pessoa[];
   obras: Obra[];
@@ -63,6 +71,8 @@ export default function OrcamentosSection({
 }) {
   const pessoaNome = (id: string) => todasPessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
   const obraNome = (id: string | null) => (id ? obras.find((o) => o.id === id)?.nome ?? "(obra removida)" : "—");
+  const obrasAtivas = obras.filter((o) => o.situacao === "ativo");
+  const itensAtivos = itens.filter((i) => i.situacao === "ativo");
 
   return (
     <section>
@@ -95,9 +105,9 @@ export default function OrcamentosSection({
                   </option>
                 ))}
               </select>
-              <select name="obra_id" style={inputStyle}>
+              <select name="obra_id" defaultValue="" style={inputStyle}>
                 <option value="">Sem obra</option>
-                {obras.map((o) => (
+                {obrasAtivas.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.nome} ({pessoaNome(o.pessoa_id)})
                   </option>
@@ -124,8 +134,22 @@ export default function OrcamentosSection({
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {orcamentos.map((orc) => {
           const orcItens = itensPorOrcamento.get(orc.id) ?? [];
-          const total = orcItens.reduce((sum, i) => sum + i.quantidade * i.preco_unitario, 0);
+          const total = totais.get(orc.id) ?? 0;
           const editavel = canManage && orc.status === "rascunho";
+          // Guard de seleção atual: cliente/obra do orçamento podem ter saído
+          // da lista elegível (papel desligado / obra inativada) depois que o
+          // orçamento foi criado. Sem incluir a opção atual, o <select> cai
+          // silenciosamente na primeira opção da lista e salvar qualquer
+          // outro campo do cabeçalho reatribui o orçamento por engano (mesmo
+          // problema já resolvido em cadastros/ObrasSection.tsx).
+          const pessoaAtual = todasPessoas.find((p) => p.id === orc.pessoa_id);
+          const pessoaOpcoes =
+            pessoaAtual && !clientesElegiveis.some((p) => p.id === pessoaAtual.id)
+              ? [pessoaAtual, ...clientesElegiveis]
+              : clientesElegiveis;
+          const obraAtual = orc.obra_id ? obras.find((o) => o.id === orc.obra_id) : undefined;
+          const obraOpcoes =
+            obraAtual && !obrasAtivas.some((o) => o.id === obraAtual.id) ? [obraAtual, ...obrasAtivas] : obrasAtivas;
 
           return (
             <div
@@ -160,17 +184,21 @@ export default function OrcamentosSection({
                 >
                   <input type="hidden" name="id" value={orc.id} />
                   <select name="pessoa_id" defaultValue={orc.pessoa_id} required style={inputStyle}>
-                    {clientesElegiveis.map((p) => (
+                    {pessoaOpcoes.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.nome}
+                        {pessoaAtual?.id === p.id && !clientesElegiveis.some((c) => c.id === p.id)
+                          ? " (papel desligado)"
+                          : ""}
                       </option>
                     ))}
                   </select>
                   <select name="obra_id" defaultValue={orc.obra_id ?? ""} style={inputStyle}>
                     <option value="">Sem obra</option>
-                    {obras.map((o) => (
+                    {obraOpcoes.map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.nome} ({pessoaNome(o.pessoa_id)})
+                        {obraAtual?.id === o.id && !obrasAtivas.some((a) => a.id === o.id) ? " (inativa)" : ""}
                       </option>
                     ))}
                   </select>
@@ -210,12 +238,20 @@ export default function OrcamentosSection({
                 </thead>
                 <tbody>
                   {orcItens.map((oi) => (
-                    <OrcamentoItemRow key={oi.id} item={oi} itens={itens} editavel={editavel} />
+                    <OrcamentoItemRow
+                      key={oi.id}
+                      item={oi}
+                      itensAtivos={itensAtivos}
+                      itemAtualFallback={itens.find((i) => i.id === oi.item_id)}
+                      itens={itens}
+                      editavel={editavel}
+                    />
                   ))}
                   {editavel && (
                     <OrcamentoItemRow
                       item={null}
                       orcamentoId={orc.id}
+                      itensAtivos={itensAtivos}
                       itens={itens}
                       editavel={editavel}
                     />
@@ -274,16 +310,27 @@ function itemLabel(itens: Item[], id: string) {
 function OrcamentoItemRow({
   item,
   orcamentoId,
+  itensAtivos,
+  itemAtualFallback,
   itens,
   editavel,
 }: {
   item: OrcamentoItem | null;
   orcamentoId?: string;
+  itensAtivos: Item[];
+  itemAtualFallback?: Item;
   itens: Item[];
   editavel: boolean;
 }) {
   const subtotal = item ? item.quantidade * item.preco_unitario : 0;
   const totalColumns = editavel ? 5 : 4;
+  // Mesmo guard de seleção atual do cabeçalho (ver comentário acima): sem
+  // isso, editar quantidade/preço de uma linha cujo item foi desativado
+  // troca silenciosamente o item da linha ao salvar.
+  const itemOpcoes =
+    itemAtualFallback && !itensAtivos.some((i) => i.id === itemAtualFallback.id)
+      ? [itemAtualFallback, ...itensAtivos]
+      : itensAtivos;
 
   if (!editavel) {
     if (!item) return null;
@@ -315,9 +362,10 @@ function OrcamentoItemRow({
             <option value="" disabled>
               Item
             </option>
-            {itens.map((it) => (
+            {itemOpcoes.map((it) => (
               <option key={it.id} value={it.id}>
                 {it.codigo} — {it.descricao}
+                {itemAtualFallback?.id === it.id && !itensAtivos.some((a) => a.id === it.id) ? " (inativo)" : ""}
               </option>
             ))}
           </select>

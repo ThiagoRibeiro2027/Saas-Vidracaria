@@ -26,14 +26,18 @@ export default async function ComercialPage() {
     );
   }
 
+  // obras/itens vêm SEM filtro de situacao: uma obra/item inativado depois
+  // de referenciado por um orçamento ainda precisa aparecer (rótulo + guard
+  // de seleção atual no formulário de edição) — o filtro pra "ativo" fica só
+  // na hora de montar a lista de opções selecionáveis, dentro da seção.
   const [{ data: orcamentos }, { data: orcamentoItens }, { data: pessoas }, { data: papeis }, { data: obras }, { data: itens }] =
     await Promise.all([
       supabase.from("orcamentos").select("*").order("created_at", { ascending: false }),
       supabase.from("orcamento_itens").select("*"),
       supabase.from("pessoas").select("id, nome").order("nome"),
       supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
-      supabase.from("obras").select("id, nome, pessoa_id").eq("situacao", "ativo").order("nome"),
-      supabase.from("itens").select("id, codigo, descricao, unidade_principal").eq("situacao", "ativo").order("codigo"),
+      supabase.from("obras").select("id, nome, pessoa_id, situacao").order("nome"),
+      supabase.from("itens").select("id, codigo, descricao, unidade_principal, situacao").order("codigo"),
     ]);
 
   const clienteIds = new Set(
@@ -48,6 +52,18 @@ export default async function ComercialPage() {
     itensPorOrcamento.set(oi.orcamento_id, list);
   }
 
+  // Mesma fórmula usada por decidir_orcamento() pra checar a alçada
+  // (approval_thresholds) — uma única fonte de verdade via RPC, em vez de
+  // recalcular o total no client com uma soma que poderia divergir da soma
+  // usada pra decidir se a alçada se aplica.
+  const totaisEntries = await Promise.all(
+    (orcamentos ?? []).map(async (o) => {
+      const { data } = await supabase.rpc("orcamento_valor_total", { p_orcamento_id: o.id });
+      return [o.id, Number(data ?? 0)] as const;
+    }),
+  );
+  const totais = new Map(totaisEntries);
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -61,6 +77,7 @@ export default async function ComercialPage() {
         <OrcamentosSection
           orcamentos={orcamentos ?? []}
           itensPorOrcamento={itensPorOrcamento as Map<string, NonNullable<typeof orcamentoItens>>}
+          totais={totais}
           clientesElegiveis={clientesElegiveis}
           todasPessoas={pessoas ?? []}
           obras={obras ?? []}
