@@ -157,6 +157,12 @@ begin
 end;
 $$;
 
+-- Sem has_permission() de propósito, revisado no Security Gate/code-review
+-- de 13/09/2026: qualquer autenticado da empresa pode chamar hoje, sem
+-- nenhum module real ainda consumindo isso (T3/T10/T4 não existem). Decisão
+-- foi deixar aberto — não há call site real pra avaliar qual permissão
+-- faria sentido, e o risco prático hoje é zero (nada expõe isso na
+-- aplicação). Revisitar quando o primeiro módulo consumidor for construído.
 grant execute on function public.next_document_number(text) to authenticated;
 
 create or replace function public.upsert_numbering_sequence(
