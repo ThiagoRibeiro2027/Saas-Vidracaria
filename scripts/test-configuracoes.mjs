@@ -95,6 +95,29 @@ async function main() {
       p_reinicio: "anual",
     });
     check("usuário sem configuracoes.manage não consegue configurar numeração", !!error);
+
+    const { error: marginError } = await noPermTenant.client.rpc("upsert_cutting_margin", {
+      p_material_tipo: "vidro_temperado",
+      p_processo: "",
+      p_percentual: 3,
+      p_ativo: true,
+    });
+    check("usuário sem configuracoes.manage não consegue configurar margem de quebra", !!marginError);
+
+    const { error: ruleError } = await noPermTenant.client.rpc("upsert_measurement_rule", {
+      p_tipo_item: "vidro_temperado",
+      p_exige_medicao_confirmada: true,
+      p_ativo: true,
+    });
+    check("usuário sem configuracoes.manage não consegue configurar regra de medição", !!ruleError);
+
+    const { error: thresholdError } = await noPermTenant.client.rpc("upsert_approval_threshold", {
+      p_processo: "orcamento_aprovacao",
+      p_valor_minimo: 1000,
+      p_role_id: "00000000-0000-0000-0000-000000000000",
+      p_ativo: true,
+    });
+    check("usuário sem configuracoes.manage não consegue configurar alçada de aprovação", !!thresholdError);
   }
 
   console.log("\n2. Numeração — ADMIN configura e persiste");
@@ -267,6 +290,18 @@ async function main() {
       .select("id")
       .eq("company_id", admTenant.company.id);
     check("tenant B não enxerga margem de quebra do tenant A", (crossMargin ?? []).length === 0);
+
+    const { data: crossRule } = await otherTenant.client
+      .from("measurement_rules")
+      .select("id")
+      .eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga regra de medição do tenant A", (crossRule ?? []).length === 0);
+
+    const { data: crossThreshold } = await otherTenant.client
+      .from("approval_thresholds")
+      .select("id")
+      .eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga alçada de aprovação do tenant A", (crossThreshold ?? []).length === 0);
 
     const { error: crossWriteError } = await otherTenant.client.rpc("upsert_numbering_sequence", {
       p_document_type: "pedido",

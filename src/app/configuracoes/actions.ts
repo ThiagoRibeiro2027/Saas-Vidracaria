@@ -14,8 +14,14 @@ export async function upsertNumberingSequenceAction(formData: FormData) {
   const incluirMes = formData.get("incluir_mes") === "on";
   const reinicio = String(formData.get("reinicio") ?? "nunca");
 
-  if (!documentType || !RESTART_VALUES.includes(reinicio as (typeof RESTART_VALUES)[number])) {
-    throw new Error("Dados inválidos para configuração de numeração.");
+  if (
+    !documentType ||
+    !RESTART_VALUES.includes(reinicio as (typeof RESTART_VALUES)[number]) ||
+    !Number.isInteger(digitos) ||
+    digitos < 1 ||
+    digitos > 12
+  ) {
+    throw new Error("Dados inválidos para configuração de numeração — dígitos deve ser um número inteiro entre 1 e 12.");
   }
 
   const supabase = await createClient();

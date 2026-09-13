@@ -33,22 +33,23 @@ export default async function ConfiguracoesPage() {
     p_action: "manage",
   });
 
-  const [{ data: numberingSequences }, { data: cuttingMargins }, { data: measurementRules }, { data: roles }] =
-    await Promise.all([
-      supabase.from("numbering_sequences").select("*").order("document_type"),
-      supabase
-        .from("cutting_margin_settings")
-        .select("*")
-        .order("material_tipo")
-        .order("processo"),
-      supabase.from("measurement_rules").select("*").order("tipo_item"),
-      supabase.from("roles").select("id, key, name, company_id").order("name"),
-    ]);
-
-  const { data: approvalThresholds } = await supabase
-    .from("approval_thresholds")
-    .select("*")
-    .order("processo");
+  const [
+    { data: numberingSequences },
+    { data: cuttingMargins },
+    { data: measurementRules },
+    { data: roles },
+    { data: approvalThresholds },
+  ] = await Promise.all([
+    supabase.from("numbering_sequences").select("*").order("document_type"),
+    supabase
+      .from("cutting_margin_settings")
+      .select("*")
+      .order("material_tipo")
+      .order("processo"),
+    supabase.from("measurement_rules").select("*").order("tipo_item"),
+    supabase.from("roles").select("id, key, name, company_id").order("name"),
+    supabase.from("approval_thresholds").select("*").order("processo"),
+  ]);
 
   return (
     <main style={pageStyle}>

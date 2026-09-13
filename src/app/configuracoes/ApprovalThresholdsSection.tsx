@@ -1,6 +1,7 @@
 "use client";
 
 import { upsertApprovalThresholdAction } from "./actions";
+import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "./styles";
 
 type Row = {
   id: string;
@@ -103,23 +104,3 @@ function RowForm({ row, roles, canManage }: { row: Row | null; roles: Role[]; ca
   );
 }
 
-const sectionTitleStyle = { fontSize: "14px", margin: "0 0 4px" } as const;
-const hintStyle = { fontSize: "12px", color: "#6b7a75", margin: "0 0 10px" } as const;
-const thStyle = { padding: "6px 8px" } as const;
-const tdStyle = { padding: "6px 8px" } as const;
-const inputStyle = {
-  padding: "4px 6px",
-  borderRadius: "4px",
-  border: "1px solid #dae2de",
-  fontSize: "12px",
-} as const;
-const labelStyle = { display: "flex", alignItems: "center", gap: "4px", color: "#3e4d49" } as const;
-const buttonStyle = {
-  background: "#1f5d57",
-  color: "#fff",
-  border: "none",
-  borderRadius: "4px",
-  padding: "4px 10px",
-  fontSize: "12px",
-  cursor: "pointer",
-} as const;

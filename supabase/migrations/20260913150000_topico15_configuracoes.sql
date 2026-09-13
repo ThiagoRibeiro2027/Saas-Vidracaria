@@ -184,8 +184,13 @@ begin
     raise exception 'Reinício inválido: "%".', p_reinicio;
   end if;
 
+  -- FOR UPDATE: sem o lock, duas chamadas concorrentes pra mesma chave leem
+  -- o mesmo "before" e uma delas grava um "before" desatualizado na
+  -- auditoria (a escrita em si já serializa via ON CONFLICT, só a leitura
+  -- do valor anterior não).
   select * into v_before from public.numbering_sequences
-  where company_id = v_company_id and document_type = p_document_type;
+  where company_id = v_company_id and document_type = p_document_type
+  for update;
 
   insert into public.numbering_sequences (
     company_id, document_type, prefixo, sufixo, digitos, incluir_ano, incluir_mes, reinicio
@@ -257,7 +262,8 @@ begin
   end if;
 
   select * into v_before from public.cutting_margin_settings
-  where company_id = v_company_id and material_tipo = p_material_tipo and processo = p_processo;
+  where company_id = v_company_id and material_tipo = p_material_tipo and processo = p_processo
+  for update;
 
   insert into public.cutting_margin_settings (company_id, material_tipo, processo, percentual, ativo)
   values (v_company_id, p_material_tipo, p_processo, p_percentual, p_ativo)
@@ -298,7 +304,8 @@ begin
   end if;
 
   select * into v_before from public.measurement_rules
-  where company_id = v_company_id and tipo_item = p_tipo_item;
+  where company_id = v_company_id and tipo_item = p_tipo_item
+  for update;
 
   insert into public.measurement_rules (company_id, tipo_item, exige_medicao_confirmada, ativo)
   values (v_company_id, p_tipo_item, p_exige_medicao_confirmada, p_ativo)
@@ -346,7 +353,8 @@ begin
   end if;
 
   select * into v_before from public.approval_thresholds
-  where company_id = v_company_id and processo = p_processo;
+  where company_id = v_company_id and processo = p_processo
+  for update;
 
   insert into public.approval_thresholds (company_id, processo, valor_minimo, role_id, ativo)
   values (v_company_id, p_processo, p_valor_minimo, p_role_id, p_ativo)
