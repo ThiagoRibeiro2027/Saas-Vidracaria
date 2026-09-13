@@ -141,7 +141,6 @@ async function main() {
   check("numeração, pessoa, obra e item preparados", !!clienteId && !!obraId && !!itemId);
 
   console.log("\n1. Escrita exige orcamentos.manage");
-  let orcamentoSemPermId;
   {
     const { error } = await noPermTenant.client.rpc("upsert_orcamento", {
       p_id: null, p_pessoa_id: clienteId, p_obra_id: null, p_validade: null,
