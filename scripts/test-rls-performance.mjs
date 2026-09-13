@@ -125,16 +125,25 @@ async function main() {
       });
     }
 
+    // Em ambiente de teste a tabela é pequena (dezenas de linhas) — nesse
+    // volume o planner escolhe Seq Scan por custo, corretamente, mesmo com
+    // o índice disponível; isso não tem relação com RLS. O que este teste
+    // precisa garantir é outra coisa: que a reescrita das policies com
+    // subselect (ADR-009) não torna o índice inelegível para o planner numa
+    // sessão de tenant comum. `enable_seqscan = off` isola exatamente essa
+    // pergunta, independente do volume de dados do ambiente.
     const plan = psql(`
       set role authenticated;
       set request.jwt.claim.sub = '${tenant.userId}';
       set request.jwt.claims = '{"sub":"${tenant.userId}","role":"authenticated"}';
+      set enable_seqscan = off;
       explain (format text) select * from activity_logs where company_id = '${tenant.company.id}';
+      reset enable_seqscan;
       reset role;
     `);
     check(
-      "a consulta filtrada por company_id não faz Seq Scan em activity_logs (índice elegível)",
-      !plan.includes("Seq Scan on activity_logs"),
+      "com Seq Scan desabilitado, o planner ainda alcança um Index Scan por company_id (RLS não invalida o índice)",
+      plan.includes("Index Scan") && plan.includes("activity_logs_company_id_idx"),
     );
   }
 

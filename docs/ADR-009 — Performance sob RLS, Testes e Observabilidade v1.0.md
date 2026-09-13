@@ -146,6 +146,19 @@ Tabelas de crescimento contínuo deverão ter política de retenção,
 arquivamento ou particionamento avaliada antes da entrada em produção,
 começando por `activity_logs`.
 
+**Decisão registrada (Security Gate Fase 8, 13/09/2026): retenção de
+`activity_logs` = 24 meses.** Implementado em
+`20260913120000_adr009_activity_logs_retention.sql`:
+`purge_activity_logs_older_than_retention()`, restrita a platform_admin,
+abre uma exceção deliberada e auditada ao trigger de imutabilidade (só
+para DELETE de linhas com mais de 24 meses — o próprio trigger recusa
+expurgar linha mais nova, mesmo com o GUC de expurgo ligado) e registra o
+expurgo na própria trilha de auditoria. Testado em
+`scripts/test-activity-logs-retention.mjs`. **Não agendado
+automaticamente** (sem `pg_cron`) — decisão de rodar em produção (e com
+que frequência) fica para quando o ambiente definitivo estiver de pé; até
+lá, é um procedimento manual disponível a platform_admin.
+
 **4. Decisão — Estratégia de testes**
 
 **4.1 Níveis**
