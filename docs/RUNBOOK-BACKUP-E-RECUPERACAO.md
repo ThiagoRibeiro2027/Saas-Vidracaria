@@ -11,19 +11,30 @@ infraestrutura não suporta").
 
 ## 1. Estado atual da infraestrutura
 
-Hoje o projeto roda em **ambiente local de desenvolvimento** (Supabase via
-Docker/Colima). Não há projeto de produção provisionado. Isso significa:
+**Atualizado em 13/09/2026 (Security Gate Fase 8).** Desenvolvimento
+continua em ambiente local (Supabase via Docker/Colima) — os scripts desta
+fase seguem cobrindo isso normalmente. Além disso, agora existe um projeto
+remoto provisionado: `Saas-Vidracaria` (ref `kisjfapdbyhgszvxyugc`, região
+`sa-east-1`), mas **no plano Free**, por decisão explícita de não assinar
+Pro neste momento (ver ADR-010 §15). Isso muda o que estava escrito aqui:
 
-- O backup automático diário do item 34 (recomendação: Supabase Pro ou
-  superior) **ainda não se aplica** — só passa a existir quando a empresa
-  contratar o plano de produção.
-- Os scripts desta fase cobrem o que É responsabilidade da aplicação
-  (exportar dados de forma portável, testar restauração, documentar
-  procedimentos) — não substituem o backup gerenciado da plataforma em
-  produção, complementam.
-- Backup externo (item 35) e RPO/RTO (item 37) aqui são **plano
-  documentado**, não infraestrutura ativa, até a Fase 8 (Produção) definir
-  o provedor/plano contratado.
+- O backup automático diário do item 34 **continua não se aplicando** —
+  mas agora não é "ainda não temos projeto de produção", é "o plano atual
+  do projeto que já existe não inclui backup gerenciado". O Free do
+  Supabase não tem backup automático em nenhuma circunstância; é recurso
+  exclusivo de Pro e acima. Passa a existir automaticamente no momento do
+  upgrade, sem ação adicional aqui.
+- Os scripts desta fase (`backup-db.mjs`, `backup-storage.mjs`,
+  `restore-db.mjs`, `test-restore.mjs`) seguem sendo a única cobertura de
+  backup real deste ambiente enquanto ele estiver no Free — não são só
+  "complemento", são o backup de fato hoje. Recomenda-se rodar
+  `backup-db.mjs` manualmente contra o projeto remoto (`DATABASE_URL`
+  apontando para ele) enquanto durar o Free, e não só contra o banco
+  local.
+- Backup externo (item 35) e RPO/RTO (item 37) continuam **plano
+  documentado**, não infraestrutura ativa, até o upgrade para Pro (que traz
+  backup automático gerenciado) ou até uma decisão explícita de operar
+  backup externo à parte.
 
 ## 2. Backup do banco (`scripts/backup-db.mjs`)
 
