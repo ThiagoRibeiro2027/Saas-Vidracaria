@@ -1,0 +1,47 @@
+name: CI
+
+# ADR-009 §4.3 / Prompt Mestre de Segurança — pipeline obrigatório a cada
+# alteração enviada ao repositório: lint, typecheck, testes, RLS,
+# multi-tenant, autorização, storage e verificação de secrets. Falha em
+# qualquer etapa impede a promoção da alteração (todos os jobs são
+# obrigatórios, nenhum "continue-on-error").
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run check:secrets
+
+  # Testes de segurança e isolamento (ADR-009 §4.1): RLS, multi-tenant,
+  # autorização, storage, MFA, LGPD, retenção e Configurações — a suíte
+  # completa de scripts/test-*.mjs, via `npm test`. Não inclui o teste de
+  # restauração de backup (§4.5), que é obrigação periódica separada
+  # (RUNBOOK-BACKUP-E-RECUPERACAO.md), não por push.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Instalar cliente psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: npm test
