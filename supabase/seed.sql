@@ -17,7 +17,13 @@ insert into public.permissions (resource, action, description) values
   ('files', 'delete', 'Remover (soft delete) arquivos da empresa'),
   ('export', 'company_data', 'Exportar os dados da própria empresa'),
   ('configuracoes', 'view', 'Visualizar as configurações da empresa (TÓPICO 15)'),
-  ('configuracoes', 'manage', 'Editar numeração, margem de quebra, regra de medição e alçadas (TÓPICO 15)')
+  ('configuracoes', 'manage', 'Editar numeração, margem de quebra, regra de medição e alçadas (TÓPICO 15)'),
+  ('pessoas', 'view', 'Visualizar clientes e fornecedores da empresa (TÓPICO 2)'),
+  ('pessoas', 'manage', 'Criar/editar pessoas e seus papéis (TÓPICO 2)'),
+  ('obras', 'view', 'Visualizar obras da empresa (TÓPICO 2)'),
+  ('obras', 'manage', 'Criar/editar obras (TÓPICO 2)'),
+  ('itens', 'view', 'Visualizar itens (produtos/materiais) da empresa (TÓPICO 2)'),
+  ('itens', 'manage', 'Criar/editar itens (TÓPICO 2)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).

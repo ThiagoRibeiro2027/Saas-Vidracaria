@@ -79,6 +79,11 @@ export default async function Home() {
             Configurações →
           </a>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <a href="/cadastros" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Cadastros →
+          </a>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button

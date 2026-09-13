@@ -24,6 +24,7 @@ const TEST_SCRIPTS = [
   "scripts/test-lgpd-anonymization.mjs",
   "scripts/test-activity-logs-retention.mjs",
   "scripts/test-configuracoes.mjs",
+  "scripts/test-cadastros.mjs",
 ];
 
 function supabaseCredentials() {
