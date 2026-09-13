@@ -2143,3 +2143,58 @@ O Tópico 4 deverá funcionar como o **centro de inteligência operacional
 da fábrica**, mantendo a empresa no controle das decisões e garantindo
 rastreabilidade completa desde a liberação da produção até a entrega do
 produto aprovado ao próximo processo.
+
+
+**54. LISTA DE CORTE — complemento aprovado em 12/09/2026**
+
+Complemento decorrente de revisão posterior ao texto original. Não
+altera as seções anteriores.
+
+**Contexto**
+
+A operação define hoje o corte pela experiência do operador, sem
+software de apoio. As seções 23 a 25 já tratam da análise de
+combinações e do reaproveitamento de sobras, e o §19 prevê etiquetas,
+mas não existe um documento de saída que diga ao operador **o que
+cortar de qual chapa ou barra**.
+
+**Decisão**
+
+O sistema deverá gerar uma **lista de corte** por chapa/barra, como
+saída operacional da ordem de produção.
+
+A lista deverá conter, conforme aplicável:
+
+identificação da chapa/barra de origem (item, dimensão, lote ou sobra
+de origem);
+
+peças a serem obtidas, com dimensões e quantidades;
+
+pedido, obra e ambiente de destino de cada peça, quando aplicável;
+
+sequência sugerida de corte, quando houver;
+
+margem de quebra aplicada (conforme parametrização do TÓPICO 15);
+
+sobra prevista;
+
+identificação da OP e do responsável;
+
+data e hora de emissão.
+
+**Limites**
+
+A lista de corte **não é resultado de otimização matemática**. O
+sistema apresenta o agrupamento a partir das combinações já previstas
+nas seções 23 a 25; a decisão final de corte permanece com o operador.
+
+Permanecem fora de escopo, conforme o TÓPICO 6 e o ADR-002: otimização
+matemática de cortes, nesting, combinação automática de sobras,
+algoritmos avançados de aproveitamento e integração com máquinas de
+corte.
+
+**Rastreabilidade**
+
+A sobra efetivamente gerada deverá ser registrada conforme a seção 24,
+e a perda real conforme já previsto — nenhuma das duas se confunde com
+a margem de quebra planejada (Arquitetura Mestre, item 6.3).

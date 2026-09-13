@@ -2,7 +2,7 @@
 
 *Sistema de Gestão Operacional da Fábrica de Vidraçaria*
 
-**Status:** PROPOSTO PARA APROVAÇÃO\
+**Status:** APROVADO\
 **Data:** 11/09/2026
 
 **1. Objetivo**

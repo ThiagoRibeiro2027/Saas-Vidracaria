@@ -1443,3 +1443,46 @@ Qual regra foi aplicada?\
 Houve decisão humana?\
 Qual foi o resultado?\
 É possível corrigir ou reprocessar?**
+
+
+**40. OTIMIZADOR DE CORTE EXTERNO — complemento aprovado em 12/09/2026**
+
+Complemento decorrente de revisão posterior ao texto original. Não
+altera as seções anteriores.
+
+**Contexto**
+
+O SaaS não fará otimização matemática de corte nem nesting — decisão
+registrada no TÓPICO 6 e no ADR-002. Ainda assim, uma vidraçaria pode
+utilizar um software otimizador próprio, hoje ou no futuro.
+
+**Decisão**
+
+A arquitetura deverá **prever o gancho de integração com otimizador de
+corte externo, sem integrar nenhum provedor agora** — mesmo padrão
+adotado para gateways de pagamento no ADR-006.
+
+O gancho deverá contemplar, quando vier a ser implementado:
+
+exportação da lista de peças a produzir (dimensões, quantidades,
+material, pedido de origem);
+
+importação do plano de corte gerado pelo otimizador;
+
+vínculo do plano importado à ordem de produção correspondente;
+
+identificação da origem externa do plano;
+
+rastreabilidade e reprocessamento, conforme as regras gerais deste
+tópico.
+
+**Limites**
+
+A escolha do otimizador permanece decisão futura.
+
+A ausência ou indisponibilidade do otimizador externo não poderá
+impedir a operação: a lista de corte interna (TÓPICO 4, seção 54)
+permanece como caminho padrão.
+
+Integração com máquinas de corte (CNC/CAM) continua fora de escopo,
+conforme o TÓPICO 6.

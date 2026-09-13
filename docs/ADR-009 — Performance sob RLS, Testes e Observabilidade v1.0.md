@@ -318,10 +318,26 @@ desnecessários; e observabilidade gravada dentro da tabela de auditoria.
 Como o código já existente foi criado antes desta decisão, deverá ser
 executada uma correção pontual, sem alterar comportamento funcional:
 
-criar os índices ausentes de `company_id` em `company_units`,
-`profiles`, `roles` e `activity_logs`;
+criar índice de `company_id` em `activity_logs` — **a única das tabelas
+citadas sem cobertura**;
 
-criar os índices de junção usados por `has_permission()`;
+**correção de 12/09/2026:** a redação original desta seção listava também
+`company_units`, `profiles`, `roles` e as colunas de junção de
+`has_permission()`. Verificação posterior no schema mostrou que todas já
+possuem índice utilizável, como efeito de UNIQUE constraints existentes
+desde a Fase 2, todas com a coluna necessária como líder:
+`company_units_company_code_unique (company_id, code)`,
+`profiles_company_login_unique (company_id, login_identifier)`,
+`roles_company_key_unique (company_id, key)`,
+`user_roles_no_duplicate (profile_id, ...)`,
+`role_permissions` (PK `role_id, permission_id`) e
+`permissions_resource_action_unique (resource, action)`. Um índice
+B-tree composto atende igualdade pela coluna líder, portanto índices
+dedicados adicionais seriam redundantes e contrariariam o princípio de
+evitar índice sem justificativa (T1 §21). **Não criar esses índices.**
+
+criar índice para a consulta de anonimização do ADR-010 —
+`activity_logs (user_id) where anonymized_at is null`;
 
 revisar as policies existentes para o padrão de subselect;
 
