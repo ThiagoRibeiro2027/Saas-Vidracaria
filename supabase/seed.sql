@@ -27,7 +27,9 @@ insert into public.permissions (resource, action, description) values
   ('orcamentos', 'view', 'Visualizar orçamentos da empresa (TÓPICO 10)'),
   ('orcamentos', 'manage', 'Criar/editar itens, aprovar, rejeitar e cancelar orçamentos (TÓPICO 10)'),
   ('pedidos', 'view', 'Visualizar pedidos da empresa (TÓPICO 3)'),
-  ('pedidos', 'manage', 'Converter orçamento em pedido, conferir, abrir/resolver pendência, liberar e cancelar pedidos (TÓPICO 3)')
+  ('pedidos', 'manage', 'Converter orçamento em pedido, conferir, abrir/resolver pendência, liberar e cancelar pedidos (TÓPICO 3)'),
+  ('engenharia', 'view', 'Visualizar itens de produção e medidas da empresa (TÓPICO 5)'),
+  ('engenharia', 'manage', 'Criar item de produção, registrar e confirmar medida em obra (TÓPICO 5)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
