@@ -15,7 +15,9 @@ insert into public.permissions (resource, action, description) values
   ('files', 'read', 'Consultar arquivos anexados da empresa'),
   ('files', 'upload', 'Enviar novos arquivos para a empresa'),
   ('files', 'delete', 'Remover (soft delete) arquivos da empresa'),
-  ('export', 'company_data', 'Exportar os dados da própria empresa')
+  ('export', 'company_data', 'Exportar os dados da própria empresa'),
+  ('configuracoes', 'view', 'Visualizar as configurações da empresa (TÓPICO 15)'),
+  ('configuracoes', 'manage', 'Editar numeração, margem de quebra, regra de medição e alçadas (TÓPICO 15)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).

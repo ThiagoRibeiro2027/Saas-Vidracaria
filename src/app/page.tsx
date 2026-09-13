@@ -74,6 +74,11 @@ export default async function Home() {
             Exportar dados →
           </a>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <a href="/configuracoes" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Configurações →
+          </a>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button
