@@ -25,6 +25,7 @@ const TEST_SCRIPTS = [
   "scripts/test-activity-logs-retention.mjs",
   "scripts/test-configuracoes.mjs",
   "scripts/test-cadastros.mjs",
+  "scripts/test-comercial.mjs",
 ];
 
 function supabaseCredentials() {

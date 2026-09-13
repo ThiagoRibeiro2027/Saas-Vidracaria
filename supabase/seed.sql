@@ -23,7 +23,9 @@ insert into public.permissions (resource, action, description) values
   ('obras', 'view', 'Visualizar obras da empresa (TÓPICO 2)'),
   ('obras', 'manage', 'Criar/editar obras (TÓPICO 2)'),
   ('itens', 'view', 'Visualizar itens (produtos/materiais) da empresa (TÓPICO 2)'),
-  ('itens', 'manage', 'Criar/editar itens (TÓPICO 2)')
+  ('itens', 'manage', 'Criar/editar itens (TÓPICO 2)'),
+  ('orcamentos', 'view', 'Visualizar orçamentos da empresa (TÓPICO 10)'),
+  ('orcamentos', 'manage', 'Criar/editar itens, aprovar, rejeitar e cancelar orçamentos (TÓPICO 10)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
