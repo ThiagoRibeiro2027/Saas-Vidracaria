@@ -21,6 +21,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+const BUCKET = "company-files";
+
+// PNG 1x1 válido (assinatura real), mesmo buffer de test-storage-rls.mjs.
+// Auditoria 15/09/2026 (F02): register_file() passou a ler o tamanho real
+// do objeto em storage.objects em vez de confiar em p_size_bytes — os
+// testes abaixo precisam de um upload real no Storage antes de chamar
+// register_file(), não só um caminho sintético.
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -226,13 +238,15 @@ async function main() {
     // Reativa para não deixar o tenant de teste travado para outras execuções.
     await admin.from("subscriptions").update({ status: "active" }).eq("company_id", tenantA.company.id);
 
+    const pathDepoisReativacao = `${tenantA.company.id}/geral/geral/${runId}-deveria-passar.png`;
+    await tenantA.client.storage.from(BUCKET).upload(pathDepoisReativacao, PNG_1X1, { contentType: "image/png" });
     const { error: uploadAfterReactivation } = await tenantA.client.rpc("register_file", {
       p_entity_type: "geral",
       p_entity_id: null,
-      p_storage_path: `${tenantA.company.id}/geral/geral/${runId}-deveria-passar.png`,
+      p_storage_path: pathDepoisReativacao,
       p_original_name: "deveria-passar.png",
       p_mime_type: "image/png",
-      p_size_bytes: 100,
+      p_size_bytes: PNG_1X1.byteLength,
     });
     check("após reativação, empresa volta a conseguir registrar arquivo", !uploadAfterReactivation);
   }
@@ -274,23 +288,33 @@ async function main() {
     await admin.from("subscriptions").update({ plan_id: quotaPlan.id }).eq("company_id", tenantB.company.id);
 
     const runId = crypto.randomUUID();
+
+    // Auditoria 15/09/2026 (F02): register_file() usa o tamanho real do
+    // objeto no Storage, não mais p_size_bytes — o buffer "estoura-quota"
+    // precisa ter, de fato, mais de 500 bytes reais (limite do plano acima).
+    const pathEstouraQuota = `${tenantB.company.id}/geral/geral/${runId}-estoura-quota.png`;
+    await tenantB.client.storage
+      .from(BUCKET)
+      .upload(pathEstouraQuota, Buffer.alloc(600, "x"), { contentType: "application/octet-stream" });
     const { error: overQuotaError } = await tenantB.client.rpc("register_file", {
       p_entity_type: "geral",
       p_entity_id: null,
-      p_storage_path: `${tenantB.company.id}/geral/geral/${runId}-estoura-quota.png`,
+      p_storage_path: pathEstouraQuota,
       p_original_name: "estoura-quota.png",
       p_mime_type: "image/png",
       p_size_bytes: 600,
     });
     check("upload que estouraria a quota do plano é rejeitado (SEC-012)", !!overQuotaError);
 
+    const pathDentroQuota = `${tenantB.company.id}/geral/geral/${runId}-dentro-da-quota.png`;
+    await tenantB.client.storage.from(BUCKET).upload(pathDentroQuota, PNG_1X1, { contentType: "image/png" });
     const { error: withinQuotaError } = await tenantB.client.rpc("register_file", {
       p_entity_type: "geral",
       p_entity_id: null,
-      p_storage_path: `${tenantB.company.id}/geral/geral/${runId}-dentro-da-quota.png`,
+      p_storage_path: pathDentroQuota,
       p_original_name: "dentro-da-quota.png",
       p_mime_type: "image/png",
-      p_size_bytes: 100,
+      p_size_bytes: PNG_1X1.byteLength,
     });
     check("upload dentro da quota continua funcionando", !withinQuotaError);
   }
