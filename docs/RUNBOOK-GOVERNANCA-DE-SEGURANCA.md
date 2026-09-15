@@ -2,11 +2,10 @@
 
 Este documento **não é um ADR** — é a documentação operacional para os
 itens de Fase P2 do plano de remediação da auditoria técnica de
-14/09/2026 que não são bugs de código: revisão periódica de permissões e
-security review por release. O item "observabilidade e alertas de
-segurança" fica registrado como decisão pendente (seção 3) — depende de
-escolha de ferramenta/orçamento, não é algo a implementar sem essa
-decisão.
+14/09/2026 que não são bugs de código: revisão periódica de permissões,
+security review por release e observabilidade/alertas de segurança
+(decisão tomada em 15/09/2026, seção 3: alerta próprio por e-mail via
+Resend, sem log drain nem APM contratado).
 
 ## 1. Revisão periódica de permissões
 
@@ -95,25 +94,56 @@ Perguntas que toda função `SECURITY DEFINER` nova precisa responder
       `log_client_event()` pra uma ação nova sem meter na whitelist)?
 - [ ] Existe teste allow **e** deny pra ela em `scripts/test-*.mjs`?
 
-## 3. Observabilidade e alertas de segurança — decisão pendente
+## 3. Observabilidade e alertas de segurança
 
-Não implementado. Depende de escolher uma ferramenta (custo/operação),
-não é algo pra decidir sem o responsável do produto. Opções que existem
-hoje sem precisar trocar de stack, pra quando essa decisão for tomada:
+**Decisão (15/09/2026):** alerta próprio sobre `activity_logs`, sem
+log drain nem APM contratado — projeto está no plano Free da Supabase e
+da Vercel (Hobby), sem orçamento definido pra uma ferramenta paga ainda.
+Implementado em `src/app/api/cron/security-alerts/route.ts`.
 
-- **Log drain do Supabase** (Settings → Log Drains) — exporta logs do
-  Postgres/Auth/Storage pra um destino externo (ex.: Datadog, um
-  webhook próprio). Mais simples de ligar, mas cobre infraestrutura, não
-  os eventos de `activity_logs` da aplicação.
-- **Alertas sobre `activity_logs`** — um cron/edge function periódico
-  consultando por padrões (ex.: muitos `auth.login_blocked` numa janela
-  curta, `governance.subscription_transitioned` fora do horário
-  esperado) e notificando por e-mail/webhook. Não existe hoje; seria
-  código novo, não só configuração.
-- **Sentry/equivalente** para exceptions do Next.js — cobre erro de
-  aplicação, não eventos de segurança especificamente.
+**Como funciona:**
 
-Quando o responsável decidir a ferramenta, o padrão dos demais itens
-deste runbook (checklist + gatilho, não cadência arbitrária) deve valer
-aqui também: o quê dispara um alerta, pra quem, e o que essa pessoa faz
-ao recebê-lo.
+- **Gatilho:** Vercel Cron (`vercel.json`), 1x/dia (`0 8 * * *` —
+  plano Hobby não permite frequência maior:
+  https://vercel.com/docs/cron-jobs/usage-and-pricing). A Vercel
+  autentica a chamada via header `Authorization: Bearer $CRON_SECRET`
+  (https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs);
+  o handler rejeita qualquer chamada sem o secret correto.
+- **O que verifica:** conta ocorrências de `auth.login_blocked`,
+  `governance.subscription_transitioned`, `lgpd.activity_logs_anonymized`
+  e `governance.activity_logs_retention_purge` em `activity_logs`, na
+  janela desde a última execução (marcador `system.security_alert_run`,
+  com fallback de 24h se for a primeira vez) — idempotente por desenho:
+  uma invocação duplicada da Vercel Cron reprocessa uma janela vazia, uma
+  perdida é coberta pela próxima (mesmo princípio que a própria Vercel
+  recomenda para cron jobs).
+- **Notificação:** se achar algo, manda um e-mail-resumo via Resend
+  (`onboarding@resend.dev` — remetente de teste, sem domínio próprio
+  configurado; ver seção 4 pra trocar) pro endereço em
+  `SECURITY_ALERT_EMAIL`.
+
+**Variáveis de ambiente necessárias** (Vercel → Settings →
+Environment Variables, Production; local em `.env.local` só se for testar
+o endpoint manualmente):
+
+| Variável | Valor |
+|---|---|
+| `CRON_SECRET` | string aleatória de 16+ caracteres (ex.: gerada por um gerenciador de senhas) |
+| `RESEND_API_KEY` | API key da conta Resend (resend.com → API Keys) |
+| `SECURITY_ALERT_EMAIL` | endereço que recebe o alerta |
+
+**Ampliar no futuro** (não faz parte do escopo de hoje, registrado pra
+quando for revisitado): alertar também sobre exceção de aplicação
+(Sentry/equivalente) e sobre tentativa de forjar evento de auditoria via
+`log_client_event()` — hoje essa tentativa só gera um erro pro chamador,
+não fica registrada em `activity_logs` (a própria rejeição não é
+persistida, por desenho: registrar a tentativa exigiria decidir se
+`p_action` forjado deveria aparecer em claro no log, o que abriria de
+novo parte do problema que o SEC-005 fechou).
+
+### 4. Trocar o remetente de e-mail quando houver domínio próprio
+
+1. Adicionar o domínio em Resend → Domains e configurar os registros DNS
+   pedidos (SPF/DKIM).
+2. Trocar `"SaaS Vidraçaria <onboarding@resend.dev>"` pelo remetente do
+   domínio verificado em `src/app/api/cron/security-alerts/route.ts`.
