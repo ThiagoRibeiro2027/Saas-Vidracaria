@@ -27,6 +27,20 @@ function hashIdentifier(identifier: string): string {
   return createHash("sha256").update(identifier).digest("hex").slice(0, 32);
 }
 
+// SEC-010 (achado de code-review, 15/09/2026): login_identifier só é único
+// por empresa (profiles_company_login_unique) — a mesma matrícula "1001"
+// pode existir em empresas diferentes, pra pessoas diferentes. Sem escopo
+// de empresa no hash, 5 tentativas contra QUALQUER empresa com essa
+// matrícula travavam a conta de todas as empresas que a usam — DoS
+// cross-tenant sem autenticação nenhuma. Inclui o slug de empresa digitado
+// (mesmo que a empresa não exista) no hash usado pro lockout de conta;
+// administrador de plataforma (sem campo Empresa) usa e-mail real, já
+// globalmente único, então string vazia no lugar do slug não introduz
+// colisão entre contas de plataforma e de tenant.
+function accountLockoutHash(companySlug: string, identifier: string): string {
+  return hashIdentifier(`${companySlug}:${identifier}`);
+}
+
 // Security Gate Fase 8 (SEC-010): 5 tentativas falhas em 15 minutos travam
 // por 30 minutos — por identificador de conta E por IP, independentemente
 // um do outro (Prompt Mestre item 26: "não depender exclusivamente de
@@ -49,9 +63,10 @@ function isLockedByRecentFailures(failureTimestamps: string[]): boolean {
   return Date.now() < lockedUntil;
 }
 
-async function isLoginLocked(identifierHash: string, ip: string | null): Promise<boolean> {
+async function isLoginLocked(companySlug: string, identifier: string, ip: string | null): Promise<boolean> {
   const admin = createAdminClient();
   const windowStart = new Date(Date.now() - LOGIN_LOCKOUT.windowMinutes * 60_000).toISOString();
+  const identifierHash = accountLockoutHash(companySlug, identifier);
 
   const byAccountQuery = admin
     .from("activity_logs")
@@ -73,7 +88,18 @@ async function isLoginLocked(identifierHash: string, ip: string | null): Promise
         .limit(LOGIN_LOCKOUT.maxAttempts)
     : null;
 
-  const [byAccount, byIp] = await Promise.all([byAccountQuery, byIpQuery ?? Promise.resolve({ data: [] })]);
+  const [byAccount, byIp] = await Promise.all([byAccountQuery, byIpQuery ?? Promise.resolve({ data: [], error: null })]);
+
+  // Achado de code-review: uma query que falha (erro de rede/servidor) não
+  // pode ser tratada igual a "zero tentativas" — isso apagaria o rate
+  // limit inteiro de forma silenciosa. Falha fechado (trata como travado)
+  // é o lado seguro de um controle de segurança: pior um login legítimo
+  // esperar alguns minutos a mais do que o brute-force voltar a valer sem
+  // ninguém perceber.
+  if (byAccount.error || byIp.error) {
+    console.error("[login] falha ao consultar rate limit — negando por segurança:", byAccount.error ?? byIp.error);
+    return true;
+  }
 
   return (
     isLockedByRecentFailures((byAccount.data ?? []).map((r) => r.created_at)) ||
@@ -85,7 +111,7 @@ async function isLoginLocked(identifierHash: string, ip: string | null): Promise
 // só para dar visibilidade na auditoria de quantas tentativas foram
 // efetivamente bloqueadas pelo rate limit, sem fazer o bloqueio se
 // realimentar indefinidamente a cada nova tentativa recusada.
-async function logLoginBlocked(identifier: string) {
+async function logLoginBlocked(companySlug: string, identifier: string) {
   const { ip, userAgent } = await getClientContext();
   const admin = createAdminClient();
   await admin.from("activity_logs").insert({
@@ -93,7 +119,7 @@ async function logLoginBlocked(identifier: string) {
     user_id: null,
     action: "auth.login_blocked",
     entity_type: "auth",
-    metadata: { identifier_hash: hashIdentifier(identifier) },
+    metadata: { identifier_hash: accountLockoutHash(companySlug, identifier) },
     ip_address: ip,
     user_agent: userAgent,
   });
@@ -106,6 +132,7 @@ async function logLoginBlocked(identifier: string) {
 // só o hash dele (Prompt Mestre item 18: nada de senhas/tokens/secrets nos
 // logs; ADR-010 §6: nada de PII em claro fora do alcance da anonimização).
 async function logLoginFailure(
+  companySlug: string,
   companyId: string | null,
   identifier: string,
   extra: Record<string, unknown> = {},
@@ -117,7 +144,7 @@ async function logLoginFailure(
     user_id: null,
     action: "auth.login_failed",
     entity_type: "auth",
-    metadata: { identifier_hash: hashIdentifier(identifier), ...extra },
+    metadata: { identifier_hash: accountLockoutHash(companySlug, identifier), ...extra },
     ip_address: ip,
     user_agent: userAgent,
   });
@@ -148,10 +175,9 @@ export async function signInAction(
     return { error: GENERIC_ERROR };
   }
 
-  const identifierHash = hashIdentifier(identifier);
   const { ip: currentIp } = await getClientContext();
-  if (await isLoginLocked(identifierHash, currentIp)) {
-    await logLoginBlocked(identifier);
+  if (await isLoginLocked(companySlug, identifier, currentIp)) {
+    await logLoginBlocked(companySlug, identifier);
     return { error: LOCKED_ERROR };
   }
 
@@ -167,7 +193,7 @@ export async function signInAction(
       password,
     });
     if (error) {
-      await logLoginFailure(null, identifier);
+      await logLoginFailure(companySlug, null, identifier);
       return { error: GENERIC_ERROR };
     }
     await logLoginSuccess(supabase);
@@ -188,7 +214,7 @@ export async function signInAction(
     .maybeSingle();
 
   if (!company) {
-    await logLoginFailure(null, identifier, { company_slug: companySlug });
+    await logLoginFailure(companySlug, null, identifier, { company_slug: companySlug });
     return { error: GENERIC_ERROR };
   }
 
@@ -203,13 +229,13 @@ export async function signInAction(
     .maybeSingle();
 
   if (!profile) {
-    await logLoginFailure(company.id, identifier);
+    await logLoginFailure(companySlug, company.id, identifier);
     return { error: GENERIC_ERROR };
   }
 
   const { data: authUser } = await admin.auth.admin.getUserById(profile.id);
   if (!authUser?.user?.email) {
-    await logLoginFailure(company.id, identifier);
+    await logLoginFailure(companySlug, company.id, identifier);
     return { error: GENERIC_ERROR };
   }
 
@@ -219,7 +245,7 @@ export async function signInAction(
   });
 
   if (error) {
-    await logLoginFailure(company.id, identifier);
+    await logLoginFailure(companySlug, company.id, identifier);
     return { error: GENERIC_ERROR };
   }
 

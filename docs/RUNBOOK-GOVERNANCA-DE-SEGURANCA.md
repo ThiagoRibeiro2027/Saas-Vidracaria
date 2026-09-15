@@ -112,15 +112,27 @@ Implementado em `src/app/api/cron/security-alerts/route.ts`.
 - **O que verifica:** conta ocorrências de `auth.login_blocked`,
   `governance.subscription_transitioned`, `lgpd.activity_logs_anonymized`
   e `governance.activity_logs_retention_purge` em `activity_logs`, na
-  janela desde a última execução (marcador `system.security_alert_run`,
-  com fallback de 24h se for a primeira vez) — idempotente por desenho:
-  uma invocação duplicada da Vercel Cron reprocessa uma janela vazia, uma
-  perdida é coberta pela próxima (mesmo princípio que a própria Vercel
-  recomenda para cron jobs).
+  janela desde a última execução (marcador em `public.cron_job_state` —
+  tabela dedicada, de propósito fora de `activity_logs` pra não competir
+  com o expurgo de retenção de 24 meses; achado de code-review de
+  15/09 —, com fallback de 24h se for a primeira vez) — idempotente por
+  desenho: uma invocação duplicada da Vercel Cron reprocessa uma janela
+  vazia, uma perdida é coberta pela próxima (mesmo princípio que a própria
+  Vercel recomenda para cron jobs).
 - **Notificação:** se achar algo, manda um e-mail-resumo via Resend
   (`onboarding@resend.dev` — remetente de teste, sem domínio próprio
   configurado; ver seção 4 pra trocar) pro endereço em
   `SECURITY_ALERT_EMAIL`.
+
+  **⚠️ Restrição do remetente sandbox (achado de code-review, 15/09):**
+  `onboarding@resend.dev` só entrega e-mail pro endereço cadastrado como
+  **dono da própria conta Resend** — não pra um `SECURITY_ALERT_EMAIL`
+  arbitrário. Se o endereço configurado for diferente do e-mail da conta
+  Resend usada aqui, todo envio falha silenciosamente (só um
+  `console.error` nos logs da função, sem segunda via de aviso). Duas
+  saídas: (a) usar como `SECURITY_ALERT_EMAIL` o mesmo e-mail da conta
+  Resend, ou (b) verificar um domínio próprio (seção 4) e trocar o
+  remetente — só assim dá pra mandar pra qualquer endereço.
 
 **Variáveis de ambiente necessárias** (Vercel → Settings →
 Environment Variables, Production; local em `.env.local` só se for testar

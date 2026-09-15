@@ -12,8 +12,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // e pode invocar 2x ou pular uma execução): a janela verificada em cada
 // execução vai do `checked_until` da última execução registrada até agora
 // — nunca um intervalo fixo — então uma invocação duplicada só reprocessa
-// uma janela vazia, e uma execução perdida é coberta na próxima.
+// uma janela vazia, e uma execução perdida é coberta na próxima. O
+// marcador em si vive em public.cron_job_state (não em activity_logs —
+// achado de code-review: activity_logs tem expurgo de retenção de 24
+// meses, que apagaria o próprio marcador se o cron ficasse pausado por
+// tempo demais).
 export const dynamic = "force-dynamic";
+
+const JOB_NAME = "security-alerts";
 
 const WATCHED_ACTIONS = [
   "auth.login_blocked",
@@ -22,7 +28,6 @@ const WATCHED_ACTIONS = [
   "governance.activity_logs_retention_purge",
 ] as const;
 
-const MARKER_ACTION = "system.security_alert_run";
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 type WatchedEvent = {
@@ -41,7 +46,12 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-async function sendAlertEmail(events: WatchedEvent[]) {
+// Achado de code-review: o remetente onboarding@resend.dev é o domínio
+// sandbox do Resend — só entrega pro e-mail cadastrado como dono da
+// própria conta Resend, não pra um destinatário arbitrário. Sem domínio
+// próprio verificado (ver RUNBOOK §4), SECURITY_ALERT_EMAIL só funciona
+// de fato se for igual ao e-mail da conta Resend usada aqui.
+async function sendAlertEmail(events: WatchedEvent[]): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   const to = process.env.SECURITY_ALERT_EMAIL;
   if (!apiKey || !to) {
@@ -91,7 +101,11 @@ async function sendAlertEmail(events: WatchedEvent[]) {
   });
 
   if (!response.ok) {
-    console.error("[security-alerts] falha ao enviar e-mail:", response.status, await response.text());
+    const body = await response.text();
+    const hint = /only send testing emails|verify a domain/i.test(body)
+      ? " (causa provável: remetente sandbox só entrega pro e-mail dono da conta Resend — ver RUNBOOK-GOVERNANCA-DE-SEGURANCA.md §3-4)"
+      : "";
+    console.error(`[security-alerts] falha ao enviar e-mail: ${response.status} ${body}${hint}`);
   }
 }
 
@@ -105,16 +119,14 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
 
   const { data: lastRun } = await admin
-    .from("activity_logs")
-    .select("metadata")
-    .eq("action", MARKER_ACTION)
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .from("cron_job_state")
+    .select("checked_until")
+    .eq("job_name", JOB_NAME)
     .maybeSingle();
 
-  const checkedUntilRaw = (lastRun?.metadata as Record<string, unknown> | null)?.checked_until;
-  const windowStart =
-    typeof checkedUntilRaw === "string" ? new Date(checkedUntilRaw) : new Date(Date.now() - DEFAULT_LOOKBACK_MS);
+  const windowStart = lastRun?.checked_until
+    ? new Date(lastRun.checked_until)
+    : new Date(Date.now() - DEFAULT_LOOKBACK_MS);
   const windowEnd = new Date();
 
   const { data: events, error } = await admin
@@ -132,19 +144,24 @@ export async function GET(request: NextRequest) {
 
   const found = events ?? [];
   if (found.length > 0) {
-    await sendAlertEmail(found);
+    // Achado de code-review: uma falha de rede no fetch() ao Resend (não
+    // só uma resposta não-2xx, que sendAlertEmail já trata sozinha) não
+    // pode impedir a gravação do marcador abaixo — do contrário a janela
+    // da próxima execução cresce sem limite e reenvia os mesmos eventos
+    // em todo run seguinte até um envio finalmente funcionar.
+    try {
+      await sendAlertEmail(found);
+    } catch (err) {
+      console.error("[security-alerts] exceção ao enviar e-mail (marcador será gravado mesmo assim):", err);
+    }
   }
 
-  // Marca a execução independentemente de ter achado algo — é o que dá o
-  // ponto de partida (checked_until) pra próxima execução.
-  await admin.from("activity_logs").insert({
-    company_id: null,
-    user_id: null,
-    action: MARKER_ACTION,
-    entity_type: "system",
-    description: `Checagem de alertas de segurança — ${found.length} evento(s) encontrado(s) desde ${windowStart.toISOString()}.`,
-    metadata: { checked_from: windowStart.toISOString(), checked_until: windowEnd.toISOString(), events_found: found.length },
-  });
+  // Marca a execução independentemente de ter achado algo (ou de o envio
+  // ter funcionado) — é o que dá o ponto de partida (checked_until) pra
+  // próxima execução.
+  await admin
+    .from("cron_job_state")
+    .upsert({ job_name: JOB_NAME, checked_until: windowEnd.toISOString() }, { onConflict: "job_name" });
 
   return Response.json({ ok: true, events_found: found.length });
 }

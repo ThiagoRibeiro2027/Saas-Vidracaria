@@ -285,6 +285,29 @@ async function main() {
     );
   }
 
+  console.log("\n10. RBAC no Storage — DELETE (achado de code-review, 15/09)");
+  {
+    // A policy de DELETE do storage.objects só checava tenant, sem
+    // has_permission('files','delete') — mesma classe de gap que
+    // SEC-002/003/004 fechou pros outros três verbos. Reprodutível via
+    // src/lib/storage/upload.ts:71, que chama .remove() direto do client
+    // como rollback de upload sem metadado registrado.
+    const deletePath = `${tenantA.company.id}/geral/geral/${runId}-para-deletar.png`;
+    await tenantA.client.storage.from(BUCKET).upload(deletePath, PNG_1X1, { contentType: "image/png", upsert: true });
+
+    // DELETE bloqueado por RLS não retorna erro pelo Storage API — o
+    // comando afeta 0 linhas silenciosamente (diferente de INSERT/UPDATE,
+    // cujo WITH CHECK falhado levanta exceção). O sinal real de que a
+    // policy bloqueou é o objeto continuar existindo depois.
+    await tenantANoPerm.client.storage.from(BUCKET).remove([deletePath]);
+
+    const { error: stillThereError } = await tenantA.client.storage.from(BUCKET).download(deletePath);
+    check("usuário sem files.delete não consegue apagar objeto (objeto sobrevive)", !stillThereError);
+
+    const { error: deleteComPermError } = await tenantA.client.storage.from(BUCKET).remove([deletePath]);
+    check("usuário COM files.delete consegue apagar o próprio objeto", !deleteComPermError);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

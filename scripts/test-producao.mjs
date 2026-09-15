@@ -92,11 +92,17 @@ async function prepararPedidoLiberado(tenant, sufixo, { itemTipo = "materia_prim
     p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
   });
 
-  const { data: pessoaId } = await tenant.client.rpc("upsert_pessoa", {
+  // Erros das chamadas de fixture abaixo são logados (não só ignorados) —
+  // sem isso, uma falha aqui (ex.: instabilidade pontual do Postgres local
+  // sob a suíte inteira rodando em sequência) só aparece muito mais tarde
+  // como "Cannot read properties of null", sem indicar qual chamada
+  // realmente falhou.
+  const { data: pessoaId, error: pessoaErr } = await tenant.client.rpc("upsert_pessoa", {
     p_id: null, p_tipo_documento: "CNPJ", p_documento: `1122233300${sufixo}`, p_nome: "JR Box Vidros",
     p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
     p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
   });
+  if (pessoaErr) console.error("[fixture] upsert_pessoa falhou:", pessoaErr);
   await tenant.client.rpc("set_pessoa_papel", { p_pessoa_id: pessoaId, p_papel: "CLIENTE", p_ativo: true });
 
   let obraId = null;
@@ -108,24 +114,31 @@ async function prepararPedidoLiberado(tenant, sufixo, { itemTipo = "materia_prim
     obraId = data;
   }
 
-  const { data: itemId } = await tenant.client.rpc("upsert_item", {
+  const { data: itemId, error: itemErr } = await tenant.client.rpc("upsert_item", {
     p_id: null, p_codigo: `VD-${sufixo}`, p_descricao: "Vidro temperado 10mm",
     p_tipo: itemTipo, p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
     p_situacao: "ativo",
   });
+  if (itemErr) console.error("[fixture] upsert_item falhou:", itemErr);
 
-  const { data: orcamentoId } = await tenant.client.rpc("upsert_orcamento", {
+  const { data: orcamentoId, error: orcErr } = await tenant.client.rpc("upsert_orcamento", {
     p_id: null, p_pessoa_id: pessoaId, p_obra_id: obraId, p_validade: null,
     p_condicao_comercial: null, p_observacoes: null,
   });
-  await tenant.client.rpc("upsert_orcamento_item", {
+  if (orcErr) console.error("[fixture] upsert_orcamento falhou:", orcErr);
+  const { error: orcItemErr } = await tenant.client.rpc("upsert_orcamento_item", {
     p_id: null, p_orcamento_id: orcamentoId, p_item_id: itemId, p_quantidade: quantidade, p_preco_unitario: 100,
   });
-  await tenant.client.rpc("decidir_orcamento", { p_id: orcamentoId, p_decisao: "aprovado" });
+  if (orcItemErr) console.error("[fixture] upsert_orcamento_item falhou:", orcItemErr);
+  const { error: decidirErr } = await tenant.client.rpc("decidir_orcamento", { p_id: orcamentoId, p_decisao: "aprovado" });
+  if (decidirErr) console.error("[fixture] decidir_orcamento falhou:", decidirErr);
 
-  const { data: pedidoId } = await tenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoId });
-  await tenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoId });
-  await tenant.client.rpc("liberar_pedido", { p_id: pedidoId });
+  const { data: pedidoId, error: convErr } = await tenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoId });
+  if (convErr) console.error("[fixture] converter_orcamento_em_pedido falhou:", convErr);
+  const { error: confErr } = await tenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoId });
+  if (confErr) console.error("[fixture] iniciar_conferencia_pedido falhou:", confErr);
+  const { error: libErr } = await tenant.client.rpc("liberar_pedido", { p_id: pedidoId });
+  if (libErr) console.error("[fixture] liberar_pedido falhou:", libErr);
 
   const { data: pedidoItem } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoId).single();
 
@@ -295,12 +308,28 @@ async function main() {
 
   console.log("\n11. Lista de corte (TÓPICO 4 §54)");
   {
+    // Achado de code-review (15/09): lista_corte() comparava
+    // get_cutting_margin() contra itens.tipo (enum) em vez de
+    // itens.classificacao (a classificação livre que get_cutting_margin
+    // realmente usa — ver scripts/test-configuracoes.mjs). Sem configurar
+    // uma margem de verdade aqui, o teste anterior passava com ou sem o
+    // bug (NULL por falta de configuração é indistinguível de NULL por
+    // comparar a coluna errada) — agora configura 4,5% pra
+    // 'vidro_temperado' (mesma classificação usada em
+    // prepararPedidoLiberado) e verifica o valor exato de volta.
+    await admTenant.client.rpc("upsert_cutting_margin", {
+      p_material_tipo: "vidro_temperado", p_processo: "", p_percentual: 4.5, p_ativo: true,
+    });
+
     const { data: opParaLista } = await admin.from("ordens_producao").select("id").eq("pedido_item_id", bloqueio.pedidoItemId).single();
     const { data: linhas, error } = await admTenant.client.rpc("lista_corte", { p_ordem_producao_id: opParaLista.id });
     check("lista_corte() executa sem erro", !error && Array.isArray(linhas) && linhas.length === 1);
     const linha = linhas?.[0];
     check("lista_corte traz a medida confirmada em obra", Number(linha?.largura_mm) === 1200 && Number(linha?.altura_mm) === 800);
-    check("lista_corte traz a margem de quebra do TÓPICO 15 (padrão 0 sem configuração)", linha?.margem_quebra_percentual !== undefined);
+    check(
+      "lista_corte traz a margem de quebra configurada pela classificação do item (TÓPICO 15)",
+      Number(linha?.margem_quebra_percentual) === 4.5,
+    );
     check("lista_corte traz pedido/pessoa/OP corretos", linha?.pessoa_nome === "JR Box Vidros" && linha?.numero?.length > 0);
 
     const { error: semPermError } = await noPermTenant.client.rpc("lista_corte", { p_ordem_producao_id: opParaLista.id });
