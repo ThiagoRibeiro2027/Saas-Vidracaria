@@ -151,11 +151,19 @@ async function main() {
       !!transErr || transData === false || transData === null,
     );
 
-    const { data: hasPermAnon } = await anon.rpc("has_permission", {
+    // Security Gate Fase 8 (SEC-006): antes, has_permission() era executável
+    // por qualquer role via o grant implícito de PUBLIC do Postgres e só
+    // retornava false; agora nenhuma função do schema public é executável
+    // sem grant explícito, e anon nunca recebeu grant nenhum — a chamada
+    // deve ser negada na própria checagem de EXECUTE, antes do corpo rodar.
+    const { data: hasPermAnon, error: hasPermAnonErr } = await anon.rpc("has_permission", {
       p_resource: "files",
       p_action: "read",
     });
-    check("has_permission() retorna false (não erro) para não autenticado", hasPermAnon === false);
+    check(
+      "has_permission() é negada por falta de EXECUTE para não autenticado (anon)",
+      !!hasPermAnonErr && hasPermAnon == null,
+    );
   }
 
   console.log("\n2. Permissões — papel sem nenhuma permissão atribuída (COMERCIAL)");

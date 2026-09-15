@@ -11,6 +11,7 @@
 // Uso: set -a; source .env.local; set +a; node scripts/test-governance.mjs
 
 import { createClient } from "@supabase/supabase-js";
+import { authenticator } from "otplib";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -89,6 +90,9 @@ async function main() {
   console.log("Preparando dois tenants de teste (gov-a, gov-b)...");
   const tenantA = await createTenant("gov-a-test", "Governance A Teste", "9301");
   const tenantB = await createTenant("gov-b-test", "Governance B Teste", "9302");
+  // Declarado aqui (fora do bloco da seção 2) para poder ser reaproveitado,
+  // já com MFA (aal2) verificado, na seção 4.
+  let platformClient;
 
   const { data: pilotPlan } = await admin.from("plans").select("id").eq("key", "piloto").single();
   await admin
@@ -139,15 +143,30 @@ async function main() {
       email_confirm: true,
     });
     await admin.from("platform_admins").insert({ id: createdAdmin.user.id, role: "SUPER_ADMIN" });
-    const platformClient = createClient(url, anonKey);
+    platformClient = createClient(url, anonKey);
     await platformClient.auth.signInWithPassword({ email: platformEmail, password: platformPassword });
+
+    // Security Gate Fase 8 (SEC-001): transition_subscription() agora exige
+    // is_platform_admin_mfa_verified() — em aal1 (antes do MFA), mesmo um
+    // platform_admin de verdade deve ser recusado.
+    const { error: adminAal1Error } = await platformClient.rpc("transition_subscription", {
+      p_company_id: tenantA.company.id,
+      p_new_status: "suspended",
+      p_reason: "teste automatizado (aal1, deve falhar)",
+    });
+    check("platform_admin em aal1 (sem MFA) não consegue transicionar assinatura", !!adminAal1Error);
+
+    const { data: enrollment } = await platformClient.auth.mfa.enroll({ factorType: "totp" });
+    const code = authenticator.generate(enrollment.totp.secret);
+    const { data: challenge } = await platformClient.auth.mfa.challenge({ factorId: enrollment.id });
+    await platformClient.auth.mfa.verify({ factorId: enrollment.id, challengeId: challenge.id, code });
 
     const { error: adminTransitionError } = await platformClient.rpc("transition_subscription", {
       p_company_id: tenantA.company.id,
       p_new_status: "suspended",
       p_reason: "teste automatizado",
     });
-    check("platform_admin consegue transicionar a assinatura", !adminTransitionError);
+    check("platform_admin em aal2 consegue transicionar a assinatura", !adminTransitionError);
 
     const { data: afterTransition } = await admin
       .from("subscriptions")
@@ -210,6 +229,16 @@ async function main() {
       p_company_id: tenantB.company.id,
     });
     check("tenant não consegue consultar consumo de outra empresa", !!crossUsageError);
+
+    // platformClient já verificou MFA (aal2) na seção 2 — company_usage()
+    // também usa is_platform_admin_mfa_verified() para o bypass cross-tenant.
+    const { data: adminUsage, error: adminUsageError } = await platformClient.rpc("company_usage", {
+      p_company_id: tenantB.company.id,
+    });
+    check(
+      "platform_admin em aal2 consegue consultar consumo de outra empresa",
+      !adminUsageError && adminUsage?.[0]?.company_id === tenantB.company.id,
+    );
   }
 
   console.log("\n5. Permissão de exportação existe e está no template ADMIN");

@@ -52,6 +52,24 @@ async function main() {
   const { data: aalBefore } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
   check("sessão começa em aal1 (sem MFA)", aalBefore.currentLevel === "aal1");
 
+  // Security Gate Fase 8 (SEC-001): is_platform_admin() continua reconhecendo
+  // a identidade em aal1 (o middleware depende disso pra redirecionar a
+  // /mfa/enroll), mas nenhuma policy/permissão privilegiada deve ser
+  // concedida antes do AAL2 — is_platform_admin_mfa_verified() é o gate real.
+  const { data: mfaVerifiedAal1 } = await client.rpc("is_platform_admin_mfa_verified");
+  check("is_platform_admin_mfa_verified() nega em aal1 (Data API direta)", mfaVerifiedAal1 === false);
+
+  // Efeito real na RLS (não só o booleano da função): em aal1, a policy
+  // cross-tenant de companies_select não deve devolver empresas de outro
+  // tenant, mesmo para um platform_admin autenticado.
+  const { data: foreignCompany } = await admin
+    .from("companies")
+    .upsert({ slug: `mfa-gate-test-${Date.now()}`, name: "Empresa Alheia (MFA Gate)" }, { onConflict: "slug" })
+    .select()
+    .single();
+  const { data: crossTenantAal1 } = await client.from("companies").select("id").eq("id", foreignCompany.id);
+  check("platform_admin em aal1 não enxerga empresa de outro tenant via RLS", (crossTenantAal1 ?? []).length === 0);
+
   const { data: factorsBefore } = await client.auth.mfa.listFactors();
   check("nenhum fator verificado antes do enrollment", (factorsBefore.totp ?? []).every((f) => f.status !== "verified"));
 
@@ -76,6 +94,12 @@ async function main() {
 
   const { data: aalAfter } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
   check("sessão sobe para aal2 após verificação", aalAfter.currentLevel === "aal2");
+
+  const { data: mfaVerifiedAal2 } = await client.rpc("is_platform_admin_mfa_verified");
+  check("is_platform_admin_mfa_verified() permite em aal2 (Data API direta)", mfaVerifiedAal2 === true);
+
+  const { data: crossTenantAal2 } = await client.from("companies").select("id").eq("id", foreignCompany.id);
+  check("platform_admin em aal2 enxerga empresa de outro tenant via RLS", crossTenantAal2?.[0]?.id === foreignCompany.id);
 
   const { data: factorsAfter } = await client.auth.mfa.listFactors();
   check("fator aparece como verificado", (factorsAfter.totp ?? []).some((f) => f.status === "verified"));

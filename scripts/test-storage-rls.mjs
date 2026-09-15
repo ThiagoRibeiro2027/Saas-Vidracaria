@@ -35,13 +35,17 @@ function check(label, condition) {
   }
 }
 
-async function createTenant(slug, name, identifier) {
-  const { data: company, error: companyError } = await admin
-    .from("companies")
-    .upsert({ slug, name }, { onConflict: "slug" })
-    .select()
-    .single();
-  if (companyError) throw companyError;
+async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingCompany = null) {
+  let company = existingCompany;
+  if (!company) {
+    const { data, error: companyError } = await admin
+      .from("companies")
+      .upsert({ slug, name }, { onConflict: "slug" })
+      .select()
+      .single();
+    if (companyError) throw companyError;
+    company = data;
+  }
 
   const email = `${identifier}.${slug}@users.internal`;
   const password = "senha-de-teste-123456";
@@ -63,22 +67,22 @@ async function createTenant(slug, name, identifier) {
     { onConflict: "id" },
   );
 
-  const { data: adminRole } = await admin
+  const { data: role } = await admin
     .from("roles")
     .select("id")
     .is("company_id", null)
-    .eq("key", "ADMIN")
+    .eq("key", roleKey)
     .single();
 
   const { data: existing } = await admin
     .from("user_roles")
     .select("id")
     .eq("profile_id", userId)
-    .eq("role_id", adminRole.id)
+    .eq("role_id", role.id)
     .is("valid_until", null)
     .maybeSingle();
   if (!existing) {
-    await admin.from("user_roles").insert({ profile_id: userId, role_id: adminRole.id });
+    await admin.from("user_roles").insert({ profile_id: userId, role_id: role.id });
   }
 
   const client = createClient(url, anonKey);
@@ -92,6 +96,11 @@ async function main() {
   console.log("Preparando dois tenants de teste (storage-a, storage-b)...");
   const tenantA = await createTenant("storage-a-test", "Storage A Teste", "9101");
   const tenantB = await createTenant("storage-b-test", "Storage B Teste", "9102");
+  // Mesma empresa do tenant A, papel COMERCIAL — sem files.read/files.upload
+  // por padrão (seed.sql só concede permissões de fundação ao ADMIN). Usado
+  // para testar o Security Gate Fase 8 (SEC-002/003/004): tenant isolation
+  // sozinho não basta, o bucket precisa respeitar RBAC também.
+  const tenantANoPerm = await createTenant("storage-a-test", "Storage A Sem Permissão", "9103", "COMERCIAL", tenantA.company);
 
   // Sufixo único por execução: soft delete (item 16) mantém o objeto físico
   // no Storage entre execuções, e files_storage_path_unique impediria
@@ -233,6 +242,46 @@ async function main() {
     check(
       "tenant B não consegue sobrescrever (UPDATE) o objeto existente do tenant A",
       !!foreignUpdateError,
+    );
+  }
+
+  console.log("\n9. RBAC no Storage — Security Gate Fase 8 (SEC-002/003/004)");
+  {
+    const { error: readError } = await tenantANoPerm.client.storage.from(BUCKET).download(pathA);
+    check(
+      "usuário do mesmo tenant sem files.read não consegue baixar objeto (SEC-002)",
+      !!readError,
+    );
+
+    const { error: signedError } = await tenantANoPerm.client.storage
+      .from(BUCKET)
+      .createSignedUrl(pathA, 30);
+    check(
+      "usuário sem files.read não consegue gerar signed URL (SEC-002)",
+      !!signedError,
+    );
+
+    const uploadPath = `${tenantA.company.id}/geral/geral/${runId}-sem-permissao.png`;
+    const { error: uploadError } = await tenantANoPerm.client.storage
+      .from(BUCKET)
+      .upload(uploadPath, PNG_1X1, { contentType: "image/png", upsert: true });
+    check(
+      "usuário sem files.upload não consegue subir arquivo direto no bucket (SEC-003)",
+      !!uploadError,
+    );
+
+    const { error: updateError } = await tenantANoPerm.client.storage
+      .from(BUCKET)
+      .upload(pathA, PNG_1X1, { contentType: "image/png", upsert: true });
+    check(
+      "usuário sem files.upload não consegue sobrescrever objeto existente (SEC-004)",
+      !!updateError,
+    );
+
+    const { error: ownReadError } = await tenantA.client.storage.from(BUCKET).download(pathA);
+    check(
+      "usuário do mesmo tenant COM files.read continua baixando normalmente (sem regressão)",
+      !ownReadError,
     );
   }
 

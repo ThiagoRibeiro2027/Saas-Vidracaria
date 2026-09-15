@@ -6,6 +6,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
+import { authenticator } from "otplib";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -107,6 +108,15 @@ async function createPlatformAdmin(identifier) {
 
   const client = createClient(url, anonKey);
   await client.auth.signInWithPassword({ email, password });
+
+  // Security Gate Fase 8 (SEC-001): purge_activity_logs_older_than_retention()
+  // agora exige is_platform_admin_mfa_verified() (aal2) — sobe a sessão para
+  // aal2 aqui para que os testes de "caminho permitido" continuem exercendo
+  // a restrição de papel, não o gate de MFA.
+  const { data: enrollment } = await client.auth.mfa.enroll({ factorType: "totp" });
+  const code = authenticator.generate(enrollment.totp.secret);
+  const { data: challenge } = await client.auth.mfa.challenge({ factorId: enrollment.id });
+  await client.auth.mfa.verify({ factorId: enrollment.id, challengeId: challenge.id, code });
 
   return { client, userId };
 }

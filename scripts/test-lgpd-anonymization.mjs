@@ -18,6 +18,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
+import { authenticator } from "otplib";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -102,6 +103,15 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN") {
   return { client, company, userId };
 }
 
+// createPlatformAdmin(identifier) é chamada várias vezes com o MESMO
+// identifier neste arquivo (o mesmo platform_admin precisa aparecer em mais
+// de uma seção) — cada chamada cria um client/sessão novo, então precisa
+// subir para aal2 de novo a cada vez. Reenrollar TOTP do zero a cada
+// chamada, porém, cria um fator novo sobre um usuário que já tem um fator
+// verificado da chamada anterior — cacheia o segredo por e-mail e reusa o
+// fator já verificado (challenge/verify), só enrollando na primeira vez.
+const platformAdminTotpSecrets = new Map();
+
 async function createPlatformAdmin(identifier) {
   const email = `${identifier}.platform-admin@users.internal`;
   const password = "senha-de-teste-123456";
@@ -122,6 +132,31 @@ async function createPlatformAdmin(identifier) {
 
   const client = createClient(url, anonKey);
   await client.auth.signInWithPassword({ email, password });
+
+  // Security Gate Fase 8 (SEC-001): anonymize_activity_logs_for_user() agora
+  // exige is_platform_admin_mfa_verified() (aal2) — sem isso, mesmo um
+  // platform_admin de verdade é recusado pela função. Sobe para aal2 aqui
+  // para que os testes de "caminho permitido" continuem exercendo o que
+  // pretendem testar (restrição de papel), não o gate de MFA.
+  const { data: factors } = await client.auth.mfa.listFactors();
+  const verifiedFactor = (factors?.totp ?? []).find((f) => f.status === "verified");
+  const cachedSecret = platformAdminTotpSecrets.get(email);
+
+  let factorId;
+  let secret;
+  if (verifiedFactor && cachedSecret) {
+    factorId = verifiedFactor.id;
+    secret = cachedSecret;
+  } else {
+    const { data: enrollment } = await client.auth.mfa.enroll({ factorType: "totp" });
+    factorId = enrollment.id;
+    secret = enrollment.totp.secret;
+    platformAdminTotpSecrets.set(email, secret);
+  }
+
+  const code = authenticator.generate(secret);
+  const { data: challenge } = await client.auth.mfa.challenge({ factorId });
+  await client.auth.mfa.verify({ factorId, challengeId: challenge.id, code });
 
   return { client, userId };
 }
