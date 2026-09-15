@@ -125,7 +125,7 @@ async function main() {
   console.log("Preparando tenant e logs de teste (um velho, um recente)...");
   const tenant = await createTenant("retention-test", "Retention Teste", "9501");
 
-  const { data: recentLogId } = await tenant.client.rpc("log_activity", {
+  const { data: recentLogId } = await tenant.client.rpc("log_client_event", {
     p_action: "test.retention_recent",
     p_entity_type: "test_entity",
     p_entity_id: null,

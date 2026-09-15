@@ -165,7 +165,7 @@ async function main() {
   console.log("Preparando tenant e log de teste...");
   const tenant = await createTenant("lgpd-anon-test", "LGPD Anon Teste", "9401");
 
-  const { data: logId } = await tenant.client.rpc("log_activity", {
+  const { data: logId } = await tenant.client.rpc("log_client_event", {
     p_action: "test.lgpd_anon",
     p_entity_type: "test_entity",
     p_entity_id: null,

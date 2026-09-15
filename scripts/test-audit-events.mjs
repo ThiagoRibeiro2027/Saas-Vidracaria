@@ -92,7 +92,7 @@ async function main() {
 
   console.log("\n1. log_activity() grava IP/User-Agent");
   {
-    const { data: logId, error } = await tenant.client.rpc("log_activity", {
+    const { data: logId, error } = await tenant.client.rpc("log_client_event", {
       p_action: "test.audit",
       p_entity_type: "test_entity",
       p_entity_id: null,

@@ -138,14 +138,29 @@ async function main() {
 
   console.log("\n4. Auditoria — log via função, nunca forjável pelo cliente");
   {
-    const { data: logId, error: logError } = await tenantA.client.rpc("log_activity", {
+    const { data: logId, error: logError } = await tenantA.client.rpc("log_client_event", {
       p_action: "test.create",
       p_entity_type: "test_entity",
       p_entity_id: null,
       p_description: "verificação automatizada",
       p_metadata: null,
     });
-    check("log_activity() executa com sucesso para usuário autorizado", !logError && !!logId);
+    check("log_client_event() executa com sucesso para usuário autorizado (ação de teste permitida)", !logError && !!logId);
+
+    // Security Gate Fase 8 (SEC-005): log_client_event() só aceita a lista
+    // fechada de eventos que o app reporta direto (login/logout/MFA/export)
+    // + prefixo test.% — qualquer outra ação, mesmo de um usuário
+    // autenticado de verdade, é recusada. Antes desta correção, log_activity()
+    // aceitava qualquer `action` livremente.
+    const { error: forgedActionError } = await tenantA.client.rpc("log_client_event", {
+      p_action: "admin.granted",
+      p_entity_type: "test_entity",
+      p_entity_id: null,
+    });
+    check(
+      "usuário autenticado não consegue forjar evento de auditoria sensível (SEC-005)",
+      !!forgedActionError,
+    );
 
     const { data: ownLogs } = await tenantA.client
       .from("activity_logs")
@@ -169,6 +184,35 @@ async function main() {
       entity_type: "x",
     });
     check("cliente não consegue inserir direto em activity_logs (só via função)", !!directInsertError);
+  }
+
+  console.log("\n5. RBAC — papel atribuído precisa pertencer ao tenant do usuário (SEC-009)");
+  {
+    // Hoje não existe via de escrita em user_roles exposta a authenticated
+    // (só service role) — testa o trigger diretamente com o client admin,
+    // já que é ele quem faria essa escrita quando o módulo de atribuição de
+    // papel (TÓPICO 14) existir.
+    const { data: companyScopedRole } = await admin
+      .from("roles")
+      .upsert(
+        { company_id: tenantA.company.id, key: "PAPEL_ESPECIFICO_A", name: "Papel específico da empresa A" },
+        { onConflict: "company_id,key" },
+      )
+      .select()
+      .single();
+
+    const { error: crossTenantRoleError } = await admin
+      .from("user_roles")
+      .insert({ profile_id: tenantB.userId, role_id: companyScopedRole.id });
+    check(
+      "atribuir papel de outra empresa ao usuário é rejeitado pelo banco (SEC-009)",
+      !!crossTenantRoleError,
+    );
+
+    const { error: sameTenantRoleError } = await admin
+      .from("user_roles")
+      .insert({ profile_id: tenantA.userId, role_id: companyScopedRole.id });
+    check("atribuir papel da própria empresa ao usuário continua funcionando", !sameTenantRoleError);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

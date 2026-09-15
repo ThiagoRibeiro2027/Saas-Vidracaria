@@ -48,7 +48,7 @@ export async function verifyEnrollmentAction(
   if (verifyError) return { error: INVALID_CODE };
 
   const { ip, userAgent } = await getClientContext();
-  await supabase.rpc("log_activity", {
+  await supabase.rpc("log_client_event", {
     p_action: "auth.mfa_enrolled",
     p_entity_type: "auth",
     p_entity_id: null,

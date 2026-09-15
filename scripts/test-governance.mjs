@@ -202,6 +202,24 @@ async function main() {
     });
     check("empresa suspensa não consegue registrar novo arquivo", !!uploadError);
 
+    // Security Gate Fase 8 (SEC-007): antes, assert_company_not_suspended()
+    // só era chamado por register_file() — upsert_pessoa/upsert_obra/
+    // upsert_item/set_pessoa_papel (TÓPICO 2) ficavam de fora.
+    const { error: pessoaError } = await tenantA.client.rpc("upsert_pessoa", {
+      p_id: null,
+      p_tipo_documento: null,
+      p_documento: null,
+      p_nome: "Pessoa Durante Suspensão",
+      p_nome_fantasia: null,
+      p_telefone: null,
+      p_email: null,
+      p_logradouro: null,
+      p_cidade: null,
+      p_uf: null,
+      p_cep: null,
+    });
+    check("empresa suspensa não consegue cadastrar pessoa (SEC-007)", !!pessoaError);
+
     const { error: readError } = await tenantA.client.from("files").select("id");
     check("empresa suspensa ainda consegue ler seus próprios dados", !readError);
 
@@ -239,6 +257,42 @@ async function main() {
       "platform_admin em aal2 consegue consultar consumo de outra empresa",
       !adminUsageError && adminUsage?.[0]?.company_id === tenantB.company.id,
     );
+  }
+
+  console.log("\n4.5. Quota de storage é aplicada, não só monitorada (SEC-012)");
+  {
+    const { data: quotaPlan } = await admin
+      .from("plans")
+      .upsert(
+        { key: "quota-test", name: "Quota Teste (Security Gate Fase 8)", max_users: null, max_storage_bytes: 500, active: true },
+        { onConflict: "key" },
+      )
+      .select()
+      .single();
+    // Reaproveita a assinatura do tenant B (não é mais usado depois desta
+    // seção) trocando pro plano com limite baixo.
+    await admin.from("subscriptions").update({ plan_id: quotaPlan.id }).eq("company_id", tenantB.company.id);
+
+    const runId = crypto.randomUUID();
+    const { error: overQuotaError } = await tenantB.client.rpc("register_file", {
+      p_entity_type: "geral",
+      p_entity_id: null,
+      p_storage_path: `${tenantB.company.id}/geral/geral/${runId}-estoura-quota.png`,
+      p_original_name: "estoura-quota.png",
+      p_mime_type: "image/png",
+      p_size_bytes: 600,
+    });
+    check("upload que estouraria a quota do plano é rejeitado (SEC-012)", !!overQuotaError);
+
+    const { error: withinQuotaError } = await tenantB.client.rpc("register_file", {
+      p_entity_type: "geral",
+      p_entity_id: null,
+      p_storage_path: `${tenantB.company.id}/geral/geral/${runId}-dentro-da-quota.png`,
+      p_original_name: "dentro-da-quota.png",
+      p_mime_type: "image/png",
+      p_size_bytes: 100,
+    });
+    check("upload dentro da quota continua funcionando", !withinQuotaError);
   }
 
   console.log("\n5. Permissão de exportação existe e está no template ADMIN");

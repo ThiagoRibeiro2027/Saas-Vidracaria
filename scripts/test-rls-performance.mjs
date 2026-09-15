@@ -118,7 +118,7 @@ async function main() {
   {
     const tenant = await createTenant("rls-perf-test", "RLS Perf Teste", "9301");
     for (let i = 0; i < 5; i++) {
-      await tenant.client.rpc("log_activity", {
+      await tenant.client.rpc("log_client_event", {
         p_action: "test.rls_perf",
         p_entity_type: "test_entity",
         p_entity_id: null,
@@ -164,7 +164,7 @@ async function main() {
       rowsB?.length === 1 && rowsB[0].id === tenantB.company.id,
     );
 
-    await tenantA.client.rpc("log_activity", {
+    await tenantA.client.rpc("log_client_event", {
       p_action: "test.cross_tenant",
       p_entity_type: "test_entity",
       p_entity_id: null,

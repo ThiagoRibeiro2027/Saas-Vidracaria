@@ -123,14 +123,14 @@ async function main() {
     const { data: subs } = await anon.from("subscriptions").select("id");
     check("não autenticado não lê nenhuma subscription", (subs ?? []).length === 0);
 
-    const { error: logErr } = await anon.rpc("log_activity", {
+    const { error: logErr } = await anon.rpc("log_client_event", {
       p_action: "hack",
       p_entity_type: "x",
       p_entity_id: null,
       p_description: null,
       p_metadata: null,
     });
-    check("não autenticado não consegue chamar log_activity()", !!logErr);
+    check("não autenticado não consegue chamar log_client_event()", !!logErr);
 
     const { error: regErr } = await anon.rpc("register_file", {
       p_entity_type: "geral",

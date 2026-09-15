@@ -49,7 +49,7 @@ async function logLoginFailure(
 // client), então passa pela função de auditoria normal.
 async function logLoginSuccess(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { ip, userAgent } = await getClientContext();
-  await supabase.rpc("log_activity", {
+  await supabase.rpc("log_client_event", {
     p_action: "auth.login_success",
     p_entity_type: "auth",
     p_entity_id: null,
@@ -144,10 +144,10 @@ export async function signInAction(
 
 export async function signOutAction() {
   const supabase = await createClient();
-  // Precisa acontecer ANTES do signOut: log_activity() exige o papel
+  // Precisa acontecer ANTES do signOut: log_client_event() exige o papel
   // `authenticated`, que deixa de valer assim que a sessão é encerrada.
   const { ip, userAgent } = await getClientContext();
-  await supabase.rpc("log_activity", {
+  await supabase.rpc("log_client_event", {
     p_action: "auth.logout",
     p_entity_type: "auth",
     p_entity_id: null,

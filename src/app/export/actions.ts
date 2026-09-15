@@ -45,7 +45,7 @@ export async function exportCompanyDataAction(): Promise<{ error: string } | { d
     subscription: subscription.data?.[0] ?? null,
   };
 
-  await supabase.rpc("log_activity", {
+  await supabase.rpc("log_client_event", {
     p_action: "governance.data_exported",
     p_entity_type: "company",
     p_entity_id: company.data.id,
