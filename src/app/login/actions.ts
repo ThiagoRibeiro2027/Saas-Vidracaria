@@ -11,6 +11,12 @@ import { getClientContext } from "@/lib/audit/log";
 // "proteção contra enumeração").
 const GENERIC_ERROR = "Empresa, matrícula/e-mail ou senha inválidos.";
 
+// Mensagem do rate limit (SEC-010) é deliberadamente distinta da genérica
+// acima: informar "muitas tentativas" não confirma se a conta existe (quem
+// está gerando as tentativas já sabe o identificador que está testando) —
+// só o resultado de cada tentativa individual precisa ficar genérico.
+const LOCKED_ERROR = "Muitas tentativas de login. Tente novamente em alguns minutos.";
+
 // ADR-010 §6 / Security Gate Fase 8, item 2.1: o identificador digitado no
 // login pode ser e-mail real — nunca gravar em texto puro num log que não
 // tem user_id (e por isso nunca passa por anonymize_activity_logs_for_user()).
@@ -21,7 +27,79 @@ function hashIdentifier(identifier: string): string {
   return createHash("sha256").update(identifier).digest("hex").slice(0, 32);
 }
 
-// Sem sessão (a tentativa falhou), log_activity() não pode ser chamada —
+// Security Gate Fase 8 (SEC-010): 5 tentativas falhas em 15 minutos travam
+// por 30 minutos — por identificador de conta E por IP, independentemente
+// um do outro (Prompt Mestre item 26: "não depender exclusivamente de
+// IP" — evita tanto um IP atacando várias contas quanto uma conta sendo
+// atacada de vários IPs). Reaproveita as linhas de auth.login_failed que
+// já existiam em activity_logs (identifier_hash em metadata, ip_address na
+// coluna própria) em vez de criar uma tabela de estado nova.
+const LOGIN_LOCKOUT = {
+  windowMinutes: 15,
+  maxAttempts: 5,
+  lockoutMinutes: 30,
+} as const;
+
+function isLockedByRecentFailures(failureTimestamps: string[]): boolean {
+  if (failureTimestamps.length < LOGIN_LOCKOUT.maxAttempts) return false;
+  // Consultas abaixo já vêm ordenadas created_at desc — o último elemento
+  // das 5 mais recentes é o momento em que o limite foi cruzado.
+  const thresholdCrossedAt = new Date(failureTimestamps[failureTimestamps.length - 1]).getTime();
+  const lockedUntil = thresholdCrossedAt + LOGIN_LOCKOUT.lockoutMinutes * 60_000;
+  return Date.now() < lockedUntil;
+}
+
+async function isLoginLocked(identifierHash: string, ip: string | null): Promise<boolean> {
+  const admin = createAdminClient();
+  const windowStart = new Date(Date.now() - LOGIN_LOCKOUT.windowMinutes * 60_000).toISOString();
+
+  const byAccountQuery = admin
+    .from("activity_logs")
+    .select("created_at")
+    .eq("action", "auth.login_failed")
+    .eq("metadata->>identifier_hash", identifierHash)
+    .gte("created_at", windowStart)
+    .order("created_at", { ascending: false })
+    .limit(LOGIN_LOCKOUT.maxAttempts);
+
+  const byIpQuery = ip
+    ? admin
+        .from("activity_logs")
+        .select("created_at")
+        .eq("action", "auth.login_failed")
+        .eq("ip_address", ip)
+        .gte("created_at", windowStart)
+        .order("created_at", { ascending: false })
+        .limit(LOGIN_LOCKOUT.maxAttempts)
+    : null;
+
+  const [byAccount, byIp] = await Promise.all([byAccountQuery, byIpQuery ?? Promise.resolve({ data: [] })]);
+
+  return (
+    isLockedByRecentFailures((byAccount.data ?? []).map((r) => r.created_at)) ||
+    isLockedByRecentFailures((byIp.data ?? []).map((r) => r.created_at))
+  );
+}
+
+// Registrado à parte de auth.login_failed (não conta pro limite acima) —
+// só para dar visibilidade na auditoria de quantas tentativas foram
+// efetivamente bloqueadas pelo rate limit, sem fazer o bloqueio se
+// realimentar indefinidamente a cada nova tentativa recusada.
+async function logLoginBlocked(identifier: string) {
+  const { ip, userAgent } = await getClientContext();
+  const admin = createAdminClient();
+  await admin.from("activity_logs").insert({
+    company_id: null,
+    user_id: null,
+    action: "auth.login_blocked",
+    entity_type: "auth",
+    metadata: { identifier_hash: hashIdentifier(identifier) },
+    ip_address: ip,
+    user_agent: userAgent,
+  });
+}
+
+// Sem sessão (a tentativa falhou), log_client_event() não pode ser chamada —
 // exige o papel `authenticated`. A gravação usa a service role direto,
 // mesmo padrão já estabelecido para operações sem usuário autenticado
 // (Auditoria Fase 1, item 02) — nunca grava senha nem identificador em claro,
@@ -68,6 +146,13 @@ export async function signInAction(
 
   if (!identifier || !password) {
     return { error: GENERIC_ERROR };
+  }
+
+  const identifierHash = hashIdentifier(identifier);
+  const { ip: currentIp } = await getClientContext();
+  if (await isLoginLocked(identifierHash, currentIp)) {
+    await logLoginBlocked(identifier);
+    return { error: LOCKED_ERROR };
   }
 
   const supabase = await createClient();
