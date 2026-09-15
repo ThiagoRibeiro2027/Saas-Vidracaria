@@ -172,12 +172,16 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-# SEC-011 (Security Gate Fase 8, 14/09/2026): produto é arquitetado em torno
-# de administrador -> convite -> usuário define a própria senha (ADR-001);
-# nenhum fluxo do app usa self-signup. Usuários de teste continuam sendo
-# criados via Admin API (admin.auth.admin.createUser), que não passa por
-# este gate — desabilitar aqui não quebra scripts/testes.
-enable_signup = false
+# SEC-011 (Security Gate Fase 8): revertido em 15/09/2026 — desligar isto
+# aciona um bug conhecido do GoTrue (supabase/auth#330): enable_signup=false
+# não bloqueia só cadastro novo, desliga o provedor de e-mail inteiro
+# (login, magic link, convite), reproduzido ao vivo na CI deste projeto. A
+# proteção real do SEC-011 é estrutural, não este toggle: o app nunca expõe
+# nenhuma tela/Server Action de self-signup (nenhum src/**/*.ts chama
+# supabase.auth.signUp()) — usuário só existe via admin.auth.admin.
+# createUser() (convite administrativo), então este campo em true não
+# reabre superfície nenhuma de ataque.
+enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -230,8 +234,10 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-# SEC-011 — ver comentário em [auth] acima.
-enable_signup = false
+# SEC-011 — revertido, ver comentário em [auth] acima (mesmo campo do bug
+# supabase/auth#330, reproduzido aqui: desligar isto quebra LOGIN de
+# usuário existente, não só cadastro novo).
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true

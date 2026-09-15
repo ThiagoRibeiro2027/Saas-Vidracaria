@@ -147,3 +147,24 @@ novo parte do problema que o SEC-005 fechou).
    pedidos (SPF/DKIM).
 2. Trocar `"SaaS Vidraçaria <onboarding@resend.dev>"` pelo remetente do
    domínio verificado em `src/app/api/cron/security-alerts/route.ts`.
+
+## 5. Incidente registrado — `enable_signup` e supabase/auth#330 (15/09/2026)
+
+Durante o SEC-011 (Fase P1), `enable_signup = false` foi aplicado em
+`supabase/config.toml` e no dashboard do projeto (Authentication →
+Providers → Email → "Allow new users to sign up"), com a intenção de
+bloquear só auto-cadastro público. Isso acionou um bug conhecido e ainda
+reproduzível do GoTrue (base de Supabase Auth,
+[supabase/auth#330](https://github.com/supabase/auth/issues/330)):
+desligar esse campo desliga o **provedor de e-mail inteiro** — login,
+magic link e convite deixam de funcionar pra usuários já existentes, não
+só cadastro novo. Detectado pela CI (`npm test` foi de 15/15 pra 0/15
+depois do push) e revertido no mesmo dia.
+
+**Decisão:** `enable_signup` fica `true` (local e produção) — a proteção
+real do SEC-011 não depende desse campo, é estrutural: nenhuma tela ou
+Server Action do app chama `supabase.auth.signUp()`; todo usuário nasce
+via `admin.auth.admin.createUser()` (convite administrativo, service
+role). Não revisitar esse toggle sem antes confirmar numa CI/ambiente de
+teste — nunca direto em produção — que o bug foi corrigido nessa versão
+do GoTrue.
