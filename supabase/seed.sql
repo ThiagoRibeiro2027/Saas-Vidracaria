@@ -33,7 +33,9 @@ insert into public.permissions (resource, action, description) values
   ('estoque', 'view', 'Visualizar saldo, reservas e movimentações de estoque da empresa (TÓPICO 6)'),
   ('estoque', 'manage', 'Ajustar saldo, reservar/liberar/consumir e registrar sobra de estoque (TÓPICO 6)'),
   ('producao', 'view', 'Visualizar ordens de produção e lista de corte da empresa (TÓPICO 4)'),
-  ('producao', 'manage', 'Criar ordem de produção, apontar, concluir e cancelar (TÓPICO 4)')
+  ('producao', 'manage', 'Criar ordem de produção, apontar, concluir e cancelar (TÓPICO 4)'),
+  ('qualidade', 'view', 'Visualizar inspeções e não conformidades da empresa (TÓPICO 8)'),
+  ('qualidade', 'manage', 'Registrar inspeção, executar retrabalho e reinspecionar (TÓPICO 8)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
@@ -44,6 +46,7 @@ insert into public.roles (company_id, key, name, is_system_template) values
   (null, 'ADMIN', 'Administrador da Empresa', true),
   (null, 'COMERCIAL', 'Comercial', true),
   (null, 'PRODUCAO', 'Produção', true),
+  (null, 'QUALIDADE', 'Qualidade', true),
   (null, 'INSTALACAO', 'Instalação', true)
 on conflict (key) where company_id is null do nothing;
 
