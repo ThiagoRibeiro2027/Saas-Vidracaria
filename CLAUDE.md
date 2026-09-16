@@ -6,7 +6,7 @@ implementação, consulte:
 - docs/ARQUITETURA MESTRE...
 - docs/ESCOPO DO PROJETO...
 - docs/Prompt_Mestre_Seguranca_SaaS_Vidracaria.md
-- Todos os arquivos ADR-001 a ADR-008 em /docs
+- Todos os arquivos ADR-001 a ADR-010 em /docs
 
 Regras obrigatórias:
 - Seguir as 8 fases definidas no Prompt Mestre de Segurança (item 47).
