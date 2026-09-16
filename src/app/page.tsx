@@ -95,6 +95,11 @@ export default async function Home() {
             Suprimentos →
           </Link>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <Link href="/financeiro" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Financeiro →
+          </Link>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button

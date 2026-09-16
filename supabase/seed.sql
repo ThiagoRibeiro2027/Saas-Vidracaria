@@ -43,7 +43,10 @@ insert into public.permissions (resource, action, description) values
   ('instalacao', 'aceite', 'Registrar o aceite do cliente numa instalação concluída (TÓPICO 16)'),
   ('instalacao', 'decidir_dano', 'Aprovar ou rejeitar solicitação de nova fabricação por dano em instalação (TÓPICO 16 §8)'),
   ('suprimentos', 'view', 'Visualizar necessidades de compra da empresa (TÓPICO 7)'),
-  ('suprimentos', 'manage', 'Registrar, atender e cancelar necessidades de compra (TÓPICO 7)')
+  ('suprimentos', 'manage', 'Registrar, atender e cancelar necessidades de compra (TÓPICO 7)'),
+  ('financeiro', 'view', 'Visualizar títulos financeiros e recebimentos da empresa (TÓPICO 11)'),
+  ('financeiro', 'manage', 'Gerar títulos financeiros a partir de pedido e cancelar título sem recebimento (TÓPICO 11)'),
+  ('financeiro', 'receber', 'Registrar recebimento (integral ou parcial) de título financeiro (TÓPICO 11)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
