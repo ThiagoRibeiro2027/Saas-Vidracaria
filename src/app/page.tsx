@@ -90,6 +90,11 @@ export default async function Home() {
             Instalação — Campo (PWA) →
           </Link>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <Link href="/suprimentos" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Suprimentos →
+          </Link>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button

@@ -139,7 +139,7 @@ Técnica de dimensionamento) precisam estar concluídas antes do dia 1.
 
 **6. Distribuição do restante durante o piloto**
 
-**Até M2 (31/03/2027):** T18 Compras/Suprimentos; T14 Financeiro básico
+**Até M2 (31/03/2027):** T7 Compras/Suprimentos; T14 Financeiro básico
 (títulos vinculados ao pedido); indicadores essenciais de acompanhamento
 do piloto; refinamento do que a operação real apontar nos primeiros
 meses.
