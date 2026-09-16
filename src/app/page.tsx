@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "./login/actions";
 
@@ -83,6 +84,11 @@ export default async function Home() {
           <a href="/cadastros" style={{ color: "#1f5d57", fontSize: "13px" }}>
             Cadastros →
           </a>
+        </p>
+        <p style={{ marginTop: "4px" }}>
+          <Link href="/campo" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Instalação — Campo (PWA) →
+          </Link>
         </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>

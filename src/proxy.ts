@@ -14,7 +14,15 @@ export const config = {
   // dependa de sessão de usuário — a exclusão fica restrita ao prefixo que
   // realmente precisa dela; uma rota nova sob api/ com sessão de navegador
   // continua passando por updateSession() normalmente.
+  //
+  // campo-manifest.json/sw-campo.js/campo/offline.html (TÓPICO 16, ADR-008)
+  // também ficam fora: são arquivos estáticos de public/ que o navegador
+  // busca por conta própria (registro do service worker, <link
+  // rel="manifest">, cache de instalação do próprio worker) — precisam
+  // responder 200 mesmo sem sessão, nunca um redirect 307 pra /login, ou o
+  // registro do service worker falha (não é HTML/JS válido). Nenhum dado de
+  // negócio é servido por eles; a autorização real continua nas RPCs.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/cron/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/cron/|campo-manifest\\.json|sw-campo\\.js|campo/offline\\.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
