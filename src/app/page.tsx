@@ -115,6 +115,11 @@ export default async function Home() {
             Fiscal →
           </Link>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <Link href="/producao" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Produção →
+          </Link>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button
