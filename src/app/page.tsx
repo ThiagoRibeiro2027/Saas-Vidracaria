@@ -105,6 +105,11 @@ export default async function Home() {
             RH →
           </Link>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <Link href="/bi" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Indicadores (BI) →
+          </Link>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button
