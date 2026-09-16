@@ -14,6 +14,13 @@ type CampoContextValue = {
   sincronizando: boolean;
   ultimoErro: string | null;
   validade: EstadoValidade;
+  // Achado do code-review: a tela de detalhe mostrava todos os botões de
+  // ação (execução, ocorrência, dano, aceite) pra qualquer usuário com
+  // instalacao.view, mesmo sem instalacao.manage/aceite — o servidor
+  // sempre rejeitava (assert_tenant_write), mas só na hora de sincronizar,
+  // o que é particularmente ruim offline (erro tardio e sem contexto).
+  canManage: boolean;
+  canAceite: boolean;
   sincronizar: () => Promise<void>;
   enfileirarAcao: (op: NovaOperacao) => Promise<void>;
   retentar: (id: string) => Promise<void>;
@@ -34,6 +41,8 @@ export function CampoProvider({ children }: { children: ReactNode }) {
   const [fila, setFila] = useState<OperacaoFila[]>([]);
   const [sincronizando, setSincronizando] = useState(false);
   const [ultimoErro, setUltimoErro] = useState<string | null>(null);
+  const [canManage, setCanManage] = useState(false);
+  const [canAceite, setCanAceite] = useState(false);
   // Date.now() não pode ser chamado direto no corpo do componente (render
   // precisa ser puro) — "agora" vive em estado, atualizado pelo efeito de
   // sincronização periódica (ADR-005 §10 trata isso como referência do
@@ -73,6 +82,18 @@ export function CampoProvider({ children }: { children: ReactNode }) {
       await recarregarLocal();
       if (!ativo) return;
       setOnline(navigator.onLine);
+      // Só relevante online (offline, o RPC falha e os estados ficam no
+      // valor default seguro "false" — os botões continuam escondidos,
+      // nunca aparecem liberados por engano).
+      if (navigator.onLine) {
+        const [manage, aceite] = await Promise.all([
+          supabase.rpc("has_permission", { p_resource: "instalacao", p_action: "manage" }),
+          supabase.rpc("has_permission", { p_resource: "instalacao", p_action: "aceite" }),
+        ]);
+        if (!ativo) return;
+        setCanManage(!!manage.data);
+        setCanAceite(!!aceite.data);
+      }
       await sincronizar();
     })();
 
@@ -127,7 +148,7 @@ export function CampoProvider({ children }: { children: ReactNode }) {
 
   return (
     <CampoContext.Provider
-      value={{ online, pacote, fila, sincronizando, ultimoErro, validade, sincronizar, enfileirarAcao, retentar }}
+      value={{ online, pacote, fila, sincronizando, ultimoErro, validade, canManage, canAceite, sincronizar, enfileirarAcao, retentar }}
     >
       {children}
     </CampoContext.Provider>

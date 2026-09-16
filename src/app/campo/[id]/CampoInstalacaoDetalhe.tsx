@@ -4,16 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useCampo } from "../CampoProvider";
 import { uploadEvidenciaAction } from "../actions";
-import { CAUSAS_DANO, type PacoteInstalacao } from "../types";
-
-const STATUS_LABEL: Record<PacoteInstalacao["status"], string> = {
-  agendada: "Agendada",
-  em_execucao: "Em execução",
-  concluida: "Concluída — aguardando aceite",
-};
+import { CAUSAS_DANO, STATUS_LABEL, type PacoteInstalacao } from "../types";
 
 export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId: string }) {
-  const { pacote, fila, online, validade, enfileirarAcao, retentar } = useCampo();
+  const { pacote, fila, online, validade, canManage, canAceite, enfileirarAcao, retentar } = useCampo();
   const instalacoes = (pacote?.data as PacoteInstalacao[] | undefined) ?? [];
   const inst = instalacoes.find((i) => i.id === instalacaoId);
   const filaDaInstalacao = fila.filter((f) => f.instalacaoId === instalacaoId);
@@ -54,7 +48,7 @@ export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId:
         </p>
       )}
 
-      {inst.status === "agendada" && (
+      {inst.status === "agendada" && canManage && (
         <AcaoSimples
           label="Iniciar execução"
           disabled={bloqueadoParaNovoRegistro}
@@ -66,12 +60,12 @@ export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId:
         <h2 style={{ fontSize: "14px", margin: "0 0 8px" }}>Itens</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {inst.itens.map((item) => (
-            <ItemCard key={item.id} item={item} instalacaoId={inst.id} podeExecutar={inst.status === "em_execucao"} bloqueado={bloqueadoParaNovoRegistro} />
+            <ItemCard key={item.id} item={item} instalacaoId={inst.id} podeExecutar={inst.status === "em_execucao" && canManage} bloqueado={bloqueadoParaNovoRegistro} canManage={canManage} />
           ))}
         </div>
       </section>
 
-      {inst.status === "em_execucao" && (
+      {inst.status === "em_execucao" && canManage && (
         <AcaoSimples
           label="Concluir instalação"
           disabled={bloqueadoParaNovoRegistro}
@@ -79,11 +73,11 @@ export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId:
         />
       )}
 
-      {inst.status === "concluida" && <AceiteForm instalacaoId={inst.id} bloqueado={bloqueadoParaNovoRegistro} />}
+      {inst.status === "concluida" && canAceite && <AceiteForm instalacaoId={inst.id} bloqueado={bloqueadoParaNovoRegistro} />}
 
-      <OcorrenciasSection instalacaoId={inst.id} ocorrencias={inst.ocorrencias} bloqueado={bloqueadoParaNovoRegistro} />
+      <OcorrenciasSection instalacaoId={inst.id} ocorrencias={inst.ocorrencias} bloqueado={bloqueadoParaNovoRegistro} canManage={canManage} />
 
-      {inst.danos.length > 0 && <DanosSection instalacaoId={inst.id} danos={inst.danos} itens={inst.itens} bloqueado={bloqueadoParaNovoRegistro} />}
+      {inst.danos.length > 0 && <DanosSection instalacaoId={inst.id} danos={inst.danos} itens={inst.itens} bloqueado={bloqueadoParaNovoRegistro} canManage={canManage} />}
 
       <EvidenciasSection instalacaoId={inst.id} online={online} />
 
@@ -110,11 +104,20 @@ export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId:
 }
 
 function AcaoSimples({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+  // pending local: achado do code-review — um duplo toque (device lento/
+  // offline, antes do primeiro clique re-renderizar o botão desabilitado)
+  // gerava duas entradas na fila com client_operation_id diferentes; a
+  // segunda sempre falhava no servidor com um "erro" confuso, mesmo a
+  // ação já tendo sido aplicada pela primeira.
+  const [pending, setPending] = useState(false);
   return (
     <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{ background: "#1f5d57", color: "#fff", border: "none", borderRadius: "6px", padding: "10px", fontSize: "14px", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1 }}
+      onClick={() => {
+        setPending(true);
+        onClick();
+      }}
+      disabled={disabled || pending}
+      style={{ background: "#1f5d57", color: "#fff", border: "none", borderRadius: "6px", padding: "10px", fontSize: "14px", cursor: disabled || pending ? "not-allowed" : "pointer", opacity: disabled || pending ? 0.6 : 1 }}
     >
       {label}
     </button>
@@ -126,11 +129,13 @@ function ItemCard({
   instalacaoId,
   podeExecutar,
   bloqueado,
+  canManage,
 }: {
   item: PacoteInstalacao["itens"][number];
   instalacaoId: string;
   podeExecutar: boolean;
   bloqueado: boolean;
+  canManage: boolean;
 }) {
   const { enfileirarAcao } = useCampo();
   const [quantidade, setQuantidade] = useState("");
@@ -174,10 +179,12 @@ function ItemCard({
         </div>
       )}
 
-      <button onClick={() => setMostrarDano((v) => !v)} style={{ marginTop: "8px", fontSize: "11px", background: "none", border: "none", color: "#9b2c2c", cursor: "pointer", padding: 0 }}>
-        {mostrarDano ? "Cancelar" : "Registrar dano/quebra"}
-      </button>
-      {mostrarDano && <DanoForm item={item} instalacaoId={instalacaoId} bloqueado={bloqueado} onDone={() => setMostrarDano(false)} />}
+      {canManage && (
+        <button onClick={() => setMostrarDano((v) => !v)} style={{ marginTop: "8px", fontSize: "11px", background: "none", border: "none", color: "#9b2c2c", cursor: "pointer", padding: 0 }}>
+          {mostrarDano ? "Cancelar" : "Registrar dano/quebra"}
+        </button>
+      )}
+      {canManage && mostrarDano && <DanoForm item={item} instalacaoId={instalacaoId} bloqueado={bloqueado} onDone={() => setMostrarDano(false)} />}
     </div>
   );
 }
@@ -216,7 +223,7 @@ function DanoForm({ item, instalacaoId, bloqueado, onDone }: { item: PacoteInsta
   );
 }
 
-function OcorrenciasSection({ instalacaoId, ocorrencias, bloqueado }: { instalacaoId: string; ocorrencias: PacoteInstalacao["ocorrencias"]; bloqueado: boolean }) {
+function OcorrenciasSection({ instalacaoId, ocorrencias, bloqueado, canManage }: { instalacaoId: string; ocorrencias: PacoteInstalacao["ocorrencias"]; bloqueado: boolean; canManage: boolean }) {
   const { enfileirarAcao } = useCampo();
   const [descricao, setDescricao] = useState("");
 
@@ -231,24 +238,26 @@ function OcorrenciasSection({ instalacaoId, ocorrencias, bloqueado }: { instalac
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: "6px" }}>
-        <input
-          value={descricao}
-          onChange={(e) => setDescricao(e.target.value)}
-          placeholder="Descrever ocorrência"
-          style={{ flex: 1, border: "1px solid #c7d3cd", borderRadius: "4px", padding: "6px" }}
-        />
-        <button
-          disabled={bloqueado || !descricao.trim()}
-          onClick={() => {
-            enfileirarAcao({ rpc: "registrar_ocorrencia_instalacao", params: { p_instalacao_id: instalacaoId, p_descricao: descricao }, label: `Ocorrência — ${descricao.slice(0, 30)}`, instalacaoId });
-            setDescricao("");
-          }}
-          style={{ border: "none", borderRadius: "4px", background: "#1f5d57", color: "#fff", padding: "6px 12px", cursor: "pointer" }}
-        >
-          Registrar
-        </button>
-      </div>
+      {canManage && (
+        <div style={{ display: "flex", gap: "6px" }}>
+          <input
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+            placeholder="Descrever ocorrência"
+            style={{ flex: 1, border: "1px solid #c7d3cd", borderRadius: "4px", padding: "6px" }}
+          />
+          <button
+            disabled={bloqueado || !descricao.trim()}
+            onClick={() => {
+              enfileirarAcao({ rpc: "registrar_ocorrencia_instalacao", params: { p_instalacao_id: instalacaoId, p_descricao: descricao }, label: `Ocorrência — ${descricao.slice(0, 30)}`, instalacaoId });
+              setDescricao("");
+            }}
+            style={{ border: "none", borderRadius: "4px", background: "#1f5d57", color: "#fff", padding: "6px 12px", cursor: "pointer" }}
+          >
+            Registrar
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -258,11 +267,13 @@ function DanosSection({
   danos,
   itens,
   bloqueado,
+  canManage,
 }: {
   instalacaoId: string;
   danos: PacoteInstalacao["danos"];
   itens: PacoteInstalacao["itens"];
   bloqueado: boolean;
+  canManage: boolean;
 }) {
   const { enfileirarAcao } = useCampo();
   return (
@@ -275,13 +286,15 @@ function DanosSection({
             <div key={d.id} style={{ fontSize: "12px", background: "#fff", padding: "8px", borderRadius: "6px" }}>
               <div>{item?.item_codigo ?? "item"} — {d.quantidade} un. ({d.causa})</div>
               {d.descricao && <div style={{ color: "#6b7a75" }}>{d.descricao}</div>}
-              <button
-                disabled={bloqueado}
-                onClick={() => enfileirarAcao({ rpc: "solicitar_nova_fabricacao", params: { p_dano_id: d.id, p_motivo: null }, label: `Solicitar nova fabricação — ${item?.item_codigo ?? ""}`, instalacaoId })}
-                style={{ marginTop: "4px", fontSize: "11px", border: "1px solid #c7d3cd", borderRadius: "4px", background: "#fff", padding: "2px 8px", cursor: "pointer" }}
-              >
-                Solicitar nova fabricação
-              </button>
+              {canManage && (
+                <button
+                  disabled={bloqueado}
+                  onClick={() => enfileirarAcao({ rpc: "solicitar_nova_fabricacao", params: { p_dano_id: d.id, p_motivo: null }, label: `Solicitar nova fabricação — ${item?.item_codigo ?? ""}`, instalacaoId })}
+                  style={{ marginTop: "4px", fontSize: "11px", border: "1px solid #c7d3cd", borderRadius: "4px", background: "#fff", padding: "2px 8px", cursor: "pointer" }}
+                >
+                  Solicitar nova fabricação
+                </button>
+              )}
             </div>
           );
         })}

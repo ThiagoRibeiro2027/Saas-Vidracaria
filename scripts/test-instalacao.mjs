@@ -639,6 +639,55 @@ async function main() {
     check("sem client_operation_id, duas chamadas geram duas linhas (comportamento síncrono normal)", (ocorrenciasSemId ?? []).length === 2);
   }
 
+  console.log("\n29b. sync_claim()/sync_operation_complete() não são chamáveis direto via RPC (achado do code-review)");
+  {
+    // Helpers internos, só deveriam ser alcançáveis de dentro de outra
+    // função SECURITY DEFINER (que já resolveu o has_permission/
+    // assert_tenant_write antes) — nunca direto via PostgREST, onde
+    // sync_operation_complete() gravaria um result_id arbitrário.
+    const { error: e1 } = await admTenant.client.rpc("sync_claim", { p_rpc_name: "registrar_aceite_instalacao", p_client_operation_id: crypto.randomUUID() });
+    check("sync_claim() direto via RPC é rejeitado (sem GRANT a authenticated)", !!e1);
+
+    const { error: e2 } = await admTenant.client.rpc("sync_operation_complete", { p_rpc_name: "registrar_aceite_instalacao", p_client_operation_id: crypto.randomUUID(), p_result_id: crypto.randomUUID() });
+    check("sync_operation_complete() direto via RPC é rejeitado (sem GRANT a authenticated)", !!e2);
+  }
+
+  console.log("\n29c. Concorrência real — registrar_execucao_item_instalacao() trava instalacoes.status (achado do code-review)");
+  {
+    // Duas OPs de teste concluem exatamente na janela em que a outra tenta
+    // registrar execução no mesmo instante — sem o FOR UPDATE adicionado
+    // no achado do code-review, a leitura de status sem lock podia ver o
+    // snapshot pré-commit de 'em_execucao' e aplicar a execução mesmo
+    // depois da instalação já concluída por outra transação concorrente.
+    const concorrencia = await prepararItemEntregue(admTenant, "292", 5);
+    const { data: instConcId } = await admTenant.client.rpc("criar_instalacao", {
+      p_pedido_id: concorrencia.pedidoId, p_equipe_id: equipeId, p_data_agendada: "2027-04-01",
+    });
+    const { data: itemConcId } = await admTenant.client.rpc("adicionar_item_instalacao", {
+      p_instalacao_id: instConcId, p_pedido_item_id: concorrencia.pedidoItemId, p_quantidade: 5,
+    });
+    await admTenant.client.rpc("iniciar_execucao_instalacao", { p_instalacao_id: instConcId });
+
+    const [resConcluir, resExecucao] = await Promise.all([
+      admTenant.client.rpc("concluir_instalacao", { p_instalacao_id: instConcId }),
+      admTenant.client.rpc("registrar_execucao_item_instalacao", { p_instalacao_item_id: itemConcId, p_quantidade_instalada: 2 }),
+    ]);
+    check("concluir_instalacao sempre ganha ou espera a vez, nunca falha nessa corrida", !resConcluir.error);
+
+    const { data: instConcFinal } = await admin.from("instalacoes").select("status").eq("id", instConcId).single();
+    const { data: itemConcFinal } = await admin.from("instalacao_itens").select("quantidade_instalada").eq("id", itemConcId).single();
+    check("instalação sempre termina concluída", instConcFinal?.status === "concluida");
+
+    if (resExecucao.error) {
+      check(
+        "quando a execução perde a corrida, é rejeitada por status desatualizado (prova que releu o valor pós-commit, não um snapshot obsoleto) e não altera quantidade_instalada",
+        /em execução/i.test(resExecucao.error.message) && Number(itemConcFinal?.quantidade_instalada) === 0,
+      );
+    } else {
+      check("quando a execução ganha a corrida (roda antes do commit da conclusão), quantidade_instalada reflete a execução aplicada", Number(itemConcFinal?.quantidade_instalada) === 2);
+    }
+  }
+
   console.log("\n30. sync_operations respeita isolamento entre tenants");
   {
     const { data: crossSync } = await otherTenant.client.from("sync_operations").select("id").eq("company_id", admTenant.company.id);

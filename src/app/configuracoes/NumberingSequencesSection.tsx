@@ -3,12 +3,20 @@
 import { upsertNumberingSequenceAction } from "./actions";
 import { sectionTitleStyle, inputStyle, labelStyle, buttonStyle } from "./styles";
 
-// Lista fixa e curta para o M1 — sem UI de criar tipo de documento
-// arbitrário (T3/T4/T10, que consumiriam isso, ainda não existem).
+// Lista fixa — sem UI de criar tipo de documento arbitrário. Achado do
+// code-review (16/09/2026): 'expedicao' (T9) e 'instalacao' (T16) já
+// tinham ficado de fora dessa lista desde que esses módulos entraram —
+// sem esta tela, next_document_number() nunca tem sequência configurada
+// pra eles, e criar_expedicao()/criar_instalacao()/gerar_titulos_pedido()
+// falham sempre com "Sequência de numeração não configurada". Adicionado
+// 'titulo_financeiro' (T11) junto, mesmo problema recém-introduzido.
 const DOCUMENT_TYPES = [
   { key: "orcamento", label: "Orçamento" },
   { key: "pedido", label: "Pedido" },
   { key: "ordem_producao", label: "Ordem de produção" },
+  { key: "expedicao", label: "Expedição" },
+  { key: "instalacao", label: "Instalação" },
+  { key: "titulo_financeiro", label: "Título financeiro" },
 ] as const;
 
 type Row = {

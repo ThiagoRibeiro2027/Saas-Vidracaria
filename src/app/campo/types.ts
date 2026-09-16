@@ -43,3 +43,9 @@ export const CAUSAS_DANO: { value: PacoteDano["causa"]; label: string }[] = [
   { value: "cliente", label: "Cliente" },
   { value: "indeterminada", label: "Indeterminada" },
 ];
+
+export const STATUS_LABEL: Record<PacoteInstalacao["status"], string> = {
+  agendada: "Agendada",
+  em_execucao: "Em execução",
+  concluida: "Concluída — aguardando aceite",
+};

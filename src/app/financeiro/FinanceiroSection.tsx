@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cancelarTituloFinanceiroAction, gerarTitulosPedidoAction, registrarRecebimentoTituloAction } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+
+const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const STATUS_LABEL: Record<string, string> = {
   aberto: "Aberto",
@@ -73,16 +75,21 @@ export default function FinanceiroSection({
           <tbody>
             {titulos.map((t) => {
               const pedido = nomePorPedido.get(t.pedido_id);
-              const vencido = t.status !== "pago" && t.status !== "cancelado" && new Date(t.vencimento) < new Date(new Date().toDateString());
+              // Mesmo parsing (local, não UTC) usado na exibição da data
+              // logo abaixo — um new Date(t.vencimento) bare interpreta
+              // "YYYY-MM-DD" como meia-noite UTC, que em UTC-3 (Brasil)
+              // fica atrás da meia-noite local o dia inteiro, marcando um
+              // título com vencimento hoje como "vencido" prematuramente.
+              const vencido = t.status !== "pago" && t.status !== "cancelado" && new Date(`${t.vencimento}T00:00:00`) < new Date(new Date().toDateString());
               return (
                 <tr key={t.id} style={{ borderBottom: "1px solid #eef1ef" }}>
                   <td style={tdStyle}>{t.numero}</td>
                   <td style={tdStyle}>{pedido?.numero ?? t.pedido_id}</td>
                   <td style={tdStyle}>{pedido ? nomePorPessoa.get(pedido.pessoa_id) ?? "—" : "—"}</td>
                   <td style={tdStyle}>{t.parcela_numero}/{t.parcela_total}</td>
-                  <td style={tdStyle}>{t.valor.toFixed(2)}</td>
-                  <td style={tdStyle}>{t.valor_recebido.toFixed(2)}</td>
-                  <td style={tdStyle}>{t.saldo_pendente.toFixed(2)}</td>
+                  <td style={tdStyle}>{currency(t.valor)}</td>
+                  <td style={tdStyle}>{currency(t.valor_recebido)}</td>
+                  <td style={tdStyle}>{currency(t.saldo_pendente)}</td>
                   <td style={tdStyle}>
                     {new Date(`${t.vencimento}T00:00:00`).toLocaleDateString("pt-BR")}
                     {vencido && <span style={{ color: "#9b2c2c" }}> (vencido)</span>}
@@ -107,7 +114,11 @@ export default function FinanceiroSection({
 
 function GerarTitulosForm({ pedidos }: { pedidos: PedidoResumo[] }) {
   const [parcelas, setParcelas] = useState([{ key: 0 }]);
-  let nextKey = 1;
+  // useRef, não uma variável local: uma variável local reinicia a cada
+  // render, então dois cliques em "+ parcela" (cada um causando um
+  // re-render entre eles) geravam a mesma key (1) repetida — React
+  // reconciliava errado a partir da 3ª linha (achado do code-review).
+  const nextKeyRef = useRef(1);
 
   return (
     <form action={gerarTitulosPedidoAction} style={{ display: "flex", flexDirection: "column", gap: "8px", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
@@ -120,7 +131,7 @@ function GerarTitulosForm({ pedidos }: { pedidos: PedidoResumo[] }) {
             </option>
           ))}
         </select>
-        <button type="button" onClick={() => setParcelas((rows) => [...rows, { key: nextKey++ }])} style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #1f5d57" }}>
+        <button type="button" onClick={() => setParcelas((rows) => [...rows, { key: nextKeyRef.current++ }])} style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #1f5d57" }}>
           + parcela
         </button>
       </div>

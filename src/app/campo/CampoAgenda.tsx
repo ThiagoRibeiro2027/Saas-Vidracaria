@@ -2,13 +2,7 @@
 
 import Link from "next/link";
 import { useCampo } from "./CampoProvider";
-import type { PacoteInstalacao } from "./types";
-
-const STATUS_LABEL: Record<PacoteInstalacao["status"], string> = {
-  agendada: "Agendada",
-  em_execucao: "Em execução",
-  concluida: "Concluída — aguardando aceite",
-};
+import { STATUS_LABEL, type PacoteInstalacao } from "./types";
 
 export default function CampoAgenda() {
   const { pacote, fila } = useCampo();
