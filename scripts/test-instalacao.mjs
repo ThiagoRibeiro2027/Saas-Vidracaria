@@ -458,15 +458,17 @@ async function main() {
   }
 
   console.log("\n22. cancelar_instalacao() sucesso antes da execução — libera quantidade");
+  let inst3Id;
   {
     const { error } = await admTenant.client.rpc("cancelar_instalacao", { p_instalacao_id: instalacao2Id, p_motivo: "remarcação" });
     check("cancela instalação agendada", !error);
     const { data: inst } = await admin.from("instalacoes").select("status").eq("id", instalacao2Id).single();
     check("status vira 'cancelada'", inst?.status === "cancelada");
 
-    const { data: inst3Id } = await admTenant.client.rpc("criar_instalacao", {
+    const { data } = await admTenant.client.rpc("criar_instalacao", {
       p_pedido_id: massa.pedidoId, p_equipe_id: equipeId, p_data_agendada: "2027-01-13",
     });
+    inst3Id = data;
     const { error: novaError } = await admTenant.client.rpc("adicionar_item_instalacao", {
       p_instalacao_id: inst3Id, p_pedido_item_id: massa.pedidoItemId, p_quantidade: 4,
     });
@@ -591,6 +593,82 @@ async function main() {
     ]) {
       check(`${action} registrado`, actions.has(action));
     }
+  }
+
+  console.log("\n29. Idempotência (ADR-005 §11/§24) — reenvio com o mesmo client_operation_id não duplica efeito");
+  {
+    const idem = await prepararItemEntregue(admTenant, "29", 10);
+    const { data: instIdemId } = await admTenant.client.rpc("criar_instalacao", {
+      p_pedido_id: idem.pedidoId, p_equipe_id: equipeId, p_data_agendada: "2027-03-01",
+    });
+    const { data: itemIdemId } = await admTenant.client.rpc("adicionar_item_instalacao", {
+      p_instalacao_id: instIdemId, p_pedido_item_id: idem.pedidoItemId, p_quantidade: 5,
+    });
+
+    const opId = crypto.randomUUID();
+    const [r1, r2] = await Promise.all([
+      admTenant.client.rpc("iniciar_execucao_instalacao", { p_instalacao_id: instIdemId, p_client_operation_id: opId }),
+      admTenant.client.rpc("iniciar_execucao_instalacao", { p_instalacao_id: instIdemId, p_client_operation_id: opId }),
+    ]);
+    check("duas chamadas concorrentes com o mesmo client_operation_id não erram (uma reivindica, a outra replica)", !r1.error && !r2.error);
+    check("as duas retornam o mesmo id", r1.data === r2.data);
+
+    const opExec = crypto.randomUUID();
+    const { error: e1 } = await admTenant.client.rpc("registrar_execucao_item_instalacao", {
+      p_instalacao_item_id: itemIdemId, p_quantidade_instalada: 3, p_client_operation_id: opExec,
+    });
+    const { error: e2 } = await admTenant.client.rpc("registrar_execucao_item_instalacao", {
+      p_instalacao_item_id: itemIdemId, p_quantidade_instalada: 3, p_client_operation_id: opExec,
+    });
+    check("reenvio sequencial do mesmo client_operation_id não erra", !e1 && !e2);
+
+    const { data: itemFinal } = await admin.from("instalacao_itens").select("quantidade_instalada").eq("id", itemIdemId).single();
+    check("quantidade_instalada aplicada UMA vez só (3, não 6) apesar do reenvio", Number(itemFinal?.quantidade_instalada) === 3);
+
+    const opOc = crypto.randomUUID();
+    await admTenant.client.rpc("registrar_ocorrencia_instalacao", { p_instalacao_id: instIdemId, p_descricao: "acesso liberado às 8h", p_client_operation_id: opOc });
+    await admTenant.client.rpc("registrar_ocorrencia_instalacao", { p_instalacao_id: instIdemId, p_descricao: "acesso liberado às 8h", p_client_operation_id: opOc });
+    const { data: ocorrencias } = await admin.from("ocorrencias_instalacao").select("id").eq("instalacao_id", instIdemId);
+    check("reenvio de registrar_ocorrencia_instalacao não cria linha duplicada", (ocorrencias ?? []).length === 1);
+
+    const opSemId = null;
+    const { error: e3 } = await admTenant.client.rpc("registrar_ocorrencia_instalacao", { p_instalacao_id: instIdemId, p_descricao: "sem client_operation_id", p_client_operation_id: opSemId });
+    const { error: e4 } = await admTenant.client.rpc("registrar_ocorrencia_instalacao", { p_instalacao_id: instIdemId, p_descricao: "sem client_operation_id", p_client_operation_id: opSemId });
+    check("chamada síncrona (client_operation_id nulo) sempre executa, sem idempotência", !e3 && !e4);
+    const { data: ocorrenciasSemId } = await admin.from("ocorrencias_instalacao").select("id").eq("instalacao_id", instIdemId).eq("descricao", "sem client_operation_id");
+    check("sem client_operation_id, duas chamadas geram duas linhas (comportamento síncrono normal)", (ocorrenciasSemId ?? []).length === 2);
+  }
+
+  console.log("\n30. sync_operations respeita isolamento entre tenants");
+  {
+    const { data: crossSync } = await otherTenant.client.from("sync_operations").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga sync_operations do tenant A", (crossSync ?? []).length === 0);
+  }
+
+  console.log("\n31. server_now() executa e devolve um timestamp próximo de agora");
+  {
+    const { data, error } = await admTenant.client.rpc("server_now");
+    check("server_now() executa sem erro", !error && !!data);
+    const diffMs = Math.abs(new Date(data).getTime() - Date.now());
+    check("timestamp do servidor está a poucos segundos do relógio local", diffMs < 15000);
+  }
+
+  console.log("\n32. pacote_offline_instalacoes() — só instalações das equipes do próprio usuário");
+  {
+    const { data: pacote, error } = await admTenant.client.rpc("pacote_offline_instalacoes");
+    check("pacote_offline_instalacoes() executa sem erro", !error && Array.isArray(pacote));
+    check("só traz status agendada/em_execucao/concluida (nunca aceita/cancelada)", pacote.every((p) => ["agendada", "em_execucao", "concluida"].includes(p.status)));
+    check("não traz instalação cancelada", !pacote.some((p) => p.status === "cancelada"));
+
+    const equipeSemMembro = await admTenant.client.rpc("criar_equipe_instalacao", { p_nome: "Equipe Sem Membro" });
+    const { data: instSemEquipeMembro } = await admTenant.client.rpc("criar_instalacao", {
+      p_pedido_id: massa.pedidoId, p_equipe_id: equipeSemMembro.data, p_data_agendada: "2027-03-05",
+    });
+    const { data: pacoteDepois } = await admTenant.client.rpc("pacote_offline_instalacoes");
+    check("instalação de equipe sem o usuário como membro não aparece no pacote offline", !pacoteDepois.some((p) => p.id === instSemEquipeMembro));
+
+    const itemDoPacote = pacote.find((p) => p.id === inst3Id);
+    check("instalação agendada traz itens/pedido/pessoa/obra aninhados", !!itemDoPacote && Array.isArray(itemDoPacote.itens) && itemDoPacote.itens.length > 0 && itemDoPacote.pedido?.numero && itemDoPacote.obra?.nome);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
