@@ -125,6 +125,11 @@ export default async function Home() {
             Qualidade →
           </Link>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <Link href="/expedicao" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Expedição →
+          </Link>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button
