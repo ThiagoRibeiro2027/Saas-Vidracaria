@@ -37,7 +37,11 @@ insert into public.permissions (resource, action, description) values
   ('qualidade', 'view', 'Visualizar inspeções e não conformidades da empresa (TÓPICO 8)'),
   ('qualidade', 'manage', 'Registrar inspeção, executar retrabalho e reinspecionar (TÓPICO 8)'),
   ('expedicao', 'view', 'Visualizar expedições, itens e ocorrências da empresa (TÓPICO 9)'),
-  ('expedicao', 'manage', 'Criar expedição, adicionar/remover item, conferir, registrar saída, cancelar, confirmar entrega e registrar ocorrência (TÓPICO 9)')
+  ('expedicao', 'manage', 'Criar expedição, adicionar/remover item, conferir, registrar saída, cancelar, confirmar entrega e registrar ocorrência (TÓPICO 9)'),
+  ('instalacao', 'view', 'Visualizar instalações, itens, ocorrências e danos da empresa (TÓPICO 16)'),
+  ('instalacao', 'manage', 'Criar/agendar instalação, gerir equipes, adicionar/remover item, iniciar execução, registrar execução, concluir, cancelar, registrar ocorrência e dano, solicitar nova fabricação (TÓPICO 16)'),
+  ('instalacao', 'aceite', 'Registrar o aceite do cliente numa instalação concluída (TÓPICO 16)'),
+  ('instalacao', 'decidir_dano', 'Aprovar ou rejeitar solicitação de nova fabricação por dano em instalação (TÓPICO 16 §8)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).

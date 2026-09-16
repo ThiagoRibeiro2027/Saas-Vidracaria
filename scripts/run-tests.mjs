@@ -32,6 +32,7 @@ const TEST_SCRIPTS = [
   "scripts/test-producao.mjs",
   "scripts/test-qualidade.mjs",
   "scripts/test-expedicao.mjs",
+  "scripts/test-instalacao.mjs",
 ];
 
 function supabaseCredentials() {
