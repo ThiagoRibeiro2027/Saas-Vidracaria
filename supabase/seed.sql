@@ -46,7 +46,9 @@ insert into public.permissions (resource, action, description) values
   ('suprimentos', 'manage', 'Registrar, atender e cancelar necessidades de compra (TÓPICO 7)'),
   ('financeiro', 'view', 'Visualizar títulos financeiros e recebimentos da empresa (TÓPICO 11)'),
   ('financeiro', 'manage', 'Gerar títulos financeiros a partir de pedido e cancelar título sem recebimento (TÓPICO 11)'),
-  ('financeiro', 'receber', 'Registrar recebimento (integral ou parcial) de título financeiro (TÓPICO 11)')
+  ('financeiro', 'receber', 'Registrar recebimento (integral ou parcial) de título financeiro (TÓPICO 11)'),
+  ('rh', 'view', 'Visualizar funcionários da empresa — dado pessoal sensível, LGPD (TÓPICO 17)'),
+  ('rh', 'manage', 'Admitir, editar e desligar funcionários, incluindo revogar o acesso do usuário vinculado (TÓPICO 17)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
