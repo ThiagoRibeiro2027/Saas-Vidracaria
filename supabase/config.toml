@@ -186,8 +186,16 @@ enable_signup = true
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
+# F16 (Mapa_Fases_Lacunas_Risco.md, auditoria 15/09/2026): o valor aqui é a
+# única fonte de verdade da política de senha — o front (src/app/change-
+# password/actions.ts) só reproduz a mesma regra para dar feedback de UX
+# antes do round-trip. Antes deste ajuste, o GoTrue aceitava senha de 6
+# caracteres via chamada direta à Auth API (supabase.auth.updateUser()),
+# mesmo com a tela exigindo 10 — a validação real dependia só do
+# formulário. MIN_LENGTH em change-password/actions.ts precisa ser mantido
+# igual a este valor.
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+minimum_password_length = 10
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
 password_requirements = ""

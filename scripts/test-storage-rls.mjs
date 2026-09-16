@@ -308,6 +308,81 @@ async function main() {
     check("usuário COM files.delete consegue apagar o próprio objeto", !deleteComPermError);
   }
 
+  console.log("\n11. Soft-delete não deixa arquivo baixável (F03, auditoria 15/09/2026)");
+  {
+    const deletedPath = `${tenantA.company.id}/geral/geral/${runId}-soft-deleted.png`;
+    await tenantA.client.storage.from(BUCKET).upload(deletedPath, PNG_1X1, { contentType: "image/png", upsert: true });
+    const { data: deletedFileId } = await tenantA.client.rpc("register_file", {
+      p_entity_type: "geral",
+      p_entity_id: null,
+      p_storage_path: deletedPath,
+      p_original_name: "soft-deleted.png",
+      p_mime_type: "image/png",
+      p_size_bytes: PNG_1X1.byteLength,
+      p_width: 1,
+      p_height: 1,
+    });
+    await tenantA.client.rpc("delete_file", { p_file_id: deletedFileId });
+
+    const { data: selectAfterDelete } = await tenantA.client
+      .from("files")
+      .select("id")
+      .eq("id", deletedFileId);
+    check(
+      "arquivo com soft-delete não aparece mais em files_select, mesmo pro próprio dono",
+      (selectAfterDelete ?? []).length === 0,
+    );
+
+    // O objeto físico continua no Storage (purge físico é decisão futura,
+    // Mapa §11) — o que muda é o acesso lógico via metadado/policy.
+    const { error: stillDownloadableError } = await tenantA.client.storage
+      .from(BUCKET)
+      .download(deletedPath);
+    check(
+      "objeto físico permanece no Storage após soft-delete (sem purge físico ainda)",
+      !stillDownloadableError,
+    );
+  }
+
+  console.log("\n12. Reconciliação de objetos órfãos no Storage (F01 residual, auditoria 15/09/2026)");
+  {
+    // Simula o "Caminho B" do Mapa: upload direto no Storage sem passar
+    // por register_file() — o objeto existe fisicamente sem metadado.
+    const orphanPath = `${tenantA.company.id}/geral/geral/${runId}-orfao.png`;
+    await tenantA.client.storage.from(BUCKET).upload(orphanPath, PNG_1X1, { contentType: "image/png", upsert: true });
+
+    const { data: notYetOrphan } = await admin.rpc("find_orphaned_storage_objects", {
+      p_older_than: "1 hour",
+    });
+    check(
+      "objeto recém-enviado ainda não entra na lista de órfãos (janela de tolerância)",
+      !(notYetOrphan ?? []).some((o) => o.name === orphanPath),
+    );
+
+    const { data: orphansNow, error: orphansError } = await admin.rpc("find_orphaned_storage_objects", {
+      p_older_than: "0 seconds",
+    });
+    check(
+      "find_orphaned_storage_objects() detecta o objeto sem metadado registrado",
+      !orphansError && (orphansNow ?? []).some((o) => o.name === orphanPath),
+    );
+    check(
+      "find_orphaned_storage_objects() não lista o objeto já registrado do tenant A (pathA)",
+      !(orphansNow ?? []).some((o) => o.name === pathA),
+    );
+
+    const { error: directCallError } = await tenantA.client.rpc("find_orphaned_storage_objects", {
+      p_older_than: "0 seconds",
+    });
+    check(
+      "usuário autenticado (não service_role) não consegue chamar find_orphaned_storage_objects()",
+      !!directCallError,
+    );
+
+    const { error: removeError } = await admin.storage.from(BUCKET).remove([orphanPath]);
+    check("reconciliação consegue purgar o objeto órfão via service role", !removeError);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

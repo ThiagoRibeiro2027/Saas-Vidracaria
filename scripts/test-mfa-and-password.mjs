@@ -135,6 +135,17 @@ async function main() {
     .single();
   check("profile começa com must_change_password = true", profileBefore.must_change_password === true);
 
+  // F16 (Mapa_Fases_Lacunas_Risco.md, 15/09/2026): antes deste ajuste,
+  // minimum_password_length no GoTrue era 6 enquanto a tela exigia 10 — a
+  // proteção real dependia só do formulário. Chama updateUser() direto
+  // (ignorando src/app/change-password/actions.ts) pra confirmar que a
+  // própria Auth API agora rejeita abaixo do mínimo real.
+  const { error: shortPasswordError } = await tenantClient.auth.updateUser({ password: "curta123" });
+  check(
+    "Auth API (GoTrue) rejeita senha de 8 caracteres, mesmo chamada direto (sem passar pela tela)",
+    !!shortPasswordError,
+  );
+
   const { error: updatePasswordError } = await tenantClient.auth.updateUser({ password: "nova-senha-bem-forte-999" });
   check("usuário consegue trocar a própria senha", !updatePasswordError);
 

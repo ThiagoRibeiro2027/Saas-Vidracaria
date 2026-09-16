@@ -5,6 +5,19 @@ const LOG_LIMIT = 100;
 export default async function AuditPage() {
   const supabase = await createClient();
 
+  // F24 (Mapa_Fases_Lacunas_Risco.md, 15/09/2026): quando quem está vendo é
+  // platform_admin, esta página exerce o bypass cross-tenant de
+  // activity_logs_select (já exige AAL2 via is_platform_admin_mfa_
+  // verified()). Registra a trilha de que o acesso de suporte aconteceu —
+  // não se aplica ao usuário de tenant vendo o próprio log.
+  const { data: isPlatformAdmin } = await supabase.rpc("is_platform_admin_mfa_verified");
+  if (isPlatformAdmin) {
+    await supabase.rpc("log_platform_admin_access", {
+      p_view: "audit.platform_admin_view",
+      p_context: { limit: LOG_LIMIT },
+    });
+  }
+
   // A RLS de activity_logs (Fase 2) já resolve o escopo sozinha: usuário de
   // tenant só recebe linhas da própria empresa (e só com permissão
   // files... na verdade activity_logs.read); platform_admin recebe tudo.

@@ -215,6 +215,37 @@ async function main() {
     check("atribuir papel da própria empresa ao usuário continua funcionando", !sameTenantRoleError);
   }
 
+  console.log("\n6. profiles.company_id é imutável (F12, auditoria 15/09/2026)");
+  {
+    const { error: sameValueError } = await admin
+      .from("profiles")
+      .update({ company_id: tenantA.company.id })
+      .eq("id", tenantA.userId);
+    check(
+      "UPDATE que mantém o mesmo company_id continua permitido (sem falso positivo)",
+      !sameValueError,
+    );
+
+    const { error: changeCompanyError } = await admin
+      .from("profiles")
+      .update({ company_id: tenantB.company.id })
+      .eq("id", tenantA.userId);
+    check(
+      "trocar profiles.company_id é rejeitado pelo trigger, mesmo via service role (F12)",
+      !!changeCompanyError,
+    );
+
+    const { data: afterAttempt } = await admin
+      .from("profiles")
+      .select("company_id")
+      .eq("id", tenantA.userId)
+      .single();
+    check(
+      "company_id do perfil permanece o original após a tentativa rejeitada",
+      afterAttempt?.company_id === tenantA.company.id,
+    );
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

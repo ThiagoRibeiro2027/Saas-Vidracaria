@@ -111,6 +111,58 @@ async function main() {
     check("ADMIN cria pessoa", !error && !!id);
     clienteId = id;
 
+    console.log("\n2a. Minimização de PII no snapshot de auditoria (F11, auditoria 15/09/2026)");
+    {
+      const { data: createLog } = await admin
+        .from("activity_logs")
+        .select("metadata")
+        .eq("action", "cadastro.pessoa_upserted")
+        .eq("entity_id", clienteId)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      const createdMetadata = createLog?.[0]?.metadata;
+      check(
+        "log de criação não guarda to_jsonb(before) — só a lista de campos alterados",
+        Array.isArray(createdMetadata?.changed) && !("before" in (createdMetadata ?? {})),
+      );
+      check(
+        "metadata da criação lista 'documento' como campo preenchido, sem o valor em texto livre",
+        (createdMetadata?.changed ?? []).includes("documento") &&
+          !JSON.stringify(createdMetadata).includes("11222333000181"),
+      );
+
+      const { error: updateError } = await admTenant.client.rpc("upsert_pessoa", {
+        p_id: clienteId, p_tipo_documento: "CNPJ", p_documento: "11222333000181", p_nome: "JR Box Vidros",
+        p_nome_fantasia: "JR Box", p_telefone: "11988887777", p_email: "novo-contato@jrbox.example",
+        p_logradouro: "Rua das Esquadrias, 100", p_cidade: "São Paulo", p_uf: "SP", p_cep: "01000-000",
+        p_situacao: "ativo",
+      });
+      check("ADMIN edita telefone/email da pessoa", !updateError);
+
+      const { data: updateLog } = await admin
+        .from("activity_logs")
+        .select("metadata")
+        .eq("action", "cadastro.pessoa_upserted")
+        .eq("entity_id", clienteId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const updatedMetadata = updateLog?.[0]?.metadata;
+      check(
+        "log de edição lista telefone/email como campos alterados",
+        (updatedMetadata?.changed ?? []).includes("telefone") &&
+          (updatedMetadata?.changed ?? []).includes("email"),
+      );
+      check(
+        "log de edição não guarda o telefone/email antigos em texto livre",
+        !JSON.stringify(updatedMetadata).includes("11999990000") &&
+          !JSON.stringify(updatedMetadata).includes("contato@jrbox.example"),
+      );
+      check(
+        "log de edição não lista 'nome' como alterado (não mudou)",
+        !(updatedMetadata?.changed ?? []).includes("nome"),
+      );
+    }
+
     const { error: dupError } = await admTenant.client.rpc("upsert_pessoa", {
       p_id: null, p_tipo_documento: "CNPJ", p_documento: "11222333000181", p_nome: "Outra Razão Social",
       p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,

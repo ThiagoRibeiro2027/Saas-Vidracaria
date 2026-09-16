@@ -1,6 +1,7 @@
 import "server-only";
 import { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logSystemEvent } from "@/lib/observability/log";
 
 // Fase P2 do Security Gate (RUNBOOK-GOVERNANCA-DE-SEGURANCA.md §3) —
 // alerta próprio sobre activity_logs, sem serviço de terceiro contratado
@@ -139,6 +140,14 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error("[security-alerts] falha ao consultar activity_logs:", error.message);
+    // F23 (ADR-009 §5.2: "falhas de jobs e rotinas automáticas") — antes só
+    // existia console.error, sem registro consultável fora do log bruto da
+    // hospedagem.
+    await logSystemEvent(admin, {
+      category: "job_failure",
+      severity: "error",
+      message: `security-alerts: falha ao consultar activity_logs: ${error.message}`,
+    });
     return Response.json({ ok: false, error: error.message }, { status: 500 });
   }
 

@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/security-alerts",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/storage-reconciliation",
+      "schedule": "30 8 * * *"
     }
   ]
 }

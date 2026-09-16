@@ -345,6 +345,62 @@ async function main() {
     check("usuário ADMIN de tenant tem permissão de exportação", canExport === true);
   }
 
+  console.log("\n6. system_events — observabilidade técnica (F23, auditoria 15/09/2026)");
+  {
+    const { error: tenantLogError } = await tenantA.client.rpc("log_system_event", {
+      p_category: "storage_failure",
+      p_message: "teste automatizado",
+    });
+    check("usuário de tenant consegue registrar um system_event (função aceita authenticated)", !tenantLogError);
+
+    const { error: invalidCategoryError } = await tenantA.client.rpc("log_system_event", {
+      p_category: "categoria_inventada",
+      p_message: "não deveria passar",
+    });
+    check(
+      "category fora do enum fechado é rejeitada (item 8 do CLAUDE.md — sem 'action' livre)",
+      !!invalidCategoryError,
+    );
+
+    const { data: tenantReadAttempt } = await tenantA.client.from("system_events").select("id");
+    check("usuário de tenant não consegue ler system_events (só platform_admin)", (tenantReadAttempt ?? []).length === 0);
+
+    const { data: adminRead, error: adminReadError } = await platformClient
+      .from("system_events")
+      .select("id, category, message")
+      .eq("message", "teste automatizado");
+    check(
+      "platform_admin em aal2 consegue ler system_events",
+      !adminReadError && (adminRead ?? []).length > 0,
+    );
+  }
+
+  console.log("\n7. Trilha de acesso de suporte do platform_admin (F24, auditoria 15/09/2026)");
+  {
+    const { error: tenantAccessLogError } = await tenantA.client.rpc("log_platform_admin_access", {
+      p_view: "teste-nao-deveria-funcionar",
+    });
+    check("usuário de tenant não consegue registrar acesso de suporte", !!tenantAccessLogError);
+
+    const { error: adminAccessLogError } = await platformClient.rpc("log_platform_admin_access", {
+      p_view: "governance.platform_admin_view",
+      p_context: { origem: "teste automatizado" },
+    });
+    check("platform_admin em aal2 registra a trilha de acesso de suporte", !adminAccessLogError);
+
+    const { data: trailRow } = await admin
+      .from("activity_logs")
+      .select("id, company_id, action")
+      .eq("action", "platform.support_access")
+      .is("company_id", null)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    check(
+      "trilha fica registrada em activity_logs com company_id nulo (evento de plataforma, não de tenant)",
+      trailRow?.[0]?.action === "platform.support_access",
+    );
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

@@ -44,10 +44,14 @@ export async function deleteFileAction(fileId: string) {
 
 export async function getSignedUrlAction(fileId: string): Promise<string> {
   const supabase = await createClient();
+  // F03 (Mapa_Fases_Lacunas_Risco.md, 15/09/2026): files_select (RLS) já
+  // nega linhas com deleted_at preenchido — o filtro aqui é só para dar um
+  // erro claro em vez de depender silenciosamente da política.
   const { data: file, error } = await supabase
     .from("files")
     .select("bucket_id, storage_path")
     .eq("id", fileId)
+    .is("deleted_at", null)
     .single();
   if (error || !file) throw new Error("Arquivo não encontrado.");
 

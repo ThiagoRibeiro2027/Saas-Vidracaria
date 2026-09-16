@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
+import { logSystemEvent, newCorrelationId } from "@/lib/observability/log";
 import {
   FileValidationError,
   MAX_FILES_PER_UPLOAD,
@@ -53,7 +54,18 @@ export async function uploadCompanyFiles(
           upsert: false,
         });
       if (uploadError) {
-        throw new FileValidationError(`Falha ao enviar: ${uploadError.message}`);
+        // F23 (ADR-009 §5.2: "falhas de upload e de storage"): antes disso
+        // só existia o erro devolvido ao usuário — nada consultável do
+        // lado operacional quando o Storage falha.
+        const correlationId = newCorrelationId();
+        await logSystemEvent(supabase, {
+          category: "storage_failure",
+          message: `Falha ao enviar objeto para o bucket ${BUCKET}: ${uploadError.message}`,
+          companyId,
+          correlationId,
+          context: { storage_path: storagePath, mime_type: processed.mimeType },
+        });
+        throw new FileValidationError(`Falha ao enviar arquivo (ref: ${correlationId}).`);
       }
 
       const { data: fileId, error: registerError } = await supabase.rpc("register_file", {
@@ -68,7 +80,20 @@ export async function uploadCompanyFiles(
       });
       if (registerError || !fileId) {
         // Sem metadado registrado, o objeto no Storage vira lixo — remove.
+        // (Backstop estrutural pro resíduo do F01: find_orphaned_storage_
+        // objects() purga o que sobreviver a esta limpeza best-effort.)
         await supabase.storage.from(BUCKET).remove([storagePath]);
+        // registerError cobre tanto rejeição de negócio esperada (quota,
+        // empresa suspensa, sem permissão) quanto falha real — loga como
+        // warning porque o caminho feliz já lida com a maioria dos casos
+        // via mensagem de erro específica do RPC.
+        await logSystemEvent(supabase, {
+          category: "storage_failure",
+          severity: "warning",
+          message: `register_file() rejeitou o objeto enviado: ${registerError?.message ?? "erro desconhecido"}`,
+          companyId,
+          context: { storage_path: storagePath },
+        });
         throw new FileValidationError(
           `Falha ao registrar metadado: ${registerError?.message ?? "erro desconhecido"}`,
         );

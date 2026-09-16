@@ -25,6 +25,13 @@ export default async function GovernancePage() {
 }
 
 async function PlatformAdminView({ supabase }: { supabase: Awaited<ReturnType<typeof createClient>> }) {
+  // F24 (Mapa_Fases_Lacunas_Risco.md, 15/09/2026): esta tela lê empresas e
+  // assinaturas de todos os tenants via bypass de RLS (is_platform_admin_
+  // mfa_verified() — já exige AAL2). O que faltava era uma trilha de que o
+  // bypass foi de fato exercido; não bloqueia a leitura (é um painel
+  // cross-tenant por natureza), só registra.
+  await supabase.rpc("log_platform_admin_access", { p_view: "governance.platform_admin_view" });
+
   const { data: subscriptions } = await supabase
     .from("subscriptions")
     .select("company_id, status")

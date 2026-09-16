@@ -4,7 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getClientContext } from "@/lib/audit/log";
 
-const MIN_LENGTH = 10; // placeholder até o Tópico 15 tornar a política configurável
+// F16 (Mapa_Fases_Lacunas_Risco.md, 15/09/2026): supabase/config.toml
+// (minimum_password_length) é a fonte de verdade real — o GoTrue rejeita
+// mesmo se este valor divergisse. Este constante existe só para dar
+// feedback de UX antes do round-trip; manter os dois números iguais.
+const MIN_LENGTH = 10;
 
 export async function changePasswordAction(
   _prevState: { error?: string } | undefined,
