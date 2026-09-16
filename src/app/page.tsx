@@ -120,6 +120,11 @@ export default async function Home() {
             Produção →
           </Link>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <Link href="/qualidade" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Qualidade →
+          </Link>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button
