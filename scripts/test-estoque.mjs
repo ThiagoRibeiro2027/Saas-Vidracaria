@@ -308,6 +308,96 @@ async function main() {
     check("sobra_registrada registrado", actions.has("estoque.sobra_registrada"));
   }
 
+  console.log("\n11. Concorrência real — ajustar_saldo() sob duas requisições simultâneas (gate técnico T4→T8)");
+  {
+    // Item isolado só pra este teste, sem depender de pedido. select ... for
+    // update em ajustar_saldo() (linha ~137) deve serializar as duas
+    // chamadas — sem o lock, um "lost update" deixaria o físico em -2 (duas
+    // leituras de 10, cada uma decrementando 6 sem ver a outra) em vez de
+    // rejeitar a segunda.
+    const { data: itemConcId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "VD-CONC", p_descricao: "Vidro para teste de concorrência",
+      p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
+      p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("ajustar_saldo", {
+      p_item_id: itemConcId, p_quantidade_delta: 10, p_motivo: "saldo inicial do teste de concorrência",
+    });
+
+    const [ajusteA, ajusteB] = await Promise.all([
+      admTenant.client.rpc("ajustar_saldo", { p_item_id: itemConcId, p_quantidade_delta: -6, p_motivo: "baixa concorrente A" }),
+      admTenant.client.rpc("ajustar_saldo", { p_item_id: itemConcId, p_quantidade_delta: -6, p_motivo: "baixa concorrente B" }),
+    ]);
+    const sucessos = [ajusteA, ajusteB].filter((r) => !r.error).length;
+    const falhas = [ajusteA, ajusteB].filter((r) => !!r.error).length;
+    check(
+      "exatamente uma das duas baixas concorrentes de -6 é aceita (10 disponível só cobre uma)",
+      sucessos === 1 && falhas === 1,
+    );
+
+    const { data: saldoConc } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", itemConcId).single();
+    check(
+      "saldo final é 4 (10 - 6 uma única vez), nunca negativo nem com a baixa aplicada em dobro",
+      Number(saldoConc?.quantidade_fisica) === 4,
+    );
+  }
+
+  console.log("\n12. Concorrência real — reservar_para_pedido_item() sob duas requisições simultâneas");
+  {
+    // Dois pedido_itens (pedidos diferentes) disputando o mesmo item, cuja
+    // demanda somada (16) excede o físico disponível (10) — sem o lock em
+    // estoque_saldos (reservar_para_pedido_item, linha ~206), as duas
+    // chamadas leriam "10 disponível" ao mesmo tempo e reservariam 8+8=16,
+    // violando físico >= reservado (F05).
+    const pedidoA = await prepararPedidoLiberado(admTenant, "conc-a", 8);
+    const itemPartilhado = pedidoA.itemId;
+
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "orcamento", p_prefixo: "ORCCB-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "pedido", p_prefixo: "PEDCB-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+    const { data: orcBId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: pedidoA.pessoaId, p_obra_id: null, p_validade: null,
+      p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcBId, p_item_id: itemPartilhado, p_quantidade: 8, p_preco_unitario: 100,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcBId, p_decisao: "aprovado" });
+    const { data: pedidoBId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcBId });
+    await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoBId });
+    await admTenant.client.rpc("liberar_pedido", { p_id: pedidoBId });
+    const { data: pedidoItemB } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoBId).single();
+
+    await admTenant.client.rpc("ajustar_saldo", {
+      p_item_id: itemPartilhado, p_quantidade_delta: 10, p_motivo: "saldo pro teste de concorrência de reserva",
+    });
+
+    const [reservaA, reservaB] = await Promise.all([
+      admTenant.client.rpc("reservar_para_pedido_item", { p_pedido_item_id: pedidoA.pedidoItemId }),
+      admTenant.client.rpc("reservar_para_pedido_item", { p_pedido_item_id: pedidoItemB.id }),
+    ]);
+    const totalReservado = Number(reservaA.data ?? 0) + Number(reservaB.data ?? 0);
+    check(
+      "as duas reservas concorrentes (8+8 pedido) somam exatamente o disponível (10), sem oversell",
+      !reservaA.error && !reservaB.error && totalReservado === 10,
+    );
+
+    const { data: saldoPartilhado } = await admin
+      .from("estoque_saldos")
+      .select("quantidade_fisica, quantidade_reservada")
+      .eq("item_id", itemPartilhado)
+      .single();
+    check(
+      "quantidade_reservada final é 10 (nunca ultrapassa o físico, mesmo sob concorrência real) — F05",
+      Number(saldoPartilhado?.quantidade_reservada) === 10 && Number(saldoPartilhado?.quantidade_fisica) === 10,
+    );
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

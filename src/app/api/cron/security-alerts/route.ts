@@ -9,6 +9,13 @@ import { logSystemEvent } from "@/lib/observability/log";
 // Cron (vercel.json) — plano Hobby não permite frequência maior
 // (https://vercel.com/docs/cron-jobs/usage-and-pricing).
 //
+// Gate técnico T4→T8 (Mapa_Fases_Lacunas_Risco.md §25, "observabilidade
+// mínima concluída"): até aqui system_events (F23) só era consultável
+// manualmente por platform_admin — uma falha real de storage/job passava
+// despercebida porque este cron só olhava activity_logs. Agora também
+// varre system_events (severidade error/critical) na mesma janela e no
+// mesmo e-mail, sem duplicar a lógica de idempotência/janela abaixo.
+//
 // Idempotência (exigida pela própria Vercel — cron delivery é best-effort
 // e pode invocar 2x ou pular uma execução): a janela verificada em cada
 // execução vai do `checked_until` da última execução registrada até agora
@@ -29,12 +36,22 @@ const WATCHED_ACTIONS = [
   "governance.activity_logs_retention_purge",
 ] as const;
 
+const ALERT_SEVERITIES = ["error", "critical"] as const;
+
 const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
-type WatchedEvent = {
+type WatchedActivityEvent = {
   action: string;
   company_id: string | null;
   description: string | null;
+  created_at: string;
+};
+
+type WatchedSystemEvent = {
+  category: string;
+  severity: string;
+  company_id: string | null;
+  message: string;
   created_at: string;
 };
 
@@ -52,7 +69,10 @@ function escapeHtml(value: string): string {
 // própria conta Resend, não pra um destinatário arbitrário. Sem domínio
 // próprio verificado (ver RUNBOOK §4), SECURITY_ALERT_EMAIL só funciona
 // de fato se for igual ao e-mail da conta Resend usada aqui.
-async function sendAlertEmail(events: WatchedEvent[]): Promise<void> {
+async function sendAlertEmail(
+  activityEvents: WatchedActivityEvent[],
+  systemEvents: WatchedSystemEvent[],
+): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   const to = process.env.SECURITY_ALERT_EMAIL;
   if (!apiKey || !to) {
@@ -62,14 +82,14 @@ async function sendAlertEmail(events: WatchedEvent[]): Promise<void> {
     return;
   }
 
-  const counts = events.reduce<Record<string, number>>((acc, e) => {
+  const activityCounts = activityEvents.reduce<Record<string, number>>((acc, e) => {
     acc[e.action] = (acc[e.action] ?? 0) + 1;
     return acc;
   }, {});
-  const summaryHtml = Object.entries(counts)
+  const activitySummaryHtml = Object.entries(activityCounts)
     .map(([action, count]) => `<li>${escapeHtml(action)}: ${count}</li>`)
     .join("");
-  const rowsHtml = events
+  const activityRowsHtml = activityEvents
     .slice(0, 50)
     .map(
       (e) =>
@@ -77,6 +97,37 @@ async function sendAlertEmail(events: WatchedEvent[]): Promise<void> {
         `<td>${escapeHtml(e.company_id ?? "-")}</td><td>${escapeHtml(e.description ?? "")}</td></tr>`,
     )
     .join("");
+
+  const systemCounts = systemEvents.reduce<Record<string, number>>((acc, e) => {
+    acc[e.category] = (acc[e.category] ?? 0) + 1;
+    return acc;
+  }, {});
+  const systemSummaryHtml = Object.entries(systemCounts)
+    .map(([category, count]) => `<li>${escapeHtml(category)}: ${count}</li>`)
+    .join("");
+  const systemRowsHtml = systemEvents
+    .slice(0, 50)
+    .map(
+      (e) =>
+        `<tr><td>${escapeHtml(e.created_at)}</td><td>${escapeHtml(e.severity)}</td>` +
+        `<td>${escapeHtml(e.category)}</td><td>${escapeHtml(e.company_id ?? "-")}</td>` +
+        `<td>${escapeHtml(e.message)}</td></tr>`,
+    )
+    .join("");
+
+  const systemEventsSectionHtml =
+    systemEvents.length > 0
+      ? `
+        <h2>Observabilidade técnica (system_events, ADR-009 §5.1)</h2>
+        <ul>${systemSummaryHtml}</ul>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>Quando</th><th>Severidade</th><th>Categoria</th><th>Empresa</th><th>Mensagem</th></tr>
+          ${systemRowsHtml}
+        </table>
+      `
+      : "";
+
+  const total = activityEvents.length + systemEvents.length;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -87,15 +138,15 @@ async function sendAlertEmail(events: WatchedEvent[]): Promise<void> {
     body: JSON.stringify({
       from: "SaaS Vidraçaria <onboarding@resend.dev>",
       to: [to],
-      subject: `[Security Gate] ${events.length} evento(s) de segurança nas últimas 24h`,
+      subject: `[Security Gate] ${total} evento(s) nas últimas 24h (${activityEvents.length} auditoria, ${systemEvents.length} técnico)`,
       html: `
-        <h2>Resumo</h2>
-        <ul>${summaryHtml}</ul>
-        <h2>Eventos (até 50)</h2>
+        <h2>Auditoria de negócio (activity_logs)</h2>
+        <ul>${activitySummaryHtml || "<li>nenhum</li>"}</ul>
         <table border="1" cellpadding="6" cellspacing="0">
           <tr><th>Quando</th><th>Ação</th><th>Empresa</th><th>Descrição</th></tr>
-          ${rowsHtml}
+          ${activityRowsHtml}
         </table>
+        ${systemEventsSectionHtml}
         <p>Runbook: docs/RUNBOOK-GOVERNANCA-DE-SEGURANCA.md</p>
       `,
     }),
@@ -130,36 +181,53 @@ export async function GET(request: NextRequest) {
     : new Date(Date.now() - DEFAULT_LOOKBACK_MS);
   const windowEnd = new Date();
 
-  const { data: events, error } = await admin
-    .from("activity_logs")
-    .select("action, company_id, description, created_at")
-    .in("action", WATCHED_ACTIONS)
-    .gte("created_at", windowStart.toISOString())
-    .lt("created_at", windowEnd.toISOString())
-    .order("created_at", { ascending: true });
+  // As duas consultas rodam antes de qualquer efeito colateral (envio de
+  // e-mail, gravação do marcador) — se qualquer uma falhar, a execução
+  // aborta sem mover checked_until, e a próxima tentativa cobre a mesma
+  // janela inteira (nenhum evento se perde por uma falha de leitura).
+  const [activityResult, systemEventsResult] = await Promise.all([
+    admin
+      .from("activity_logs")
+      .select("action, company_id, description, created_at")
+      .in("action", WATCHED_ACTIONS)
+      .gte("created_at", windowStart.toISOString())
+      .lt("created_at", windowEnd.toISOString())
+      .order("created_at", { ascending: true }),
+    admin
+      .from("system_events")
+      .select("category, severity, company_id, message, created_at")
+      .in("severity", ALERT_SEVERITIES)
+      .gte("created_at", windowStart.toISOString())
+      .lt("created_at", windowEnd.toISOString())
+      .order("created_at", { ascending: true }),
+  ]);
 
-  if (error) {
-    console.error("[security-alerts] falha ao consultar activity_logs:", error.message);
+  if (activityResult.error || systemEventsResult.error) {
+    const message = activityResult.error?.message ?? systemEventsResult.error?.message ?? "erro desconhecido";
+    console.error("[security-alerts] falha ao consultar eventos:", message);
     // F23 (ADR-009 §5.2: "falhas de jobs e rotinas automáticas") — antes só
     // existia console.error, sem registro consultável fora do log bruto da
     // hospedagem.
     await logSystemEvent(admin, {
       category: "job_failure",
       severity: "error",
-      message: `security-alerts: falha ao consultar activity_logs: ${error.message}`,
+      message: `security-alerts: falha ao consultar eventos: ${message}`,
     });
-    return Response.json({ ok: false, error: error.message }, { status: 500 });
+    return Response.json({ ok: false, error: message }, { status: 500 });
   }
 
-  const found = events ?? [];
-  if (found.length > 0) {
+  const activityEvents = activityResult.data ?? [];
+  const systemEvents = systemEventsResult.data ?? [];
+  const total = activityEvents.length + systemEvents.length;
+
+  if (total > 0) {
     // Achado de code-review: uma falha de rede no fetch() ao Resend (não
     // só uma resposta não-2xx, que sendAlertEmail já trata sozinha) não
     // pode impedir a gravação do marcador abaixo — do contrário a janela
     // da próxima execução cresce sem limite e reenvia os mesmos eventos
     // em todo run seguinte até um envio finalmente funcionar.
     try {
-      await sendAlertEmail(found);
+      await sendAlertEmail(activityEvents, systemEvents);
     } catch (err) {
       console.error("[security-alerts] exceção ao enviar e-mail (marcador será gravado mesmo assim):", err);
     }
@@ -172,5 +240,10 @@ export async function GET(request: NextRequest) {
     .from("cron_job_state")
     .upsert({ job_name: JOB_NAME, checked_until: windowEnd.toISOString() }, { onConflict: "job_name" });
 
-  return Response.json({ ok: true, events_found: found.length });
+  return Response.json({
+    ok: true,
+    events_found: total,
+    activity_events_found: activityEvents.length,
+    system_events_found: systemEvents.length,
+  });
 }
