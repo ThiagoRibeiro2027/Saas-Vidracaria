@@ -110,6 +110,11 @@ export default async function Home() {
             Indicadores (BI) →
           </Link>
         </p>
+        <p style={{ marginTop: "4px" }}>
+          <Link href="/fiscal" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Fiscal →
+          </Link>
+        </p>
 
         <form action={signOutAction} style={{ marginTop: "12px" }}>
           <button

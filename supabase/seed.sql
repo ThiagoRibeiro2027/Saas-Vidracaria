@@ -49,7 +49,9 @@ insert into public.permissions (resource, action, description) values
   ('financeiro', 'receber', 'Registrar recebimento (integral ou parcial) de título financeiro (TÓPICO 11)'),
   ('rh', 'view', 'Visualizar funcionários da empresa — dado pessoal sensível, LGPD (TÓPICO 17)'),
   ('rh', 'manage', 'Admitir, editar e desligar funcionários, incluindo revogar o acesso do usuário vinculado (TÓPICO 17)'),
-  ('bi', 'view', 'Consultar o dashboard de indicadores operacionais básicos da empresa (TÓPICO 12)')
+  ('bi', 'view', 'Consultar o dashboard de indicadores operacionais básicos da empresa (TÓPICO 12)'),
+  ('fiscal', 'view', 'Visualizar documentos fiscais registrados da empresa (ADR-004 §9.2)'),
+  ('fiscal', 'manage', 'Registrar, vincular e cancelar (correção interna) documentos fiscais (ADR-004 §9.2)')
 on conflict (resource, action) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
