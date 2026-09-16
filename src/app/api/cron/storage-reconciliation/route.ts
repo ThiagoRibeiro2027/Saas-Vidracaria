@@ -3,16 +3,21 @@ import { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logSystemEvent } from "@/lib/observability/log";
 
-// F01 residual (Mapa_Fases_Lacunas_Risco.md, 15/09/2026): a RLS de
-// storage.objects (SEC-002/003, phase8_security_gate_p0.sql) já exige
-// tenant + has_permission('files','upload'), mas não fecha o caminho de um
-// upload feito direto na Data API (fora de src/lib/storage/upload.ts):
-// esse objeto nunca passa por register_file(), então fica sem metadado,
-// fora da quota (F02) e sem o pipeline de validação de bytes. RLS não
-// inspeciona conteúdo — o fechamento estrutural possível é purgar, depois
-// de uma janela de tolerância, todo objeto do bucket privado sem
-// public.files correspondente. find_orphaned_storage_objects() é
-// restrita a service_role (ver migration 20260915030000).
+// F01 (Mapa_Fases_Lacunas_Risco.md, 15/09/2026). Até 20260915040000, um
+// usuário com files.upload podia contornar fileValidation.ts fazendo
+// upload direto na Data API e só depois chamando register_file() pra
+// legitimar o objeto — RLS não lê bytes, então não dava pra impedir isso
+// só com policy. Esta era a razão original deste cron.
+//
+// Desde 20260915040000, storage.objects não concede mais INSERT/UPDATE/
+// DELETE pra `authenticated`: a única escrita física é a service role, de
+// dentro de src/lib/storage/upload.ts, depois que o arquivo já passou pelo
+// pipeline de validação. O bypass deliberado deixou de ser possível — este
+// cron agora é só rede de segurança para o crash window residual (a
+// service role sobe o objeto físico e o processo morre antes de rodar
+// register_file()/o rollback), não mais a defesa principal contra bypass.
+// find_orphaned_storage_objects() continua restrita a service_role (ver
+// migration 20260915030000).
 //
 // Vercel Hobby permite no máximo 2 cron jobs, 1x/dia cada (mesma restrição
 // já documentada em security-alerts/route.ts) — então um objeto órfão pode

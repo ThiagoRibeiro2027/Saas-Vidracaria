@@ -312,9 +312,12 @@ async function main() {
       "base64",
     );
     const storagePath = `${subject.company.id}/geral/geral/${crypto.randomUUID()}-lgpd-profile.png`;
-    await subject.client.storage
+    // F01 (auditoria 15/09/2026, migration 20260915040000): storage.objects
+    // não aceita mais escrita direta de `authenticated` — fixture via
+    // service role, como src/lib/storage/upload.ts faz na aplicação real.
+    await admin.storage
       .from("company-files")
-      .upload(storagePath, PNG_1X1, { contentType: "image/png", upsert: true });
+      .upload(storagePath, PNG_1X1, { contentType: "image/png" });
     const { data: fileId } = await subject.client.rpc("register_file", {
       p_entity_type: "geral",
       p_entity_id: null,

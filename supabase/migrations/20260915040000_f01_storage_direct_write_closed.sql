@@ -1,0 +1,51 @@
+-- F01 (resíduo) — Mapa_Fases_Lacunas_Risco.md, auditoria 15/09/2026,
+-- continuação depois do bloco P1 (20260915030000). O bloco P1 só mitigou
+-- o resíduo com reconciliação periódica (find_orphaned_storage_objects);
+-- este ajuste fecha a causa raiz.
+--
+-- O problema real nunca foi só RBAC: SEC-002/003/004 (Security Gate P0 da
+-- 1ª auditoria) já exigia has_permission('files', 'upload'/'delete') nas
+-- policies de storage.objects. O problema é que RLS não lê os BYTES do
+-- objeto — não há como impor magic-byte sniffing, resize, limite de
+-- pixels (fileValidation.ts) numa policy do Postgres. Um usuário COM
+-- files.upload sempre pôde chamar a Storage API direto (contornando
+-- src/lib/storage/upload.ts) e depois legitimar o objeto com
+-- register_file(), nunca passando pelo pipeline de validação real.
+--
+-- Não existe correção disso em RLS. A correção é arquitetural: a escrita
+-- física no bucket privado deixa de ser um caminho que `authenticated`
+-- pode exercer — companyfiles_insert/update/delete são removidas sem
+-- substituto, então storage.objects nega por padrão pra esse papel (RLS
+-- já habilitada, sem policy = sem acesso). A única escrita física possível
+-- passa a ser feita pela service role, de dentro de src/lib/storage/
+-- upload.ts, depois que o objeto já passou por fileValidation.ts — ou
+-- seja, o "Caminho B" do Mapa (cliente → storage.objects diretamente)
+-- deixa de existir, não só de ficar mais difícil.
+--
+-- A checagem de RBAC que a policy de INSERT fazia migra pra dentro de
+-- uploadCompanyFiles() (chamada explícita a has_permission('files',
+-- 'upload') com a sessão do usuário, antes de qualquer escrita física).
+-- register_file() continua com a própria checagem de permissão/tenant/
+-- suspensão/quota — redundante de propósito (item 3 do CLAUDE.md: nunca
+-- depender de uma só camada).
+--
+-- find_orphaned_storage_objects()/storage-reconciliation (P1) continuam
+-- valendo como rede de segurança — agora não mais contra bypass
+-- deliberado (estruturalmente impossível), só contra a janela entre um
+-- upload da service role e um crash antes do rollback/register_file()
+-- rodarem.
+
+drop policy if exists company_files_insert on storage.objects;
+drop policy if exists company_files_update on storage.objects;
+drop policy if exists company_files_delete on storage.objects;
+
+-- Nenhuma policy substituta é criada para os três verbos acima — RLS já
+-- está habilitada em storage.objects (gerenciado pelo próprio Supabase
+-- Storage), então a ausência de policy nega por padrão pra `authenticated`
+-- e `anon`. A service role ignora RLS (é assim que src/lib/supabase/
+-- admin.ts já é descrito no código) e não precisa de nenhuma policy.
+--
+-- company_files_select (leitura) não muda: continua exigindo tenant +
+-- has_permission('files', 'read') via sessão do usuário — leitura não tem
+-- o problema de validação de conteúdo, só de autorização, que RLS resolve
+-- normalmente.

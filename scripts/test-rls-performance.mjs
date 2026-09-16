@@ -188,20 +188,30 @@ async function main() {
     const tenantA = await createTenant("rls-perf-storage-a", "RLS Storage A", "9304");
     const tenantB = await createTenant("rls-perf-storage-b", "RLS Storage B", "9305");
 
-    // company-files só aceita image/jpeg, image/png, image/webp e
-    // application/pdf (storage_and_files.sql) — usar um MIME permitido para
-    // não confundir rejeição de tipo com rejeição de RLS.
+    // F01 (auditoria 15/09/2026, migration 20260915040000): storage.objects
+    // não concede mais INSERT pra `authenticated`, nem no próprio prefixo —
+    // a fixture usa a service role, como src/lib/storage/upload.ts faz na
+    // aplicação real. company-files só aceita image/jpeg, image/png,
+    // image/webp e application/pdf (storage_and_files.sql).
     const path = `${tenantA.company.id}/teste.pdf`;
+    const { error: adminUploadError } = await admin.storage
+      .from("company-files")
+      .upload(path, new Blob(["conteudo"], { type: "application/pdf" }));
+    check("(fixture) service role consegue escrever no prefixo de A", !adminUploadError);
+
     const { error: uploadOwnError } = await tenantA.client.storage
       .from("company-files")
-      .upload(path, new Blob(["conteudo"], { type: "application/pdf" }), { upsert: true });
-    check("tenant A consegue subir arquivo no próprio prefixo", !uploadOwnError);
+      .upload(`${tenantA.company.id}/teste-direto.pdf`, new Blob(["conteudo"], { type: "application/pdf" }));
+    check("tenant A não consegue subir arquivo direto, nem no próprio prefixo", !!uploadOwnError);
 
     const foreignPath = `${tenantA.company.id}/invasao.pdf`;
     const { error: uploadForeignError } = await tenantB.client.storage
       .from("company-files")
       .upload(foreignPath, new Blob(["conteudo"], { type: "application/pdf" }), { upsert: true });
     check("tenant B não consegue subir arquivo no prefixo de A", !!uploadForeignError);
+
+    const { data: listA } = await tenantA.client.storage.from("company-files").list(tenantA.company.id);
+    check("tenant A lista o próprio prefixo normalmente (SELECT não mudou)", (listA?.length ?? 0) >= 1);
 
     const { data: listB } = await tenantB.client.storage.from("company-files").list(tenantA.company.id);
     check("tenant B não lista arquivos do prefixo de A", (listB?.length ?? 0) === 0);

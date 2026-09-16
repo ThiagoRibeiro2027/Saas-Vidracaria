@@ -239,7 +239,10 @@ async function main() {
     await admin.from("subscriptions").update({ status: "active" }).eq("company_id", tenantA.company.id);
 
     const pathDepoisReativacao = `${tenantA.company.id}/geral/geral/${runId}-deveria-passar.png`;
-    await tenantA.client.storage.from(BUCKET).upload(pathDepoisReativacao, PNG_1X1, { contentType: "image/png" });
+    // F01 (auditoria 15/09/2026, migration 20260915040000): storage.objects
+    // não aceita mais escrita direta de `authenticated` — a fixture usa a
+    // service role, como src/lib/storage/upload.ts faz na aplicação real.
+    await admin.storage.from(BUCKET).upload(pathDepoisReativacao, PNG_1X1, { contentType: "image/png" });
     const { error: uploadAfterReactivation } = await tenantA.client.rpc("register_file", {
       p_entity_type: "geral",
       p_entity_id: null,
@@ -293,7 +296,7 @@ async function main() {
     // objeto no Storage, não mais p_size_bytes — o buffer "estoura-quota"
     // precisa ter, de fato, mais de 500 bytes reais (limite do plano acima).
     const pathEstouraQuota = `${tenantB.company.id}/geral/geral/${runId}-estoura-quota.png`;
-    await tenantB.client.storage
+    await admin.storage
       .from(BUCKET)
       .upload(pathEstouraQuota, Buffer.alloc(600, "x"), { contentType: "application/octet-stream" });
     const { error: overQuotaError } = await tenantB.client.rpc("register_file", {
@@ -307,7 +310,7 @@ async function main() {
     check("upload que estouraria a quota do plano é rejeitado (SEC-012)", !!overQuotaError);
 
     const pathDentroQuota = `${tenantB.company.id}/geral/geral/${runId}-dentro-da-quota.png`;
-    await tenantB.client.storage.from(BUCKET).upload(pathDentroQuota, PNG_1X1, { contentType: "image/png" });
+    await admin.storage.from(BUCKET).upload(pathDentroQuota, PNG_1X1, { contentType: "image/png" });
     const { error: withinQuotaError } = await tenantB.client.rpc("register_file", {
       p_entity_type: "geral",
       p_entity_id: null,

@@ -3,6 +3,16 @@
 // register_file()/delete_file(), imutabilidade da tabela files para
 // escrita direta e enforcement de MIME/tamanho no próprio bucket.
 //
+// F01 (Mapa_Fases_Lacunas_Risco.md, 15/09/2026, migration
+// 20260915040000): storage.objects não concede mais INSERT/UPDATE/DELETE
+// pra `authenticated`, sob nenhuma circunstância — a única escrita física
+// possível é a service role, de dentro de src/lib/storage/upload.ts,
+// depois que o arquivo já passou por fileValidation.ts (RLS não lê bytes,
+// não dava pra impor isso numa policy). Por isso os testes abaixo usam
+// `admin.storage...` para preparar fixtures (simulando o que a service
+// role já faz na aplicação) e testam que `tenantX.client.storage...`
+// (sessão do usuário) é sempre negado, com ou sem permissão.
+//
 // Uso: set -a; source .env.local; set +a; node scripts/test-storage-rls.mjs
 
 import { createClient } from "@supabase/supabase-js";
@@ -33,6 +43,13 @@ function check(label, condition) {
     console.error(`  ✗ ${label}`);
     failed++;
   }
+}
+
+// Fixture — equivalente ao que src/lib/storage/upload.ts faz com a service
+// role depois de fileValidation.ts. Nenhum teste abaixo deve usar isto como
+// "o caminho legítimo de escrita do usuário" — é só preparação de estado.
+async function adminUpload(path, buffer = PNG_1X1, contentType = "image/png") {
+  return admin.storage.from(BUCKET).upload(path, buffer, { contentType, upsert: false });
 }
 
 async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingCompany = null) {
@@ -97,9 +114,7 @@ async function main() {
   const tenantA = await createTenant("storage-a-test", "Storage A Teste", "9101");
   const tenantB = await createTenant("storage-b-test", "Storage B Teste", "9102");
   // Mesma empresa do tenant A, papel COMERCIAL — sem files.read/files.upload
-  // por padrão (seed.sql só concede permissões de fundação ao ADMIN). Usado
-  // para testar o Security Gate Fase 8 (SEC-002/003/004): tenant isolation
-  // sozinho não basta, o bucket precisa respeitar RBAC também.
+  // por padrão (seed.sql só concede permissões de fundação ao ADMIN).
   const tenantANoPerm = await createTenant("storage-a-test", "Storage A Sem Permissão", "9103", "COMERCIAL", tenantA.company);
 
   // Sufixo único por execução: soft delete (item 16) mantém o objeto físico
@@ -110,24 +125,65 @@ async function main() {
   const pathA = `${tenantA.company.id}/geral/geral/${runId}-teste-a.png`;
   const pathB = `${tenantB.company.id}/geral/geral/${runId}-teste-b.png`;
 
-  console.log("\n1. Upload no próprio prefixo — permitido");
+  console.log("\n1. Escrita direta em storage.objects está fechada para authenticated (F01, migration 20260915040000)");
   {
-    const { error } = await tenantA.client.storage
+    const { error: ownPrefixNoPermError } = await tenantANoPerm.client.storage
+      .from(BUCKET)
+      .upload(`${tenantA.company.id}/geral/geral/${runId}-direto-sem-perm.png`, PNG_1X1, { contentType: "image/png" });
+    check("usuário sem files.upload não consegue subir arquivo direto no bucket", !!ownPrefixNoPermError);
+
+    const { error: ownPrefixWithPermError } = await tenantA.client.storage
+      .from(BUCKET)
+      .upload(`${tenantA.company.id}/geral/geral/${runId}-direto-com-perm.png`, PNG_1X1, { contentType: "image/png" });
+    check(
+      "usuário COM files.upload também não consegue subir direto — não é mais uma questão de RBAC, é ausência de policy",
+      !!ownPrefixWithPermError,
+    );
+
+    const { error: foreignPrefixError } = await tenantA.client.storage
+      .from(BUCKET)
+      .upload(`${tenantB.company.id}/geral/geral/${runId}-invasao.png`, PNG_1X1, { contentType: "image/png" });
+    check("upload direto no prefixo de outro tenant também é negado", !!foreignPrefixError);
+
+    // Fixtures para o restante do arquivo — via service role, como a
+    // aplicação real faz depois de fileValidation.ts.
+    const { error: adminUploadAError } = await adminUpload(pathA);
+    check("(fixture) service role consegue escrever pathA", !adminUploadAError);
+    const { error: adminUploadBError } = await adminUpload(pathB);
+    check("(fixture) service role consegue escrever pathB", !adminUploadBError);
+
+    const { error: updateOwnError } = await tenantA.client.storage
       .from(BUCKET)
       .upload(pathA, PNG_1X1, { contentType: "image/png", upsert: true });
-    check("tenant A consegue subir arquivo no próprio prefixo", !error);
+    check("UPDATE (upsert em path já existente) do próprio objeto também é negado", !!updateOwnError);
+
+    // DELETE bloqueado por RLS não necessariamente retorna erro pelo
+    // Storage API — o comando pode afetar 0 linhas silenciosamente
+    // (diferente de INSERT/UPDATE, cujo WITH CHECK falhado levanta
+    // exceção). O sinal real de que a policy bloqueou é o objeto continuar
+    // existindo depois.
+    await tenantA.client.storage.from(BUCKET).remove([pathA]);
+    const { error: stillThereError } = await tenantA.client.storage.from(BUCKET).download(pathA);
+    check("DELETE direto do próprio objeto é negado (objeto sobrevive à tentativa)", !stillThereError);
+
+    // src/lib/storage/upload.ts agora faz esta mesma chamada, com a mesma
+    // sessão de usuário, antes de qualquer escrita física — é o gate que
+    // substitui a policy de INSERT removida. Prova aqui que o RPC que ele
+    // depende retorna o valor certo pros dois papéis.
+    const { data: canUploadWithPerm } = await tenantA.client.rpc("has_permission", {
+      p_resource: "files",
+      p_action: "upload",
+    });
+    check("has_permission('files','upload') é true pra quem tem o papel ADMIN", canUploadWithPerm === true);
+
+    const { data: canUploadNoPerm } = await tenantANoPerm.client.rpc("has_permission", {
+      p_resource: "files",
+      p_action: "upload",
+    });
+    check("has_permission('files','upload') é false pra quem não tem a permissão", canUploadNoPerm === false);
   }
 
-  console.log("\n2. Upload no prefixo de outro tenant — bloqueado pela RLS de storage.objects");
-  {
-    const forgedPath = `${tenantB.company.id}/geral/geral/invasao.png`;
-    const { error } = await tenantA.client.storage
-      .from(BUCKET)
-      .upload(forgedPath, PNG_1X1, { contentType: "image/png", upsert: true });
-    check("tenant A não consegue subir arquivo no prefixo do tenant B", !!error);
-  }
-
-  console.log("\n3. Isolamento de leitura no Storage");
+  console.log("\n2. Isolamento de leitura no Storage");
   {
     const { error } = await tenantB.client.storage.from(BUCKET).download(pathA);
     check("tenant B não consegue baixar o objeto do tenant A", !!error);
@@ -136,9 +192,17 @@ async function main() {
       .from(BUCKET)
       .createSignedUrl(pathA, 30);
     check("tenant A consegue gerar signed URL do próprio objeto", !!signed?.signedUrl);
+
+    const { error: noPermReadError } = await tenantANoPerm.client.storage.from(BUCKET).download(pathA);
+    check("usuário do mesmo tenant sem files.read não consegue baixar objeto (SEC-002)", !!noPermReadError);
+
+    const { error: noPermSignedError } = await tenantANoPerm.client.storage
+      .from(BUCKET)
+      .createSignedUrl(pathA, 30);
+    check("usuário sem files.read não consegue gerar signed URL (SEC-002)", !!noPermSignedError);
   }
 
-  console.log("\n4. register_file() — metadado só é aceito dentro do próprio escopo");
+  console.log("\n3. register_file() — metadado só é aceito dentro do próprio escopo");
   {
     const { data: fileId, error } = await tenantA.client.rpc("register_file", {
       p_entity_type: "geral",
@@ -164,7 +228,7 @@ async function main() {
     check("register_file() rejeita caminho fora do escopo da empresa do chamador", !!forgedError);
   }
 
-  console.log("\n5. Metadados — isolamento e imutabilidade por escrita direta");
+  console.log("\n4. Metadados — isolamento e imutabilidade por escrita direta");
   {
     const { data: crossRead } = await tenantB.client
       .from("files")
@@ -190,7 +254,7 @@ async function main() {
     check("cliente não consegue inserir direto em files (só via register_file)", !!directInsertError);
   }
 
-  console.log("\n6. delete_file() — soft delete escopado por empresa");
+  console.log("\n5. delete_file() — soft delete escopado por empresa");
   {
     const { error: crossDeleteError } = await tenantB.client.rpc("delete_file", {
       p_file_id: tenantA.fileId,
@@ -210,108 +274,24 @@ async function main() {
     check("deleted_at foi preenchido após a remoção", !!afterDelete?.deleted_at);
   }
 
-  console.log("\n7. Enforcement no próprio bucket (defesa em profundidade)");
+  console.log("\n6. Bucket recusa MIME fora da allow-list mesmo pra escrita da service role (defesa em profundidade)");
   {
-    const { error: mimeError } = await tenantA.client.storage
-      .from(BUCKET)
-      .upload(`${tenantA.company.id}/geral/geral/malicioso.txt`, Buffer.from("conteudo"), {
-        contentType: "text/plain",
-        upsert: true,
-      });
-    check("bucket rejeita MIME fora da allow-list mesmo com RLS satisfeita", !!mimeError);
+    // Config do bucket (allowed_mime_types) é aplicada pelo próprio motor
+    // de Storage, não por RLS — vale mesmo pra service role. Segunda linha
+    // de defesa caso fileValidation.ts algum dia tenha um bug e deixe passar
+    // um mime_type que não devia.
+    const { error: mimeError } = await adminUpload(
+      `${tenantA.company.id}/geral/geral/${runId}-malicioso.txt`,
+      Buffer.from("conteudo"),
+      "text/plain",
+    );
+    check("bucket rejeita MIME fora da allow-list mesmo vindo da service role", !!mimeError);
   }
 
-  console.log("\n8. UPDATE (upsert em path já existente) — Security Gate Fase 8");
-  {
-    // upload(..., {upsert:true}) para um path que já existe vira internamente
-    // um INSERT ... ON CONFLICT DO UPDATE. Até 20260912150000 não havia
-    // policy de UPDATE em storage.objects: o próprio dono do arquivo era
-    // barrado de reenviar/substituir o próprio objeto (bug real, encontrado
-    // no Security Gate da Fase 8 — sem policy, RLS nega por padrão).
-    const { error: ownUpdateError } = await tenantA.client.storage
-      .from(BUCKET)
-      .upload(pathA, PNG_1X1, { contentType: "image/png", upsert: true });
-    check(
-      "tenant A consegue sobrescrever (UPDATE) o próprio objeto já existente",
-      !ownUpdateError,
-    );
-
-    const { error: foreignUpdateError } = await tenantB.client.storage
-      .from(BUCKET)
-      .upload(pathA, PNG_1X1, { contentType: "image/png", upsert: true });
-    check(
-      "tenant B não consegue sobrescrever (UPDATE) o objeto existente do tenant A",
-      !!foreignUpdateError,
-    );
-  }
-
-  console.log("\n9. RBAC no Storage — Security Gate Fase 8 (SEC-002/003/004)");
-  {
-    const { error: readError } = await tenantANoPerm.client.storage.from(BUCKET).download(pathA);
-    check(
-      "usuário do mesmo tenant sem files.read não consegue baixar objeto (SEC-002)",
-      !!readError,
-    );
-
-    const { error: signedError } = await tenantANoPerm.client.storage
-      .from(BUCKET)
-      .createSignedUrl(pathA, 30);
-    check(
-      "usuário sem files.read não consegue gerar signed URL (SEC-002)",
-      !!signedError,
-    );
-
-    const uploadPath = `${tenantA.company.id}/geral/geral/${runId}-sem-permissao.png`;
-    const { error: uploadError } = await tenantANoPerm.client.storage
-      .from(BUCKET)
-      .upload(uploadPath, PNG_1X1, { contentType: "image/png", upsert: true });
-    check(
-      "usuário sem files.upload não consegue subir arquivo direto no bucket (SEC-003)",
-      !!uploadError,
-    );
-
-    const { error: updateError } = await tenantANoPerm.client.storage
-      .from(BUCKET)
-      .upload(pathA, PNG_1X1, { contentType: "image/png", upsert: true });
-    check(
-      "usuário sem files.upload não consegue sobrescrever objeto existente (SEC-004)",
-      !!updateError,
-    );
-
-    const { error: ownReadError } = await tenantA.client.storage.from(BUCKET).download(pathA);
-    check(
-      "usuário do mesmo tenant COM files.read continua baixando normalmente (sem regressão)",
-      !ownReadError,
-    );
-  }
-
-  console.log("\n10. RBAC no Storage — DELETE (achado de code-review, 15/09)");
-  {
-    // A policy de DELETE do storage.objects só checava tenant, sem
-    // has_permission('files','delete') — mesma classe de gap que
-    // SEC-002/003/004 fechou pros outros três verbos. Reprodutível via
-    // src/lib/storage/upload.ts:71, que chama .remove() direto do client
-    // como rollback de upload sem metadado registrado.
-    const deletePath = `${tenantA.company.id}/geral/geral/${runId}-para-deletar.png`;
-    await tenantA.client.storage.from(BUCKET).upload(deletePath, PNG_1X1, { contentType: "image/png", upsert: true });
-
-    // DELETE bloqueado por RLS não retorna erro pelo Storage API — o
-    // comando afeta 0 linhas silenciosamente (diferente de INSERT/UPDATE,
-    // cujo WITH CHECK falhado levanta exceção). O sinal real de que a
-    // policy bloqueou é o objeto continuar existindo depois.
-    await tenantANoPerm.client.storage.from(BUCKET).remove([deletePath]);
-
-    const { error: stillThereError } = await tenantA.client.storage.from(BUCKET).download(deletePath);
-    check("usuário sem files.delete não consegue apagar objeto (objeto sobrevive)", !stillThereError);
-
-    const { error: deleteComPermError } = await tenantA.client.storage.from(BUCKET).remove([deletePath]);
-    check("usuário COM files.delete consegue apagar o próprio objeto", !deleteComPermError);
-  }
-
-  console.log("\n11. Soft-delete não deixa arquivo baixável (F03, auditoria 15/09/2026)");
+  console.log("\n7. Soft-delete não deixa arquivo baixável (F03, auditoria 15/09/2026)");
   {
     const deletedPath = `${tenantA.company.id}/geral/geral/${runId}-soft-deleted.png`;
-    await tenantA.client.storage.from(BUCKET).upload(deletedPath, PNG_1X1, { contentType: "image/png", upsert: true });
+    await adminUpload(deletedPath);
     const { data: deletedFileId } = await tenantA.client.rpc("register_file", {
       p_entity_type: "geral",
       p_entity_id: null,
@@ -344,12 +324,14 @@ async function main() {
     );
   }
 
-  console.log("\n12. Reconciliação de objetos órfãos no Storage (F01 residual, auditoria 15/09/2026)");
+  console.log("\n8. Reconciliação de objetos órfãos no Storage (F01, crash window residual)");
   {
-    // Simula o "Caminho B" do Mapa: upload direto no Storage sem passar
-    // por register_file() — o objeto existe fisicamente sem metadado.
+    // Desde 20260915040000, um objeto sem metadado só existe se a service
+    // role subiu o arquivo (upload.ts) e o processo morreu antes de rodar
+    // register_file()/o rollback — não mais um bypass deliberado do
+    // usuário. O teste simula essa janela com adminUpload() direto.
     const orphanPath = `${tenantA.company.id}/geral/geral/${runId}-orfao.png`;
-    await tenantA.client.storage.from(BUCKET).upload(orphanPath, PNG_1X1, { contentType: "image/png", upsert: true });
+    await adminUpload(orphanPath);
 
     const { data: notYetOrphan } = await admin.rpc("find_orphaned_storage_objects", {
       p_older_than: "1 hour",

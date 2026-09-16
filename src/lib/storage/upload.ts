@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { logSystemEvent, newCorrelationId } from "@/lib/observability/log";
 import {
   FileValidationError,
@@ -14,10 +15,16 @@ export type UploadResult =
   | { name: string; ok: true; fileId: string }
   | { name: string; ok: false; error: string };
 
-// Faz upload usando o client vinculado à sessão do usuário (nunca a service
-// role): a RLS de storage.objects e a função register_file() são a rede de
-// segurança real, o código da aplicação é só a primeira camada (Prompt
-// Mestre: RLS/multi-tenant/auditoria têm prioridade sobre velocidade).
+// F01 (resíduo, Mapa_Fases_Lacunas_Risco.md, 15/09/2026): RLS não lê bytes
+// de objeto — não dava pra impor fileValidation.ts (magic bytes, resize,
+// limite de pixels) numa policy. storage.objects não concede mais INSERT/
+// UPDATE/DELETE pra `authenticated` (migration 20260915040000): a escrita
+// física só acontece aqui, com a service role, depois que o arquivo já
+// passou pelo pipeline de validação — este módulo é a única via de
+// escrita possível agora, não só "a primeira camada". A checagem de RBAC
+// que a policy fazia migra pra baixo (has_permission explícito antes de
+// qualquer escrita física); register_file() mantém a própria checagem
+// como camada redundante (item 3 do CLAUDE.md).
 export async function uploadCompanyFiles(
   files: File[],
   entityType: string,
@@ -39,6 +46,19 @@ export async function uploadCompanyFiles(
     throw new FileValidationError("Usuário sem empresa associada.");
   }
 
+  const { data: canUpload, error: permissionError } = await supabase.rpc("has_permission", {
+    p_resource: "files",
+    p_action: "upload",
+  });
+  if (permissionError || !canUpload) {
+    throw new FileValidationError("Sem permissão para enviar arquivos.");
+  }
+
+  // Client separado só para a escrita física — nunca reutilizado para
+  // nada que dependa da sessão do usuário (RLS/auditoria continuam vindo
+  // do client de sessão acima, em register_file()).
+  const storageAdmin = createAdminClient();
+
   const results: UploadResult[] = [];
 
   for (const file of files) {
@@ -47,7 +67,7 @@ export async function uploadCompanyFiles(
       const processed = await validateAndProcessFile(Buffer.from(arrayBuffer));
       const storagePath = `${companyId}/${entityType}/${entityId ?? "geral"}/${randomUUID()}.${processed.extension}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await storageAdmin.storage
         .from(BUCKET)
         .upload(storagePath, processed.buffer, {
           contentType: processed.mimeType,
@@ -79,10 +99,14 @@ export async function uploadCompanyFiles(
         p_height: processed.height ?? null,
       });
       if (registerError || !fileId) {
-        // Sem metadado registrado, o objeto no Storage vira lixo — remove.
-        // (Backstop estrutural pro resíduo do F01: find_orphaned_storage_
-        // objects() purga o que sobreviver a esta limpeza best-effort.)
-        await supabase.storage.from(BUCKET).remove([storagePath]);
+        // Sem metadado registrado, o objeto no Storage vira lixo — remove
+        // com a service role (a mesma que escreveu): antes desta mudança
+        // isto rodava com a sessão do usuário e podia falhar silenciosamente
+        // se ele tivesse files.upload mas não files.delete, deixando o
+        // objeto órfão. find_orphaned_storage_objects() continua como rede
+        // de segurança pro que sobreviver mesmo assim (ex.: crash entre o
+        // upload e este remove).
+        await storageAdmin.storage.from(BUCKET).remove([storagePath]);
         // registerError cobre tanto rejeição de negócio esperada (quota,
         // empresa suspensa, sem permissão) quanto falha real — loga como
         // warning porque o caminho feliz já lida com a maioria dos casos
