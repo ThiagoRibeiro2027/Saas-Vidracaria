@@ -25,7 +25,12 @@ export function calcularValidade(syncedAt: string | null, agoraMs: number): Esta
   if (!syncedAt) {
     return { diasSemSync: null, bloqueadoParaCriar: true, expirado: true };
   }
-  const diasSemSync = (agoraMs - new Date(syncedAt).getTime()) / 86_400_000;
+  // Math.max(0, ...): "now" do cliente (Date.now(), só para exibição) e
+  // syncedAt (server_now(), autoritativo) podem divergir por alguns
+  // milissegundos de latência/relógio — sem o clamp, uma sincronização
+  // muito recente mostra um valor negativo sem sentido ("-0.0d") em vez
+  // de simplesmente "0 dias".
+  const diasSemSync = Math.max(0, (agoraMs - new Date(syncedAt).getTime()) / 86_400_000);
   return {
     diasSemSync,
     bloqueadoParaCriar: diasSemSync >= JANELA_BLOQUEIO_DIAS,
