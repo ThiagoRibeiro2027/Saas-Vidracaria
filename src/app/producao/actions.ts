@@ -173,6 +173,67 @@ export async function desativarRoteiroAction(formData: FormData) {
   revalidatePath("/producao");
 }
 
+export async function criarLoteFabrilAction(formData: FormData) {
+  const nome = String(formData.get("nome") ?? "").trim();
+  const criterioAgrupamento = String(formData.get("criterio_agrupamento") ?? "").trim() || null;
+  const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
+  if (!nome) throw new Error("Nome do lote fabril é obrigatório.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_lote_fabril", {
+    p_nome: nome,
+    p_criterio_agrupamento: criterioAgrupamento,
+    p_observacoes: observacoes,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function adicionarItemLoteFabrilAction(formData: FormData) {
+  const loteFabrilId = String(formData.get("lote_fabril_id") ?? "");
+  const opLoteId = String(formData.get("op_lote_id") ?? "");
+  const quantidadeRaw = String(formData.get("quantidade") ?? "").trim();
+  if (!loteFabrilId) throw new Error("Lote fabril inválido.");
+  if (!opLoteId) throw new Error("Selecione um lote de liberação.");
+  const quantidade = Number(quantidadeRaw);
+  if (!quantidadeRaw || !Number.isFinite(quantidade) || quantidade <= 0) {
+    throw new Error("Quantidade deve ser um número maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("adicionar_item_lote_fabril", {
+    p_lote_fabril_id: loteFabrilId,
+    p_op_lote_id: opLoteId,
+    p_quantidade: quantidade,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function removerItemLoteFabrilAction(formData: FormData) {
+  const loteFabrilItemId = String(formData.get("lote_fabril_item_id") ?? "");
+  if (!loteFabrilItemId) throw new Error("Item inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remover_item_lote_fabril", { p_lote_fabril_item_id: loteFabrilItemId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function encerrarLoteFabrilAction(formData: FormData) {
+  const loteFabrilId = String(formData.get("lote_fabril_id") ?? "");
+  if (!loteFabrilId) throw new Error("Lote fabril inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("encerrar_lote_fabril", { p_lote_fabril_id: loteFabrilId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
 export async function cancelarOrdemProducaoAction(formData: FormData) {
   const ordemId = String(formData.get("ordem_producao_id") ?? "");
   const motivo = String(formData.get("motivo") ?? "").trim() || null;

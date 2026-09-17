@@ -11,9 +11,12 @@
 // "liberar integralmente" for desligado, liberando aos poucos via
 // liberar_lote_producao(); e produção paralela/transferência entre
 // recursos (§13) via alocar_recurso_operacao()/transferir_recurso_
-// operacao()/apontar_producao_recurso(). apontar_producao() agora aponta
+// operacao()/apontar_producao_recurso() — apontar_producao() agora aponta
 // numa op_lote_operacao específica (célula lote × operação do roteiro),
-// não mais na OP como um todo.
+// não mais na OP como um todo —, e a Fase 4 (2026-09-17): lote fabril
+// (§14), agrupamento operacional/temporário de lotes de liberação
+// (op_lotes) de diferentes OPs, com lista de corte combinada
+// (lista_corte_lote_fabril()) — não altera pedido/item/OP/op_lote.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -778,7 +781,86 @@ async function main() {
     check("tenant B não enxerga split de recurso do tenant A", (crossRecursos ?? []).length === 0);
   }
 
-  console.log("\n17. Cada ação grava a própria linha de auditoria");
+  console.log("\n18. Lote fabril (TÓPICO 4 §14)");
+  {
+    const fabril = await prepararPedidoLiberado(admTenant, "18", { quantidade: 15 });
+    const { data: opFabrilId } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: fabril.pedidoItemId, p_liberar_integralmente: false,
+    });
+    const { data: loteA } = await admTenant.client.rpc("liberar_lote_producao", { p_ordem_producao_id: opFabrilId, p_quantidade: 6 });
+    const { data: loteB } = await admTenant.client.rpc("liberar_lote_producao", { p_ordem_producao_id: opFabrilId, p_quantidade: 9 });
+
+    const { error: semPermCriaError } = await noPermTenant.client.rpc("criar_lote_fabril", { p_nome: "Sem permissão" });
+    check("sem producao.manage não cria lote fabril", !!semPermCriaError);
+
+    const { data: loteFabrilId, error: criaError } = await admTenant.client.rpc("criar_lote_fabril", {
+      p_nome: "Lote Fabril 001", p_criterio_agrupamento: "mesmo material", p_observacoes: "corte combinado",
+    });
+    check("ADMIN cria lote fabril", !criaError && !!loteFabrilId);
+
+    const { error: semPermAddError } = await noPermTenant.client.rpc("adicionar_item_lote_fabril", {
+      p_lote_fabril_id: loteFabrilId, p_op_lote_id: loteA, p_quantidade: 6,
+    });
+    check("sem producao.manage não adiciona item ao lote fabril", !!semPermAddError);
+
+    const { error: excedeError } = await admTenant.client.rpc("adicionar_item_lote_fabril", {
+      p_lote_fabril_id: loteFabrilId, p_op_lote_id: loteA, p_quantidade: 7,
+    });
+    check("quantidade além do planejado do lote de liberação (7 > 6) é rejeitada", !!excedeError);
+
+    const { data: itemAId, error: addAError } = await admTenant.client.rpc("adicionar_item_lote_fabril", {
+      p_lote_fabril_id: loteFabrilId, p_op_lote_id: loteA, p_quantidade: 6,
+    });
+    check("agrupa o lote de liberação A (6)", !addAError && !!itemAId);
+
+    const { data: itemBId, error: addBError } = await admTenant.client.rpc("adicionar_item_lote_fabril", {
+      p_lote_fabril_id: loteFabrilId, p_op_lote_id: loteB, p_quantidade: 9,
+    });
+    check("agrupa o lote de liberação B (9)", !addBError && !!itemBId);
+
+    const { data: linhas, error: listaError } = await admTenant.client.rpc("lista_corte_lote_fabril", { p_lote_fabril_id: loteFabrilId });
+    check("lista_corte_lote_fabril() traz as 2 linhas agrupadas", !listaError && (linhas ?? []).length === 2);
+    const quantidades = (linhas ?? []).map((l) => Number(l.quantidade)).sort((a, b) => a - b);
+    check("quantidades da lista combinada são as agrupadas (6 e 9), não a da OP inteira", quantidades[0] === 6 && quantidades[1] === 9);
+
+    const { error: semPermListaError } = await noPermTenant.client.rpc("lista_corte_lote_fabril", { p_lote_fabril_id: loteFabrilId });
+    check("sem producao.view não consulta lista de corte de lote fabril de outra empresa", !!semPermListaError);
+
+    const { error: semPermRemoveError } = await noPermTenant.client.rpc("remover_item_lote_fabril", { p_lote_fabril_item_id: itemAId });
+    check("sem producao.manage não remove item do lote fabril", !!semPermRemoveError);
+
+    const { error: removeError } = await admTenant.client.rpc("remover_item_lote_fabril", { p_lote_fabril_item_id: itemAId });
+    check("remove item do lote fabril", !removeError);
+
+    const { error: semPermEncerraError } = await noPermTenant.client.rpc("encerrar_lote_fabril", { p_lote_fabril_id: loteFabrilId });
+    check("sem producao.manage não encerra lote fabril", !!semPermEncerraError);
+
+    const { error: encerraError } = await admTenant.client.rpc("encerrar_lote_fabril", { p_lote_fabril_id: loteFabrilId });
+    check("encerra lote fabril", !encerraError);
+
+    const { error: encerraDeNovoError } = await admTenant.client.rpc("encerrar_lote_fabril", { p_lote_fabril_id: loteFabrilId });
+    check("encerrar lote fabril já encerrado é rejeitado", !!encerraDeNovoError);
+
+    const { error: addAposEncerrarError } = await admTenant.client.rpc("adicionar_item_lote_fabril", {
+      p_lote_fabril_id: loteFabrilId, p_op_lote_id: loteA, p_quantidade: 1,
+    });
+    check("lote fabril encerrado não aceita novos itens", !!addAposEncerrarError);
+
+    const { data: crossLotesFabris } = await otherTenant.client.from("lotes_fabris").select("id").eq("id", loteFabrilId);
+    check("tenant B não enxerga lote fabril do tenant A", (crossLotesFabris ?? []).length === 0);
+    const { data: crossItensLoteFabril } = await otherTenant.client.from("lote_fabril_itens").select("id").eq("lote_fabril_id", loteFabrilId);
+    check("tenant B não enxerga itens do lote fabril do tenant A", (crossItensLoteFabril ?? []).length === 0);
+
+    // O mesmo op_lote pode participar de outro lote fabril — §14: "uma OP
+    // poderá participar de vários lotes fabris" (aqui, o lote de liberação).
+    const { data: loteFabril2Id } = await admTenant.client.rpc("criar_lote_fabril", { p_nome: "Lote Fabril 002" });
+    const { error: reusoError } = await admTenant.client.rpc("adicionar_item_lote_fabril", {
+      p_lote_fabril_id: loteFabril2Id, p_op_lote_id: loteB, p_quantidade: 9,
+    });
+    check("o mesmo lote de liberação pode entrar em outro lote fabril", !reusoError);
+  }
+
+  console.log("\n19. Cada ação grava a própria linha de auditoria");
   {
     const { data: events } = await admin
       .from("activity_logs")
@@ -796,6 +878,10 @@ async function main() {
         "producao.lote_liberado",
         "producao.recurso_alocado",
         "producao.recurso_transferido",
+        "producao.lote_fabril_criado",
+        "producao.item_lote_fabril_adicionado",
+        "producao.item_lote_fabril_removido",
+        "producao.lote_fabril_encerrado",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("ordem_criada registrado", actions.has("producao.ordem_criada"));
@@ -810,6 +896,10 @@ async function main() {
     check("lote_liberado registrado", actions.has("producao.lote_liberado"));
     check("recurso_alocado registrado", actions.has("producao.recurso_alocado"));
     check("recurso_transferido registrado", actions.has("producao.recurso_transferido"));
+    check("lote_fabril_criado registrado", actions.has("producao.lote_fabril_criado"));
+    check("item_lote_fabril_adicionado registrado", actions.has("producao.item_lote_fabril_adicionado"));
+    check("item_lote_fabril_removido registrado", actions.has("producao.item_lote_fabril_removido"));
+    check("lote_fabril_encerrado registrado", actions.has("producao.lote_fabril_encerrado"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

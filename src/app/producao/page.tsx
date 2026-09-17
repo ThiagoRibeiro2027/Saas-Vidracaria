@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import ProducaoSection, { type ListaCorteRow } from "./ProducaoSection";
 import RoteirosSection from "./RoteirosSection";
+import LotesFabrisSection, { type ListaCorteLoteFabrilRow } from "./LotesFabrisSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -13,9 +14,11 @@ import RoteirosSection from "./RoteirosSection";
 // cobrindo a quantidade inteira por padrão ("liberar integralmente"), ou
 // sem nenhum lote se desmarcado, liberando aos poucos via "Liberar lote".
 // Cada lote tem seu próprio acompanhamento por operação. Produção
-// paralela/transferência entre recursos (§13) e lote fabril (§14) ainda
-// sem UI — só pedidos liberados entram aqui (ADR-002 §6: Liberação →
-// Engenharia → Produção).
+// paralela/transferência entre recursos (§13) ainda sem UI (só backend).
+// Fase 4 (2026-09-17): lote fabril (§14) — agrupamento operacional e
+// temporário de lotes de liberação de diferentes OPs, com lista de corte
+// combinada. Não altera pedido/item/OP/lote de liberação. Só pedidos
+// liberados entram aqui (ADR-002 §6: Liberação → Engenharia → Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -48,6 +51,8 @@ export default async function ProducaoPage() {
     { data: opOperacoes },
     { data: roteiros },
     { data: roteiroOperacoes },
+    { data: lotesFabris },
+    { data: loteFabrilItens },
   ] = await Promise.all([
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
@@ -60,6 +65,8 @@ export default async function ProducaoPage() {
     supabase.from("op_lote_operacoes").select("*").order("sequencia", { ascending: true }),
     supabase.from("roteiros_produtivos").select("*").order("created_at", { ascending: true }),
     supabase.from("roteiro_operacoes").select("*").order("sequencia", { ascending: true }),
+    supabase.from("lotes_fabris").select("*").order("created_at", { ascending: true }),
+    supabase.from("lote_fabril_itens").select("*").order("created_at", { ascending: true }),
   ]);
 
   const pedidoItensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
@@ -107,6 +114,22 @@ export default async function ProducaoPage() {
     operacoesPorRoteiro.set(ro.roteiro_id, list);
   }
 
+  // TÓPICO 4 §14: lotes fabris e seus itens (vínculo com op_lotes).
+  const itensPorLoteFabril = new Map<string, NonNullable<typeof loteFabrilItens>>();
+  for (const it of loteFabrilItens ?? []) {
+    const list = itensPorLoteFabril.get(it.lote_fabril_id) ?? [];
+    list.push(it);
+    itensPorLoteFabril.set(it.lote_fabril_id, list);
+  }
+
+  // Label "OP <numero> — Lote <numero> (planejado X)" pra cada op_lote,
+  // usado no seletor de "Adicionar item" do lote fabril.
+  const ordemNumeroPorId = new Map((ordens ?? []).map((o) => [o.id, o.numero] as const));
+  const opLotesOpcoes = (opLotes ?? []).map((l) => ({
+    id: l.id,
+    label: `${ordemNumeroPorId.get(l.ordem_producao_id) ?? "(OP removida)"} — Lote ${l.numero} (planejado ${Number(l.quantidade_planejada).toLocaleString("pt-BR", { maximumFractionDigits: 3 })})`,
+  }));
+
   // Bloqueio por medida (TÓPICO 16 §7) é por pedido, não por item — resolvido
   // aqui (server) pra decidir se o botão "Criar OP" aparece habilitado.
   const bloqueioPorPedido = new Map<string, boolean>();
@@ -128,6 +151,16 @@ export default async function ProducaoPage() {
     }),
   );
 
+  // Lista de corte combinada por lote fabril (§14) — mesma lógica, uma
+  // chamada de leitura por lote fabril existente.
+  const listaCortePorLoteFabril = new Map<string, ListaCorteLoteFabrilRow[]>();
+  await Promise.all(
+    (lotesFabris ?? []).map(async (lf) => {
+      const { data } = await supabase.rpc("lista_corte_lote_fabril", { p_lote_fabril_id: lf.id });
+      listaCortePorLoteFabril.set(lf.id, data ?? []);
+    }),
+  );
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -136,9 +169,9 @@ export default async function ProducaoPage() {
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
           Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
           por item), engenharia liberada versionada, roteiro produtivo configurável com
-          acompanhamento por operação, produção em lotes, conclusão e lista de corte. Divisão por
-          recurso/transferência (§13) já existe no backend, ainda sem tela. Sem sequenciamento,
-          lote fabril ou capacidade/recursos formais.
+          acompanhamento por operação, produção em lotes, lote fabril, conclusão e lista de corte.
+          Divisão por recurso/transferência (§13) já existe no backend, ainda sem tela. Sem
+          sequenciamento ou capacidade/recursos formais.
         </p>
 
         <ProducaoSection
@@ -160,6 +193,14 @@ export default async function ProducaoPage() {
           itens={itens ?? []}
           roteiros={roteiros ?? []}
           operacoesPorRoteiro={operacoesPorRoteiro}
+          canManage={!!canManage}
+        />
+
+        <LotesFabrisSection
+          lotesFabris={lotesFabris ?? []}
+          itensPorLoteFabril={itensPorLoteFabril}
+          opLotesOpcoes={opLotesOpcoes}
+          listaCortePorLoteFabril={listaCortePorLoteFabril}
           canManage={!!canManage}
         />
       </div>
