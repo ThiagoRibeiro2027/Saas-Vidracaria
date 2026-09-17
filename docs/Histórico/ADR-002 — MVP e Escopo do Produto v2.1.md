@@ -1,10 +1,9 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.2\
+**Versão:** 2.1\
 **Tipo:** Architecture Decision Record (ADR)\
-**Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
-escopo do TÓPICO 4)\
+**Data:** 2026-09-09\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
 
@@ -344,109 +343,31 @@ preservar a integridade das quantidades.
 
 **4.7 PCP / Produção**
 
-**Revisado em 2026-09-16 — escopo ampliado para o TÓPICO 4 completo**
-(docs/Prompt TÓPICO 4 — PCP E PRODUÇÃO.md, §1-53, decisão do responsável
-do produto). Substitui o recorte mínimo original desta seção.
-
 Incluído:
 
-- geração de produção, ordens de produção (OP) e apontamentos (§1-3,
-  §38), com liberação/bloqueio conforme requisitos definidos (§3-4);
+- geração de produção;
 
-- engenharia liberada para produção, com versionamento e avaliação de
-  impacto de alterações (§4);
+- ordens/etapas;
 
-- planejamento e programação da produção por horizonte configurável —
-  diário, semanal, mensal, por turno, setor, máquina, linha ou equipe
-  (§5);
+- liberação;
 
-- sequenciamento inteligente **baseado em regras e parâmetros
-  configuráveis** (não IA autônoma, conforme §49) — recomendação
-  classificada (🟢/🟡/🔴), com explicação, e decisão sempre do usuário
-  autorizado: aceitar, rejeitar, modificar ou ignorar (§6-7);
+- fila básica;
 
-- simulação de cenários de programação antes da aplicação, sem alterar a
-  programação oficial sem confirmação (§8);
+- status;
 
-- horizonte e congelamento de programação, com histórico de alterações
-  em período protegido (§9);
+- apontamentos;
 
-- replanejamento orientado por eventos, sempre com decisão humana — "
-  recalcular não significa automaticamente alterar a programação oficial
-  " (§10);
+- consumo de materiais;
 
-- OP com produção parcial, em lotes, em paralelo e com transferência
-  entre recursos, preservando rastreabilidade (§11-13);
+- quantidade produzida;
 
-- lote fabril agrupando quantidades de diferentes OPs para otimização
-  operacional, sem alterar pedido/item/estrutura comercial (§14);
+- perdas/refugos básicos;
 
-- roteiro produtivo configurável por empresa, com acompanhamento
-  operação a operação — planejado, iniciado, produzido, aprovado,
-  rejeitado, retrabalho, saldo (§15-16);
+- retrabalho;
 
-- interfaces por dispositivo (computador, tablet, celular) conforme o
-  perfil de uso (§17);
+- conclusão;
 
-- QR Code/código de barras e etiquetas para OP e lote (§18-19);
-
-- comparação de necessidade × disponibilidade de materiais, com
-  classificação de situação (§20);
-
-- vidro como insumo crítico, com identificação de déficit e geração de
-  necessidade para Suprimentos, sem bloquear etapas independentes do
-  vidro (§21-22);
-
-- sobras reutilizáveis: registro, rastreamento e identificação de
-  oportunidades de reaproveitamento, com decisão do usuário (§24-25) —
-  **excluída a otimização matemática/nesting de combinações**, conforme
-  já delimitado pelo §54 do TÓPICO 4 e mantido por este ADR (ver exclusão
-  no §5);
-
-- qualidade integrada ao processo produtivo, não conformidade,
-  disposição e retrabalho vinculado à produção original, com impacto nos
-  indicadores (§26-29) — sem duplicar o módulo TÓPICO 8 (Qualidade), que
-  permanece responsável pela inspeção formal;
-
-- consumo e perdas comparando planejado × real, com tolerâncias
-  configuráveis e alerta (§30);
-
-- capacidade produtiva (máquinas, equipamentos, linhas, equipes,
-  operadores, turnos, ferramentas), cálculo de capacidade disponível ×
-  necessária e identificação de gargalos (§31-32, §37);
-
-- manutenção preventiva e corretiva de equipamentos, com impacto
-  calculado sobre a programação e apresentação de alternativas (§33-36);
-
-- alterações durante a produção com avaliação prévia de impacto e
-  histórico "antes → alteração → depois → usuário → data/hora → motivo"
-  (§40);
-
-- status de produção e bloqueios configuráveis pela empresa, com motivo
-  estruturado e distinção entre "não produzido" e "não pode ser
-  produzido" (§41-42);
-
-- encerramento de OP por critério de processo (não só quantidade),
-  liberação para estoque/expedição do produto conferido e aprovado
-  (§43-44);
-
-- custos produtivos (planejado × real) por OP, item, pedido, lote,
-  operação ou produto, sem substituir o módulo financeiro (§45);
-
-- rastreabilidade completa pedido → item → OP → lote fabril → operação →
-  recurso → apontamento → material → qualidade → resultado, com
-  histórico de toda alteração relevante (§46-47);
-
-- indicadores de produção, prazo, materiais, capacidade, equipamentos,
-  qualidade e custos (§48);
-
-- permissões por perfil (operador, líder/supervisor, PCP, gestor) e
-  configurabilidade de status, roteiros, operações, recursos, turnos,
-  prioridades, critérios de sequenciamento, tolerâncias e regras de
-  notificação (§50-51);
-
-- lista de corte por chapa/barra (§54, complemento de 12/09/2026), como
-  saída de leitura — não entidade de otimização.
+- rastreabilidade.
 
 O MVP deverá suportar **execução parcial**, preservando a relação entre:
 
@@ -456,17 +377,7 @@ O MVP deverá suportar **execução parcial**, preservando a relação entre:
 
 - quantidade pendente.
 
-Continuam fora mesmo do TÓPICO 4 completo (§49 e §54 do próprio tópico,
-mantidos por este ADR):
-
-- inteligência artificial autônoma ou funcionalidades preditivas —
-  sequenciamento e recomendações usam regras e parâmetros configuráveis;
-
-- otimização matemática/nesting de corte, combinação automática de
-  sobras e integração com máquinas de corte — a decisão final de corte
-  permanece com o operador (§54, "Limites").
-
-Não fazem parte do MVP (demais módulos, sem alteração desta revisão):
+Não fazem parte do MVP:
 
 - sequenciamento avançado;
 
@@ -751,6 +662,18 @@ Ficam fora do MVP:
 
 - Fiscal completo além do necessário definido pelo ADR-004;
 
+- PCP avançado;
+
+- sequenciamento avançado;
+
+- simulação de capacidade;
+
+- otimização matemática;
+
+- OEE;
+
+- manutenção;
+
 - BI avançado;
 
 - CRM avançado;
@@ -763,18 +686,7 @@ Ficam fora do MVP:
 
 - integrações não essenciais;
 
-- otimização matemática/nesting de corte, combinação automática de
-  sobras e integração com máquinas de corte (TÓPICO 4 §54 — mantido
-  mesmo após a ampliação de escopo de 2026-09-16 registrada no §4.7);
-
-- OEE (não previsto no TÓPICO 4 e não incluído por esta revisão).
-
-**Revisado em 2026-09-16:** PCP avançado, sequenciamento avançado,
-simulação de capacidade e manutenção deixam de constar nesta lista —
-passam a fazer parte do MVP conforme o §4.7 revisado, por decisão do
-responsável do produto de ampliar o escopo do TÓPICO 4 para o documento
-completo (respeitados os limites do §54 e a vedação a IA autônoma do
-§49, ambos do próprio TÓPICO 4).
+- otimizações avançadas de produção e corte.
 
 Nenhuma dessas funcionalidades deverá ser antecipada por interpretação
 de outros documentos.
@@ -1120,13 +1032,6 @@ do pedido.**
 
 **Status final: APROVADO**
 
-**Versão consolidada: 2.2**\
-**Alteração desta versão: ampliação do escopo do TÓPICO 4 (PCP/Produção,
-§4.7) para o documento completo — sequenciamento inteligente baseado em
-regras, simulação de cenários, lote fabril, roteiro produtivo
-configurável, capacidade/recursos, manutenção preventiva/corretiva,
-custos produtivos, QR Code/etiquetas e indicadores —, mantidas as
-vedações a IA autônoma e a otimização matemática/nesting de corte já
-fixadas pelo próprio TÓPICO 4 (§49 e §54). Decisão do responsável do
-produto em 2026-09-16, registrada também no §5. Versão anterior (2.1)
-arquivada em docs/Histórico.**
+**Versão consolidada: 2.1**\
+**Alteração desta versão: inclusão de importação inicial controlada de
+dados necessários ao piloto.**

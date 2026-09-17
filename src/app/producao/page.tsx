@@ -1,13 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import ProducaoSection, { type ListaCorteRow } from "./ProducaoSection";
 
-// TÓPICO 4 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
-// dezembro: "o que a fábrica faz"). Uma OP por pedido_item (sem OP parcial/
-// paralela/lote fabril), apontamento de quantidade produzida/perdida,
-// conclusão e lista de corte (§54) — sem sequenciamento, roteiro
-// operação-a-operação ou capacidade/recursos. Só pedidos liberados entram
-// aqui (ADR-002 §6: Liberação → Engenharia → Produção), respeitando o
-// bloqueio por medida não confirmada (TÓPICO 16 §7).
+// TÓPICO 4 — Fase 1 da ampliação de escopo (ADR-002 v2.2): OP parcial (um
+// pedido_item pode ter várias OPs, desde que a soma não ultrapasse a
+// quantidade do item), situação clara (liberada/liberada com
+// restrição/bloqueada) e engenharia liberada versionada. Ainda sem
+// sequenciamento, roteiro operação-a-operação, lote fabril ou
+// capacidade/recursos — isso entra nas fases seguintes do roadmap. Só
+// pedidos liberados entram aqui (ADR-002 §6: Liberação → Engenharia →
+// Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -35,13 +36,15 @@ export default async function ProducaoPage() {
     { data: pessoas },
     { data: obras },
     { data: ordens },
+    { data: engenhariaVersoes },
   ] = await Promise.all([
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
     supabase.from("itens").select("id, codigo, descricao, tipo"),
     supabase.from("pessoas").select("id, nome"),
     supabase.from("obras").select("id, nome"),
-    supabase.from("ordens_producao").select("*"),
+    supabase.from("ordens_producao").select("*").order("created_at", { ascending: true }),
+    supabase.from("engenharia_versoes").select("*").eq("situacao", "liberada"),
   ]);
 
   const pedidoItensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
@@ -51,7 +54,17 @@ export default async function ProducaoPage() {
     pedidoItensPorPedido.set(pi.pedido_id, list);
   }
 
-  const ordemPorPedidoItem = new Map((ordens ?? []).map((o) => [o.pedido_item_id, o] as const));
+  // TÓPICO 4 §11-12: um pedido_item pode ter várias OPs (produção parcial).
+  const ordensPorPedidoItem = new Map<string, NonNullable<typeof ordens>>();
+  for (const op of ordens ?? []) {
+    const list = ordensPorPedidoItem.get(op.pedido_item_id) ?? [];
+    list.push(op);
+    ordensPorPedidoItem.set(op.pedido_item_id, list);
+  }
+
+  const engenhariaVigentePorPedidoItem = new Map(
+    (engenhariaVersoes ?? []).map((v) => [v.pedido_item_id, v] as const),
+  );
 
   // Bloqueio por medida (TÓPICO 16 §7) é por pedido, não por item — resolvido
   // aqui (server) pra decidir se o botão "Criar OP" aparece habilitado.
@@ -80,9 +93,9 @@ export default async function ProducaoPage() {
         <p style={eyebrowStyle}>TÓPICO 4 — Produção</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Ordens de produção</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do M1: uma ordem de produção por item de pedido liberado, apontamento de
-          quantidade produzida e perdida, conclusão e lista de corte. Sem sequenciamento, lote
-          fabril ou roteiro operação-a-operação.
+          Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
+          por item), engenharia liberada versionada, apontamento, conclusão e lista de corte. Ainda
+          sem sequenciamento, lote fabril, roteiro operação-a-operação ou capacidade/recursos.
         </p>
 
         <ProducaoSection
@@ -91,7 +104,8 @@ export default async function ProducaoPage() {
           itens={itens ?? []}
           pessoas={pessoas ?? []}
           obras={obras ?? []}
-          ordemPorPedidoItem={ordemPorPedidoItem}
+          ordensPorPedidoItem={ordensPorPedidoItem}
+          engenhariaVigentePorPedidoItem={engenhariaVigentePorPedidoItem}
           bloqueioPorPedido={bloqueioPorPedido}
           listaCortePorOrdem={listaCortePorOrdem}
           canManage={!!canManage}

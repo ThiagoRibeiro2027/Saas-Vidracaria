@@ -3,12 +3,33 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function criarOrdemProducaoAction(formData: FormData) {
+export async function liberarEngenhariaAction(formData: FormData) {
   const pedidoItemId = String(formData.get("pedido_item_id") ?? "");
   if (!pedidoItemId) throw new Error("Item de pedido inválido.");
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("criar_ordem_producao", { p_pedido_item_id: pedidoItemId });
+  const { error } = await supabase.rpc("liberar_engenharia", {
+    p_pedido_item_id: pedidoItemId,
+    p_observacoes: null,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function criarOrdemProducaoAction(formData: FormData) {
+  const pedidoItemId = String(formData.get("pedido_item_id") ?? "");
+  const quantidadeRaw = String(formData.get("quantidade") ?? "").trim();
+  if (!pedidoItemId) throw new Error("Item de pedido inválido.");
+  if (quantidadeRaw && (!Number.isFinite(Number(quantidadeRaw)) || Number(quantidadeRaw) <= 0)) {
+    throw new Error("Quantidade deve ser um número maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_ordem_producao", {
+    p_pedido_item_id: pedidoItemId,
+    p_quantidade: quantidadeRaw ? Number(quantidadeRaw) : null,
+  });
   if (error) throw new Error(error.message);
 
   revalidatePath("/producao");

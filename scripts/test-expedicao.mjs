@@ -350,6 +350,87 @@ async function main() {
     itemRemovivelId = okId;
   }
 
+  console.log(
+    "\n12b. adicionar_item_expedicao() agrega quantidade_produzida de várias OPs do mesmo item (produção parcial, TÓPICO 4 Fase 1)",
+  );
+  {
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "orcamento", p_prefixo: "ORC12B-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "pedido", p_prefixo: "PED12B-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "ordem_producao", p_prefixo: "OP12B-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "expedicao", p_prefixo: "EXP12B-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+
+    const { data: pessoaId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CNPJ", p_documento: "1122233312b0", p_nome: "JR Box Vidros",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+      p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: pessoaId, p_papel: "CLIENTE", p_ativo: true });
+    const { data: itemId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "VD-12B", p_descricao: "Vidro temperado 10mm",
+      p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
+      p_situacao: "ativo",
+    });
+    const { data: orcamentoId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: pessoaId, p_obra_id: null, p_validade: null,
+      p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: itemId, p_quantidade: 10, p_preco_unitario: 100,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoId, p_decisao: "aprovado" });
+    const { data: pedidoId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoId });
+    await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoId });
+    await admTenant.client.rpc("liberar_pedido", { p_id: pedidoId });
+    const { data: pedidoItem } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoId).single();
+
+    // OP1: 6 unidades, concluída e aprovada pela qualidade — conta pra disponível.
+    const { data: op1Id } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: pedidoItem.id, p_quantidade: 6,
+    });
+    await admTenant.client.rpc("apontar_producao", {
+      p_ordem_producao_id: op1Id, p_quantidade_produzida: 6, p_quantidade_perdida: 0, p_observacao: null,
+    });
+    await admTenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: op1Id });
+    await admTenant.client.rpc("registrar_inspecao_qualidade", {
+      p_ordem_producao_id: op1Id, p_quantidade_aprovada: 6, p_quantidade_reprovada: 0, p_observacoes: null,
+    });
+
+    // OP2: 4 unidades, ainda em produção — NÃO deve contar pra disponível.
+    const { data: op2Id } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: pedidoItem.id, p_quantidade: 4,
+    });
+    await admTenant.client.rpc("apontar_producao", {
+      p_ordem_producao_id: op2Id, p_quantidade_produzida: 2, p_quantidade_perdida: 0, p_observacao: null,
+    });
+
+    const { data: expId } = await admTenant.client.rpc("criar_expedicao", { p_pedido_id: pedidoId });
+
+    const { error: excedeError } = await admTenant.client.rpc("adicionar_item_expedicao", {
+      p_expedicao_id: expId, p_pedido_item_id: pedidoItem.id, p_quantidade: 7,
+    });
+    check(
+      "disponível é só o produzido pela OP concluída+aprovada (6) — a OP2 em produção não conta",
+      !!excedeError,
+    );
+
+    const { data: itemExpId, error } = await admTenant.client.rpc("adicionar_item_expedicao", {
+      p_expedicao_id: expId, p_pedido_item_id: pedidoItem.id, p_quantidade: 6,
+    });
+    check("expede exatamente o agregado das OPs concluídas e aprovadas (6)", !error && !!itemExpId);
+  }
+
   console.log("\n13. remover_item_expedicao() funciona em 'preparando' e libera a disponibilidade");
   {
     const { error: removeError } = await admTenant.client.rpc("remover_item_expedicao", {

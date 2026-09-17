@@ -1,8 +1,10 @@
-// Testes automatizados do TÓPICO 4 — Produção (PCP), recorte mínimo do M1
-// (PLANO DE ENTREGA — MVP DO PILOTO v1.0, novembro): ordem de produção
-// (1:1 com pedido_item), apontamento, conclusão, cancelamento, regra de
-// bloqueio por medida não confirmada (TÓPICO 16 §7) e lista de corte
-// (TÓPICO 4 §54).
+// Testes automatizados do TÓPICO 4 — Produção (PCP). Cobre o recorte
+// mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0, novembro:
+// apontamento, conclusão, cancelamento, lista de corte §54) e a Fase 1 da
+// ampliação de escopo (ADR-002 v2.2, 2026-09-16): produção parcial (1
+// pedido_item pode ter várias OPs, sem ultrapassar a quantidade do item),
+// situação clara da OP com bloqueio por medida não confirmada (TÓPICO 16
+// §7) e engenharia liberada versionada (TÓPICO 4 §4).
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -170,7 +172,10 @@ async function main() {
     check("pedido não liberado não pode gerar ordem de produção", !!error);
   }
 
-  console.log("\n3. Regra de bloqueio por medida não confirmada (TÓPICO 16 §7)");
+  console.log("\n3. Situação da OP e bloqueio por medida não confirmada (TÓPICO 16 §7, TÓPICO 4 §3)");
+  // Ampliação de escopo (Fase 1): a OP passa a NASCER bloqueada em vez de
+  // ter a criação recusada — situação clara, com motivo/origem/impacto/
+  // ação, reavaliada a cada apontamento/conclusão.
   let itemProducaoId;
   const bloqueio = await prepararPedidoLiberado(admTenant, "3", { itemTipo: "produto_acabado", quantidade: 2 });
   {
@@ -178,27 +183,76 @@ async function main() {
       p_tipo_item: bloqueio.itemTipo, p_exige_medicao_confirmada: true, p_ativo: true,
     });
 
-    const { error: semItemProducaoError } = await admTenant.client.rpc("criar_ordem_producao", {
+    const { data: opId, error } = await admTenant.client.rpc("criar_ordem_producao", {
       p_pedido_item_id: bloqueio.pedidoItemId,
     });
-    check("sem item de produção na Engenharia, OP é bloqueada", !!semItemProducaoError);
+    check("OP nasce mesmo sem medida confirmada, em vez de ter a criação recusada", !error && !!opId);
+
+    const { data: op } = await admin.from("ordens_producao").select("*").eq("id", opId).single();
+    check(
+      "OP nasce com situação 'bloqueada' e motivo/origem/ação preenchidos",
+      op?.situacao === "bloqueada" && op?.origem_bloqueio === "medicao" && !!op?.motivo_bloqueio && !!op?.acao_necessaria,
+    );
+
+    const { error: apontarBloqueadaError } = await admTenant.client.rpc("apontar_producao", {
+      p_ordem_producao_id: opId, p_quantidade_produzida: 1, p_quantidade_perdida: 0, p_observacao: null,
+    });
+    check("apontamento em OP bloqueada é rejeitado", !!apontarBloqueadaError);
 
     const { data: ipId } = await admTenant.client.rpc("criar_item_producao", { p_pedido_item_id: bloqueio.pedidoItemId });
     itemProducaoId = ipId;
-    const { error: naoConfirmadaError } = await admTenant.client.rpc("criar_ordem_producao", {
-      p_pedido_item_id: bloqueio.pedidoItemId,
-    });
-    check("medida registrada mas não confirmada ainda bloqueia", !!naoConfirmadaError);
-
     await admTenant.client.rpc("registrar_medicao", {
       p_id: itemProducaoId, p_ambiente: "Sala", p_largura_mm: 1200, p_altura_mm: 800,
     });
     await admTenant.client.rpc("confirmar_medicao", { p_id: itemProducaoId });
 
-    const { data: opId, error: confirmadaError } = await admTenant.client.rpc("criar_ordem_producao", {
-      p_pedido_item_id: bloqueio.pedidoItemId,
+    const { error: apontarLiberadaError } = await admTenant.client.rpc("apontar_producao", {
+      p_ordem_producao_id: opId, p_quantidade_produzida: 2, p_quantidade_perdida: 0, p_observacao: null,
     });
-    check("medida confirmada libera a criação da OP", !confirmadaError && !!opId);
+    check("apontamento aceito depois da medida confirmada (situação reavaliada automaticamente)", !apontarLiberadaError);
+
+    const { data: opDepois } = await admin.from("ordens_producao").select("situacao, motivo_bloqueio").eq("id", opId).single();
+    check(
+      "situação volta a 'liberada' e motivo é limpo após a medida ser confirmada",
+      opDepois?.situacao === "liberada" && opDepois?.motivo_bloqueio === null,
+    );
+  }
+
+  console.log("\n3b. Engenharia liberada (TÓPICO 4 §4) — versionamento e permissão");
+  let engenhariaV2Id;
+  {
+    const { error: semPermError } = await noPermTenant.client.rpc("liberar_engenharia", {
+      p_pedido_item_id: massa.pedidoItemId, p_observacoes: null,
+    });
+    check("sem engenharia.manage não libera engenharia", !!semPermError);
+
+    const { data: v1Id, error: v1Error } = await admTenant.client.rpc("liberar_engenharia", {
+      p_pedido_item_id: massa.pedidoItemId, p_observacoes: "versão inicial",
+    });
+    check("ADMIN libera a primeira versão de engenharia", !v1Error && !!v1Id);
+
+    const { data: v1 } = await admin.from("engenharia_versoes").select("*").eq("id", v1Id).single();
+    check("primeira versão nasce com versao=1 e situação 'liberada'", v1?.versao === 1 && v1?.situacao === "liberada");
+
+    const { data: v2Id } = await admTenant.client.rpc("liberar_engenharia", {
+      p_pedido_item_id: massa.pedidoItemId, p_observacoes: "revisão",
+    });
+    engenhariaV2Id = v2Id;
+    const { data: v1Depois } = await admin
+      .from("engenharia_versoes")
+      .select("situacao, superseded_by_id")
+      .eq("id", v1Id)
+      .single();
+    check(
+      "versão anterior vira 'substituida' e aponta pra nova ao liberar outra",
+      v1Depois?.situacao === "substituida" && v1Depois?.superseded_by_id === v2Id,
+    );
+
+    const { data: crossVersoes } = await otherTenant.client
+      .from("engenharia_versoes")
+      .select("id")
+      .eq("id", v2Id);
+    check("tenant B não enxerga versão de engenharia do tenant A", (crossVersoes ?? []).length === 0);
   }
 
   console.log("\n4. Cria OP — número gerado, quantidade planejada, status inicial");
@@ -210,6 +264,7 @@ async function main() {
 
     const { data: op } = await admin.from("ordens_producao").select("*").eq("id", opId).single();
     check("OP nasce em 'planejada' com quantidade planejada correta", op?.status === "planejada" && Number(op?.quantidade_planejada) === massa.quantidade);
+    check("OP nasce vinculada à versão de engenharia vigente (v2)", op?.engenharia_versao_id === engenhariaV2Id);
     // Prefixo específico não é confiável aqui: prepararPedidoLiberado()
     // reconfigura numbering_sequences (company-scoped) a cada chamada, e
     // várias chamadas acontecem entre a massa (passo 0) e esta OP (passo
@@ -218,10 +273,36 @@ async function main() {
     check("número da OP segue o formato configurado (prefixo + 4 dígitos)", /^OP\d+-\d{4}$/.test(op?.numero ?? ""));
   }
 
-  console.log("\n5. Mesmo pedido_item não pode gerar duas ordens de produção");
+  console.log("\n5. Produção parcial — soma das OPs nunca ultrapassa a quantidade do item (TÓPICO 4 §11-12)");
   {
-    const { error } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: massa.pedidoItemId });
-    check("segunda OP para o mesmo pedido_item é rejeitada", !!error);
+    const parcial = await prepararPedidoLiberado(admTenant, "5", { quantidade: 10 });
+
+    const { data: op1Id, error: op1Error } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: parcial.pedidoItemId, p_quantidade: 6,
+    });
+    check("primeira OP parcial (6 de 10) aceita", !op1Error && !!op1Id);
+
+    const { data: op2Id, error: op2Error } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: parcial.pedidoItemId, p_quantidade: 3,
+    });
+    check("segunda OP parcial (3 de 10, saldo restante 1) aceita", !op2Error && !!op2Id);
+
+    const { error: excedeError } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: parcial.pedidoItemId, p_quantidade: 2,
+    });
+    check("terceira OP que ultrapassa o saldo restante (2 > 1) é rejeitada", !!excedeError);
+
+    const { data: op3Id, error: op3Error } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: parcial.pedidoItemId,
+    });
+    check("OP sem quantidade explícita usa o saldo restante (1)", !op3Error && !!op3Id);
+    const { data: op3 } = await admin.from("ordens_producao").select("quantidade_planejada").eq("id", op3Id).single();
+    check("OP criada com o saldo restante correto (1)", Number(op3?.quantidade_planejada) === 1);
+
+    const { error: semSaldoError } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: parcial.pedidoItemId,
+    });
+    check("nova OP sem saldo restante (0) é rejeitada", !!semSaldoError);
   }
 
   console.log("\n6. Apontamento — validações e efeito");
@@ -374,12 +455,14 @@ async function main() {
         "producao.apontamento_registrado",
         "producao.ordem_concluida",
         "producao.ordem_cancelada",
+        "engenharia.versao_liberada",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("ordem_criada registrado", actions.has("producao.ordem_criada"));
     check("apontamento_registrado registrado", actions.has("producao.apontamento_registrado"));
     check("ordem_concluida registrado", actions.has("producao.ordem_concluida"));
     check("ordem_cancelada registrado", actions.has("producao.ordem_cancelada"));
+    check("versao_liberada registrado", actions.has("engenharia.versao_liberada"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
