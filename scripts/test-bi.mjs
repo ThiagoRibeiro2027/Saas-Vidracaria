@@ -128,9 +128,9 @@ async function prepararPipelineCompleto(tenant, sufixo, quantidade = 10, precoUn
   const { data: opId } = await tenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: pedidoItem.id });
   // TÓPICO 4 §16 (Fase 2): sem roteiro configurado, a OP nasce com uma
   // única op_operacao "Produção" — apontar_producao() aponta nela.
-  const { data: opOperacao } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", opId).single();
+  const { data: opOperacao } = await admin.from("op_lote_operacoes").select("id").eq("ordem_producao_id", opId).single();
   await tenant.client.rpc("apontar_producao", {
-    p_op_operacao_id: opOperacao?.id, p_quantidade_produzida: quantidade, p_quantidade_rejeitada: 1, p_quantidade_retrabalho: 0, p_observacao: null,
+    p_op_lote_operacao_id: opOperacao?.id, p_quantidade_produzida: quantidade, p_quantidade_rejeitada: 1, p_quantidade_retrabalho: 0, p_observacao: null,
   });
   await tenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opId });
   await tenant.client.rpc("registrar_inspecao_qualidade", { p_ordem_producao_id: opId, p_quantidade_aprovada: quantidade, p_quantidade_reprovada: 0, p_observacoes: null });

@@ -142,9 +142,9 @@ async function prepararOrdemConcluida(tenant, sufixo, quantidade = 10) {
   if (criarErr) console.error("[fixture] criar_ordem_producao falhou:", criarErr);
   // TÓPICO 4 §16 (Fase 2): sem roteiro configurado, a OP nasce com uma
   // única op_operacao "Produção" — apontar_producao() aponta nela.
-  const { data: opOperacao } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", opId).single();
+  const { data: opOperacao } = await admin.from("op_lote_operacoes").select("id").eq("ordem_producao_id", opId).single();
   const { error: apontarErr } = await tenant.client.rpc("apontar_producao", {
-    p_op_operacao_id: opOperacao?.id, p_quantidade_produzida: quantidade, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "lote único",
+    p_op_lote_operacao_id: opOperacao?.id, p_quantidade_produzida: quantidade, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "lote único",
   });
   if (apontarErr) console.error("[fixture] apontar_producao falhou:", apontarErr);
   const { error: concluirErr } = await tenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opId });
@@ -212,9 +212,9 @@ async function main() {
     });
     check("OP 'planejada' (nunca apontada) é rejeitada", !!planejadaError);
 
-    const { data: opOperacaoEmAndamento } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", emAndamento).single();
+    const { data: opOperacaoEmAndamento } = await admin.from("op_lote_operacoes").select("id").eq("ordem_producao_id", emAndamento).single();
     await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOperacaoEmAndamento?.id, p_quantidade_produzida: 3, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opOperacaoEmAndamento?.id, p_quantidade_produzida: 3, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     const { error: emProducaoError } = await admTenant.client.rpc("registrar_inspecao_qualidade", {
       p_ordem_producao_id: emAndamento, p_quantidade_aprovada: 3, p_quantidade_reprovada: 0, p_observacoes: null,
@@ -483,9 +483,9 @@ async function main() {
 
   console.log("\n22. Invariantes de T4 preservados numa OP bloqueada por qualidade (sem regressão)");
   {
-    const { data: opOperacaoParcial } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", parcial.opId).single();
+    const { data: opOperacaoParcial } = await admin.from("op_lote_operacoes").select("id").eq("ordem_producao_id", parcial.opId).single();
     const { error: apontarError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOperacaoParcial?.id, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opOperacaoParcial?.id, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check("apontar em OP concluída continua rejeitado, mesmo já aprovada pela qualidade", !!apontarError);
 

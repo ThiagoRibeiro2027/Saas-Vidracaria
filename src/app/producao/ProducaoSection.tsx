@@ -3,6 +3,7 @@
 import {
   liberarEngenhariaAction,
   criarOrdemProducaoAction,
+  liberarLoteProducaoAction,
   apontarProducaoAction,
   concluirOrdemProducaoAction,
   cancelarOrdemProducaoAction,
@@ -35,9 +36,20 @@ type EngenhariaVersao = {
   liberado_em: string;
   observacoes: string | null;
 };
+type OpLote = {
+  id: string;
+  ordem_producao_id: string;
+  numero: number;
+  quantidade_planejada: number;
+  quantidade_produzida: number;
+  quantidade_rejeitada: number;
+  saldo: number;
+  status: "liberado" | "em_andamento" | "concluido";
+};
 type OpOperacao = {
   id: string;
   ordem_producao_id: string;
+  op_lote_id: string;
   sequencia: number;
   descricao: string;
   recurso_necessario: string | null;
@@ -88,6 +100,18 @@ const SITUACAO_COLOR: Record<OrdemProducao["situacao"], string> = {
   bloqueada: "#9b2c2c",
 };
 
+const LOTE_STATUS_LABEL: Record<OpLote["status"], string> = {
+  liberado: "Liberado",
+  em_andamento: "Em andamento",
+  concluido: "Concluído",
+};
+
+const LOTE_STATUS_COLOR: Record<OpLote["status"], string> = {
+  liberado: "#6b7a75",
+  em_andamento: "#b7791f",
+  concluido: "#1f5d57",
+};
+
 const OPERACAO_STATUS_LABEL: Record<OpOperacao["status"], string> = {
   planejada: "Planejada",
   em_andamento: "Em andamento",
@@ -110,7 +134,8 @@ export default function ProducaoSection({
   engenhariaVigentePorPedidoItem,
   bloqueioPorPedido,
   listaCortePorOrdem,
-  opOperacoesPorOrdem,
+  opLotesPorOrdem,
+  opOperacoesPorLote,
   canManage,
 }: {
   pedidos: Pedido[];
@@ -122,7 +147,8 @@ export default function ProducaoSection({
   engenhariaVigentePorPedidoItem: Map<string, EngenhariaVersao>;
   bloqueioPorPedido: Map<string, boolean>;
   listaCortePorOrdem: Map<string, ListaCorteRow[]>;
-  opOperacoesPorOrdem: Map<string, OpOperacao[]>;
+  opLotesPorOrdem: Map<string, OpLote[]>;
+  opOperacoesPorLote: Map<string, OpOperacao[]>;
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -207,7 +233,7 @@ export default function ProducaoSection({
                           {canManage && saldo > 0 && (
                             <form
                               action={criarOrdemProducaoAction}
-                              style={{ display: "flex", gap: "4px", marginTop: "4px", alignItems: "center" }}
+                              style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "4px", alignItems: "center" }}
                             >
                               <input type="hidden" name="pedido_item_id" value={pi.id} />
                               <input
@@ -219,6 +245,10 @@ export default function ProducaoSection({
                                 placeholder={`até ${num(saldo)}`}
                                 style={{ ...inputStyle, width: "80px" }}
                               />
+                              <label style={{ ...hintStyle, display: "flex", gap: "3px", alignItems: "center", margin: 0 }}>
+                                <input type="checkbox" name="liberar_integralmente" defaultChecked />
+                                liberar integralmente
+                              </label>
                               <button type="submit" style={buttonStyle}>
                                 Criar OP
                               </button>
@@ -252,94 +282,135 @@ export default function ProducaoSection({
                                   </p>
                                 )}
                                 {(() => {
-                                  const operacoes = (opOperacoesPorOrdem.get(op.id) ?? [])
-                                    .slice()
-                                    .sort((a, b) => a.sequencia - b.sequencia);
-                                  const todasConcluidas = operacoes.length > 0 && operacoes.every((o) => o.status === "concluida");
+                                  const lotes = (opLotesPorOrdem.get(op.id) ?? []).slice().sort((a, b) => a.numero - b.numero);
+                                  const podeMexer = canManage && (op.status === "planejada" || op.status === "em_producao");
+                                  const jaLiberado = lotes.reduce((acc, l) => acc + Number(l.quantidade_planejada), 0);
+                                  const saldoNaoLiberado = Number(op.quantidade_planejada) - jaLiberado;
+                                  const todasOperacoes = lotes.flatMap((l) => opOperacoesPorLote.get(l.id) ?? []);
+                                  const todasConcluidas = todasOperacoes.length > 0 && todasOperacoes.every((o) => o.status === "concluida");
                                   return (
                                     <>
-                                      {operacoes.length > 0 && (
-                                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", marginTop: "6px" }}>
-                                          <thead>
-                                            <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                                              <th style={thStyle}>Operação</th>
-                                              <th style={thStyle}>Status</th>
-                                              <th style={thStyle}>Produzido</th>
-                                              <th style={thStyle}>Rejeitado</th>
-                                              <th style={thStyle}>Retrabalho</th>
-                                              <th style={thStyle}>Saldo</th>
-                                              {canManage && (op.status === "planejada" || op.status === "em_producao") && (
-                                                <th style={thStyle}></th>
-                                              )}
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {operacoes.map((o) => (
-                                              <tr key={o.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                                                <td style={tdStyle}>
-                                                  {o.sequencia}. {o.descricao}
-                                                </td>
-                                                <td style={tdStyle}>
-                                                  <span style={{ fontFamily: "monospace", color: OPERACAO_STATUS_COLOR[o.status] }}>
-                                                    {OPERACAO_STATUS_LABEL[o.status]}
-                                                  </span>
-                                                </td>
-                                                <td style={tdStyle}>
-                                                  {num(o.quantidade_produzida)} / {num(o.quantidade_planejada)}
-                                                </td>
-                                                <td style={tdStyle}>{num(o.quantidade_rejeitada)}</td>
-                                                <td style={tdStyle}>{num(o.quantidade_retrabalho)}</td>
-                                                <td style={tdStyle}>{num(o.saldo)}</td>
-                                                {canManage && (op.status === "planejada" || op.status === "em_producao") && (
-                                                  <td style={tdStyle}>
-                                                    {o.status !== "concluida" && (
-                                                      <form
-                                                        action={apontarProducaoAction}
-                                                        style={{ display: "flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}
-                                                      >
-                                                        <input type="hidden" name="op_operacao_id" value={o.id} />
-                                                        <input
-                                                          name="quantidade_produzida"
-                                                          type="number"
-                                                          step="0.001"
-                                                          min="0"
-                                                          placeholder="produzida"
-                                                          style={{ ...inputStyle, width: "62px" }}
-                                                        />
-                                                        <input
-                                                          name="quantidade_rejeitada"
-                                                          type="number"
-                                                          step="0.001"
-                                                          min="0"
-                                                          placeholder="rejeitada"
-                                                          style={{ ...inputStyle, width: "62px" }}
-                                                        />
-                                                        <input
-                                                          name="quantidade_retrabalho"
-                                                          type="number"
-                                                          step="0.001"
-                                                          min="0"
-                                                          placeholder="retrabalho"
-                                                          style={{ ...inputStyle, width: "62px" }}
-                                                        />
-                                                        <input
-                                                          name="observacao"
-                                                          placeholder="obs. (opcional)"
-                                                          style={{ ...inputStyle, width: "100px" }}
-                                                        />
-                                                        <button type="submit" style={buttonStyle}>
-                                                          Apontar
-                                                        </button>
-                                                      </form>
+                                      {lotes.map((lote) => {
+                                        const operacoes = (opOperacoesPorLote.get(lote.id) ?? [])
+                                          .slice()
+                                          .sort((a, b) => a.sequencia - b.sequencia);
+                                        return (
+                                          <div key={lote.id} style={{ marginTop: "6px" }}>
+                                            <div style={{ display: "flex", gap: "6px", alignItems: "baseline", fontSize: "11px" }}>
+                                              <strong>Lote {lote.numero}</strong>
+                                              <span style={{ fontFamily: "monospace", color: LOTE_STATUS_COLOR[lote.status] }}>
+                                                {LOTE_STATUS_LABEL[lote.status]}
+                                              </span>
+                                              <span>
+                                                {num(lote.quantidade_produzida)} / {num(lote.quantidade_planejada)}
+                                              </span>
+                                            </div>
+                                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", marginTop: "2px" }}>
+                                              <thead>
+                                                <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
+                                                  <th style={thStyle}>Operação</th>
+                                                  <th style={thStyle}>Status</th>
+                                                  <th style={thStyle}>Produzido</th>
+                                                  <th style={thStyle}>Rejeitado</th>
+                                                  <th style={thStyle}>Retrabalho</th>
+                                                  <th style={thStyle}>Saldo</th>
+                                                  {podeMexer && <th style={thStyle}></th>}
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {operacoes.map((o) => (
+                                                  <tr key={o.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
+                                                    <td style={tdStyle}>
+                                                      {o.sequencia}. {o.descricao}
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                      <span style={{ fontFamily: "monospace", color: OPERACAO_STATUS_COLOR[o.status] }}>
+                                                        {OPERACAO_STATUS_LABEL[o.status]}
+                                                      </span>
+                                                    </td>
+                                                    <td style={tdStyle}>
+                                                      {num(o.quantidade_produzida)} / {num(o.quantidade_planejada)}
+                                                    </td>
+                                                    <td style={tdStyle}>{num(o.quantidade_rejeitada)}</td>
+                                                    <td style={tdStyle}>{num(o.quantidade_retrabalho)}</td>
+                                                    <td style={tdStyle}>{num(o.saldo)}</td>
+                                                    {podeMexer && (
+                                                      <td style={tdStyle}>
+                                                        {o.status !== "concluida" && (
+                                                          <form
+                                                            action={apontarProducaoAction}
+                                                            style={{ display: "flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}
+                                                          >
+                                                            <input type="hidden" name="op_lote_operacao_id" value={o.id} />
+                                                            <input
+                                                              name="quantidade_produzida"
+                                                              type="number"
+                                                              step="0.001"
+                                                              min="0"
+                                                              placeholder="produzida"
+                                                              style={{ ...inputStyle, width: "62px" }}
+                                                            />
+                                                            <input
+                                                              name="quantidade_rejeitada"
+                                                              type="number"
+                                                              step="0.001"
+                                                              min="0"
+                                                              placeholder="rejeitada"
+                                                              style={{ ...inputStyle, width: "62px" }}
+                                                            />
+                                                            <input
+                                                              name="quantidade_retrabalho"
+                                                              type="number"
+                                                              step="0.001"
+                                                              min="0"
+                                                              placeholder="retrabalho"
+                                                              style={{ ...inputStyle, width: "62px" }}
+                                                            />
+                                                            <input
+                                                              name="observacao"
+                                                              placeholder="obs. (opcional)"
+                                                              style={{ ...inputStyle, width: "100px" }}
+                                                            />
+                                                            <button type="submit" style={buttonStyle}>
+                                                              Apontar
+                                                            </button>
+                                                          </form>
+                                                        )}
+                                                      </td>
                                                     )}
-                                                  </td>
-                                                )}
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        );
+                                      })}
+                                      {lotes.length === 0 && (
+                                        <p style={{ ...hintStyle, margin: "4px 0 0" }}>
+                                          Nenhum lote liberado ainda — libere um lote pra começar a apontar (TÓPICO 4 §12).
+                                        </p>
                                       )}
-                                      {canManage && (op.status === "planejada" || op.status === "em_producao") && (
+                                      {podeMexer && saldoNaoLiberado > 0 && (
+                                        <form
+                                          action={liberarLoteProducaoAction}
+                                          style={{ display: "flex", gap: "4px", marginTop: "6px", alignItems: "center" }}
+                                        >
+                                          <input type="hidden" name="ordem_producao_id" value={op.id} />
+                                          <input
+                                            name="quantidade"
+                                            type="number"
+                                            step="0.001"
+                                            min="0"
+                                            max={saldoNaoLiberado}
+                                            placeholder={`até ${num(saldoNaoLiberado)}`}
+                                            style={{ ...inputStyle, width: "80px" }}
+                                          />
+                                          <button type="submit" style={buttonStyle}>
+                                            Liberar lote
+                                          </button>
+                                        </form>
+                                      )}
+                                      {podeMexer && (
                                         <div style={{ display: "flex", gap: "4px", marginTop: "6px" }}>
                                           <form action={concluirOrdemProducaoAction}>
                                             <input type="hidden" name="ordem_producao_id" value={op.id} />

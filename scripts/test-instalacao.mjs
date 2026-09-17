@@ -147,9 +147,9 @@ async function prepararItemEntregue(tenant, sufixo, quantidade = 10, { comObra =
   if (criarErr) console.error("[fixture] criar_ordem_producao falhou:", criarErr);
   // TÓPICO 4 §16 (Fase 2): sem roteiro configurado, a OP nasce com uma
   // única op_operacao "Produção" — apontar_producao() aponta nela.
-  const { data: opOperacao } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", opId).single();
+  const { data: opOperacao } = await admin.from("op_lote_operacoes").select("id").eq("ordem_producao_id", opId).single();
   const { error: apontarErr } = await tenant.client.rpc("apontar_producao", {
-    p_op_operacao_id: opOperacao?.id, p_quantidade_produzida: quantidade, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "lote único",
+    p_op_lote_operacao_id: opOperacao?.id, p_quantidade_produzida: quantidade, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "lote único",
   });
   if (apontarErr) console.error("[fixture] apontar_producao falhou:", apontarErr);
   const { error: concluirErr } = await tenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opId });

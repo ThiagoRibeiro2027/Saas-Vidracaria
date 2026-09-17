@@ -1,13 +1,19 @@
 // Testes automatizados do TÓPICO 4 — Produção (PCP). Cobre o recorte
 // mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0, novembro:
-// apontamento, conclusão, cancelamento, lista de corte §54), a Fase 1 da
-// ampliação de escopo (ADR-002 v2.2, 2026-09-16): produção parcial (1
-// pedido_item pode ter várias OPs, sem ultrapassar a quantidade do item),
-// situação clara da OP com bloqueio por medida não confirmada (TÓPICO 16
-// §7) e engenharia liberada versionada (TÓPICO 4 §4), e a Fase 2
-// (2026-09-17): roteiro produtivo configurável por item (§15) e
-// acompanhamento por operação (§16) — apontar_producao() agora aponta numa
-// op_operacao específica, não mais na OP como um todo.
+// apontamento, conclusão, cancelamento, lista de corte §54), a Fase 1
+// (ADR-002 v2.2, 2026-09-16): produção parcial (1 pedido_item pode ter
+// várias OPs, sem ultrapassar a quantidade do item), situação clara da OP
+// com bloqueio por medida não confirmada (TÓPICO 16 §7) e engenharia
+// liberada versionada (TÓPICO 4 §4), a Fase 2 (2026-09-17): roteiro
+// produtivo configurável por item (§15) e acompanhamento por operação
+// (§16), e a Fase 3 (2026-09-17): produção em lotes (§12) — cada OP nasce
+// com 1 lote cobrindo a quantidade inteira (padrão) ou sem nenhum lote se
+// "liberar integralmente" for desligado, liberando aos poucos via
+// liberar_lote_producao(); e produção paralela/transferência entre
+// recursos (§13) via alocar_recurso_operacao()/transferir_recurso_
+// operacao()/apontar_producao_recurso(). apontar_producao() agora aponta
+// numa op_lote_operacao específica (célula lote × operação do roteiro),
+// não mais na OP como um todo.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -151,11 +157,13 @@ async function prepararPedidoLiberado(tenant, sufixo, { itemTipo = "materia_prim
 }
 
 // Item sem roteiro ativo gera OP com uma única operação genérica
-// "Produção" (fallback, TÓPICO 4 §15) — helper pra resolver o
-// op_operacao_id nos testes que não exercitam roteiro multi-etapa.
+// "Produção" (fallback, TÓPICO 4 §15), dentro do lote único que
+// criar_ordem_producao() cria por padrão (liberar_integralmente=true,
+// TÓPICO 4 §12) — helper pra resolver o op_lote_operacao_id nos testes
+// que não exercitam roteiro multi-etapa nem lotes explícitos.
 async function operacaoUnica(ordemProducaoId) {
   const { data, error } = await admin
-    .from("op_operacoes")
+    .from("op_lote_operacoes")
     .select("id")
     .eq("ordem_producao_id", ordemProducaoId)
     .single();
@@ -212,7 +220,7 @@ async function main() {
 
     const opOpIdBloqueio = await operacaoUnica(opId);
     const { error: apontarBloqueadaError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOpIdBloqueio, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opOpIdBloqueio, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check("apontamento em OP bloqueada é rejeitado", !!apontarBloqueadaError);
 
@@ -224,7 +232,7 @@ async function main() {
     await admTenant.client.rpc("confirmar_medicao", { p_id: itemProducaoId });
 
     const { error: apontarLiberadaError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOpIdBloqueio, p_quantidade_produzida: 2, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opOpIdBloqueio, p_quantidade_produzida: 2, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check("apontamento aceito depois da medida confirmada (situação reavaliada automaticamente)", !apontarLiberadaError);
 
@@ -327,21 +335,21 @@ async function main() {
   {
     opOpId = await operacaoUnica(opId);
     check("OP sem roteiro configurado nasce com uma única operação 'Produção'", !!opOpId);
-    const { data: unicaOp } = await admin.from("op_operacoes").select("sequencia, descricao").eq("id", opOpId).single();
+    const { data: unicaOp } = await admin.from("op_lote_operacoes").select("sequencia, descricao").eq("id", opOpId).single();
     check("operação de fallback é sequência 1 'Produção'", unicaOp?.sequencia === 1 && unicaOp?.descricao === "Produção");
 
     const { error: negativoError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOpId, p_quantidade_produzida: -1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opOpId, p_quantidade_produzida: -1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check("apontamento com quantidade negativa é rejeitado", !!negativoError);
 
     const { error: zeradoError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOpId, p_quantidade_produzida: 0, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opOpId, p_quantidade_produzida: 0, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check("apontamento zerado (todas as quantidades) é rejeitado", !!zeradoError);
 
     const { error } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOpId, p_quantidade_produzida: 2, p_quantidade_rejeitada: 0.5, p_quantidade_retrabalho: 0, p_observacao: "primeiro corte",
+      p_op_lote_operacao_id: opOpId, p_quantidade_produzida: 2, p_quantidade_rejeitada: 0.5, p_quantidade_retrabalho: 0, p_observacao: "primeiro corte",
     });
     check("apontamento válido aceito", !error);
 
@@ -354,14 +362,14 @@ async function main() {
   console.log("\n7. Múltiplos apontamentos acumulam até a quantidade planejada");
   {
     const { error } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOpId, p_quantidade_produzida: 3, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "segundo corte",
+      p_op_lote_operacao_id: opOpId, p_quantidade_produzida: 3, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "segundo corte",
     });
     check("segundo apontamento aceito", !error);
 
     const { data: op } = await admin.from("ordens_producao").select("quantidade_produzida").eq("id", opId).single();
     check("quantidade_produzida soma os dois apontamentos (5 de 5)", Number(op?.quantidade_produzida) === 5);
 
-    const { data: operacao } = await admin.from("op_operacoes").select("status, saldo").eq("id", opOpId).single();
+    const { data: operacao } = await admin.from("op_lote_operacoes").select("status, saldo").eq("id", opOpId).single();
     check("operação única vira 'concluida' ao atingir a quantidade planejada", operacao?.status === "concluida");
     check("saldo da operação zera", Number(operacao?.saldo) === 0);
   }
@@ -372,7 +380,7 @@ async function main() {
     const { data: opCedoId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: cedo.pedidoItemId });
     const opCedoOpId = await operacaoUnica(opCedoId);
     await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opCedoOpId, p_quantidade_produzida: 4, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opCedoOpId, p_quantidade_produzida: 4, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     const { error: cedoError } = await admTenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opCedoId });
     check("concluir antes de atingir a quantidade planejada é rejeitado", !!cedoError);
@@ -387,7 +395,7 @@ async function main() {
   console.log("\n9. OP concluída não aceita novo apontamento nem nova conclusão");
   {
     const { error: apontarError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opOpId, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opOpId, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check("apontar em OP concluída é rejeitado", !!apontarError);
 
@@ -455,12 +463,12 @@ async function main() {
     const opIsolamentoOpId = await operacaoUnica(opIsolamentoId);
 
     const { error: crossApontarError } = await otherTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: opIsolamentoOpId, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: opIsolamentoOpId, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check("tenant B não consegue apontar produção em OP do tenant A", !!crossApontarError);
 
-    const { data: crossOperacoes } = await otherTenant.client.from("op_operacoes").select("id").eq("ordem_producao_id", opIsolamentoId);
-    check("tenant B não enxerga op_operacoes do tenant A", (crossOperacoes ?? []).length === 0);
+    const { data: crossOperacoes } = await otherTenant.client.from("op_lote_operacoes").select("id").eq("ordem_producao_id", opIsolamentoId);
+    check("tenant B não enxerga op_lote_operacoes do tenant A", (crossOperacoes ?? []).length === 0);
 
     const { error: crossCancelarError } = await otherTenant.client.rpc("cancelar_ordem_producao", {
       p_ordem_producao_id: opIsolamentoId, p_motivo: "invasão",
@@ -532,7 +540,7 @@ async function main() {
     check("cria OP para item com roteiro ativo", !opComRoteiroError && !!opComRoteiroId);
 
     const { data: operacoesSnapshot } = await admin
-      .from("op_operacoes")
+      .from("op_lote_operacoes")
       .select("*")
       .eq("ordem_producao_id", opComRoteiroId)
       .order("sequencia", { ascending: true });
@@ -544,17 +552,17 @@ async function main() {
     const [snapCorte, snapMontagem] = operacoesSnapshot ?? [];
 
     const { error: pulaOperacaoError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: snapMontagem.id, p_quantidade_produzida: 5, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: snapMontagem.id, p_quantidade_produzida: 5, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check("apontar na 2ª operação antes da 1ª entregar nada é rejeitado (fluxo sequencial)", !!pulaOperacaoError);
 
     const { error: corteError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: snapCorte.id, p_quantidade_produzida: 12, p_quantidade_rejeitada: 1, p_quantidade_retrabalho: 2, p_observacao: "corte lote 1",
+      p_op_lote_operacao_id: snapCorte.id, p_quantidade_produzida: 12, p_quantidade_rejeitada: 1, p_quantidade_retrabalho: 2, p_observacao: "corte lote 1",
     });
     check("aponta produzida/rejeitada/retrabalho na 1ª operação (Corte)", !corteError);
 
     const { error: excedeAnteriorError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: snapMontagem.id, p_quantidade_produzida: 13, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      p_op_lote_operacao_id: snapMontagem.id, p_quantidade_produzida: 13, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     check(
       "2ª operação não pode acumular mais produzido do que a 1ª já entregou (12)",
@@ -562,7 +570,7 @@ async function main() {
     );
 
     const { error: dentroDoLimiteError } = await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: snapMontagem.id, p_quantidade_produzida: 12, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "montagem lote 1",
+      p_op_lote_operacao_id: snapMontagem.id, p_quantidade_produzida: 12, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "montagem lote 1",
     });
     check("2ª operação aceita produzir até o que a 1ª entregou (12)", !dentroDoLimiteError);
 
@@ -570,14 +578,14 @@ async function main() {
     check("conclusão é rejeitada enquanto a 1ª operação (planejada 20) não atingiu o total", !!concluirParcialError);
 
     await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: snapCorte.id, p_quantidade_produzida: 8, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "corte lote 2",
+      p_op_lote_operacao_id: snapCorte.id, p_quantidade_produzida: 8, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "corte lote 2",
     });
     await admTenant.client.rpc("apontar_producao", {
-      p_op_operacao_id: snapMontagem.id, p_quantidade_produzida: 8, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "montagem lote 2",
+      p_op_lote_operacao_id: snapMontagem.id, p_quantidade_produzida: 8, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "montagem lote 2",
     });
 
     const { data: operacoesFinal } = await admin
-      .from("op_operacoes")
+      .from("op_lote_operacoes")
       .select("status")
       .eq("ordem_producao_id", opComRoteiroId);
     check(
@@ -607,7 +615,7 @@ async function main() {
       p_pedido_item_id: roteiro.pedidoItemId,
     });
     const { data: operacoesAposDesativar } = await admin
-      .from("op_operacoes")
+      .from("op_lote_operacoes")
       .select("descricao, sequencia")
       .eq("ordem_producao_id", opAposDesativarId);
     check(
@@ -616,7 +624,161 @@ async function main() {
     );
   }
 
-  console.log("\n15. Cada ação grava a própria linha de auditoria");
+  console.log("\n15. Produção em lotes (TÓPICO 4 §12)");
+  {
+    const lotes = await prepararPedidoLiberado(admTenant, "15", { quantidade: 10 });
+
+    const { data: opSemLoteId, error: opSemLoteError } = await admTenant.client.rpc("criar_ordem_producao", {
+      p_pedido_item_id: lotes.pedidoItemId, p_liberar_integralmente: false,
+    });
+    check("OP com liberar_integralmente=false é criada", !opSemLoteError && !!opSemLoteId);
+
+    const { data: lotesIniciais } = await admin.from("op_lotes").select("id").eq("ordem_producao_id", opSemLoteId);
+    check("OP nasce sem nenhum lote quando liberar_integralmente=false", (lotesIniciais ?? []).length === 0);
+
+    const { error: semPermLiberaError } = await noPermTenant.client.rpc("liberar_lote_producao", {
+      p_ordem_producao_id: opSemLoteId, p_quantidade: 4,
+    });
+    check("sem producao.manage não libera lote", !!semPermLiberaError);
+
+    const { error: excedePlanejadoError } = await admTenant.client.rpc("liberar_lote_producao", {
+      p_ordem_producao_id: opSemLoteId, p_quantidade: 11,
+    });
+    check("liberar mais do que a OP planejou (11 > 10) é rejeitado", !!excedePlanejadoError);
+
+    const { data: lote1Id, error: lote1Error } = await admTenant.client.rpc("liberar_lote_producao", {
+      p_ordem_producao_id: opSemLoteId, p_quantidade: 4,
+    });
+    check("libera o 1º lote (4 de 10)", !lote1Error && !!lote1Id);
+
+    const { data: lote1 } = await admin.from("op_lotes").select("*").eq("id", lote1Id).single();
+    check("lote nasce com numero=1 e quantidade_planejada=4", lote1?.numero === 1 && Number(lote1?.quantidade_planejada) === 4);
+
+    const { data: lote1Operacoes } = await admin.from("op_lote_operacoes").select("*").eq("op_lote_id", lote1Id);
+    check(
+      "lote ganha seu próprio snapshot de operação (fallback 'Produção')",
+      (lote1Operacoes ?? []).length === 1 && lote1Operacoes?.[0]?.descricao === "Produção",
+    );
+    const lote1OpId = lote1Operacoes?.[0]?.id;
+
+    const { error: excedeLoteError } = await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: lote1OpId, p_quantidade_produzida: 5, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    check("produzir além do planejado do PRÓPRIO lote (5 > 4) é rejeitado", !!excedeLoteError);
+
+    const { error: apontaLote1Error } = await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: lote1OpId, p_quantidade_produzida: 4, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "lote 1 completo",
+    });
+    check("aponta o lote 1 até o limite (4)", !apontaLote1Error);
+
+    const { data: opAposLote1 } = await admin.from("ordens_producao").select("quantidade_produzida").eq("id", opSemLoteId).single();
+    check("quantidade_produzida da OP reflete só o que foi liberado (4 de 10)", Number(opAposLote1?.quantidade_produzida) === 4);
+
+    const { error: concluirCedoError } = await admTenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opSemLoteId });
+    check("concluir com saldo ainda não liberado (6) é rejeitado", !!concluirCedoError);
+
+    const { data: lote2Id } = await admTenant.client.rpc("liberar_lote_producao", {
+      p_ordem_producao_id: opSemLoteId, p_quantidade: 6,
+    });
+    const { data: lote2Operacoes } = await admin.from("op_lote_operacoes").select("id").eq("op_lote_id", lote2Id);
+    const lote2OpId = lote2Operacoes?.[0]?.id;
+
+    const { error: excedeSaldoTotalError } = await admTenant.client.rpc("liberar_lote_producao", {
+      p_ordem_producao_id: opSemLoteId, p_quantidade: 1,
+    });
+    check("liberar além do saldo total da OP (10 já liberado) é rejeitado", !!excedeSaldoTotalError);
+
+    const { error: apontaLote2Error } = await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: lote2OpId, p_quantidade_produzida: 6, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "lote 2 completo",
+    });
+    check("aponta o lote 2 até o limite (6)", !apontaLote2Error);
+
+    const { error: concluirTotalError } = await admTenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opSemLoteId });
+    check("conclui a OP quando todos os lotes liberados estão concluídos e somam o planejado", !concluirTotalError);
+
+    const { data: crossLotes } = await otherTenant.client.from("op_lotes").select("id").eq("ordem_producao_id", opSemLoteId);
+    check("tenant B não enxerga lotes do tenant A", (crossLotes ?? []).length === 0);
+  }
+
+  console.log("\n16. Produção paralela e transferência de recurso (TÓPICO 4 §13)");
+  {
+    const recursos = await prepararPedidoLiberado(admTenant, "16", { quantidade: 200 });
+    const { data: opRecursoId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: recursos.pedidoItemId });
+    const opRecursoOpId = await operacaoUnica(opRecursoId);
+
+    const { error: semPermAlocaError } = await noPermTenant.client.rpc("alocar_recurso_operacao", {
+      p_op_lote_operacao_id: opRecursoOpId, p_recurso: "Máquina A", p_quantidade: 100,
+    });
+    check("sem producao.manage não aloca recurso", !!semPermAlocaError);
+
+    const { data: recursoAId, error: alocaAError } = await admTenant.client.rpc("alocar_recurso_operacao", {
+      p_op_lote_operacao_id: opRecursoOpId, p_recurso: "Máquina A", p_quantidade: 100,
+    });
+    check("aloca 100 pra Máquina A", !alocaAError && !!recursoAId);
+
+    const { data: recursoBId, error: alocaBError } = await admTenant.client.rpc("alocar_recurso_operacao", {
+      p_op_lote_operacao_id: opRecursoOpId, p_recurso: "Máquina B", p_quantidade: 100,
+    });
+    check("aloca 100 pra Máquina B", !alocaBError && !!recursoBId);
+
+    const { error: excedeAlocacaoError } = await admTenant.client.rpc("alocar_recurso_operacao", {
+      p_op_lote_operacao_id: opRecursoOpId, p_recurso: "Máquina C", p_quantidade: 1,
+    });
+    check("alocar além do planejado da operação (201 > 200) é rejeitado", !!excedeAlocacaoError);
+
+    const { error: apontaAError } = await admTenant.client.rpc("apontar_producao_recurso", {
+      p_op_lote_operacao_recurso_id: recursoAId, p_quantidade_produzida: 70, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "Máquina A rodando",
+    });
+    check("aponta 70 na Máquina A", !apontaAError);
+
+    const { error: excedeRecursoError } = await admTenant.client.rpc("apontar_producao_recurso", {
+      p_op_lote_operacao_recurso_id: recursoAId, p_quantidade_produzida: 31, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    check("produzir além do alocado ao recurso (101 > 100) é rejeitado", !!excedeRecursoError);
+
+    const { data: operacaoConsolidada } = await admin.from("op_lote_operacoes").select("quantidade_produzida").eq("id", opRecursoOpId).single();
+    check("operação pai consolida o total dos splits (70 até aqui)", Number(operacaoConsolidada?.quantidade_produzida) === 70);
+
+    // Máquina A falha com 30 restantes — transfere o saldo pra Máquina B.
+    const { data: transferidoId, error: transfereError } = await admTenant.client.rpc("transferir_recurso_operacao", {
+      p_op_lote_operacao_recurso_id: recursoAId, p_recurso_destino: "Máquina B", p_quantidade: 30,
+    });
+    check("transfere o saldo (30) da Máquina A pra Máquina B", !transfereError && !!transferidoId);
+    check("transferência reaproveita o split já existente de Máquina B (mesmo id)", transferidoId === recursoBId);
+
+    const { data: recursoADepois } = await admin.from("op_lote_operacao_recursos").select("quantidade_alocada, status").eq("id", recursoAId).single();
+    check(
+      "Máquina A fica só com o que já produziu (100 -> 70 alocado) e conclui",
+      Number(recursoADepois?.quantidade_alocada) === 70 && recursoADepois?.status === "concluida",
+    );
+
+    const { data: recursoBDepois } = await admin.from("op_lote_operacao_recursos").select("quantidade_alocada").eq("id", recursoBId).single();
+    check("Máquina B ganha o saldo transferido (100 + 30 = 130 alocado)", Number(recursoBDepois?.quantidade_alocada) === 130);
+
+    const { error: transfereExcedeError } = await admTenant.client.rpc("transferir_recurso_operacao", {
+      p_op_lote_operacao_recurso_id: recursoAId, p_recurso_destino: "Máquina B", p_quantidade: 1,
+    });
+    check("transferir mais do que o saldo restante (0) é rejeitado", !!transfereExcedeError);
+
+    const { error: apontaBError } = await admTenant.client.rpc("apontar_producao_recurso", {
+      p_op_lote_operacao_recurso_id: recursoBId, p_quantidade_produzida: 130, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "Máquina B completa",
+    });
+    check("aponta o total transferido + alocado original na Máquina B (130)", !apontaBError);
+
+    const { data: operacaoFinal } = await admin.from("op_lote_operacoes").select("quantidade_produzida, status").eq("id", opRecursoOpId).single();
+    check(
+      "operação pai consolida o total final (70+130=200) e conclui",
+      Number(operacaoFinal?.quantidade_produzida) === 200 && operacaoFinal?.status === "concluida",
+    );
+
+    const { error: concluiRecursoError } = await admTenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opRecursoId });
+    check("conclui a OP após consolidar os recursos", !concluiRecursoError);
+
+    const { data: crossRecursos } = await otherTenant.client.from("op_lote_operacao_recursos").select("id").eq("id", recursoAId);
+    check("tenant B não enxerga split de recurso do tenant A", (crossRecursos ?? []).length === 0);
+  }
+
+  console.log("\n17. Cada ação grava a própria linha de auditoria");
   {
     const { data: events } = await admin
       .from("activity_logs")
@@ -631,6 +793,9 @@ async function main() {
         "producao.operacao_roteiro_adicionada",
         "producao.operacao_roteiro_removida",
         "producao.roteiro_desativado",
+        "producao.lote_liberado",
+        "producao.recurso_alocado",
+        "producao.recurso_transferido",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("ordem_criada registrado", actions.has("producao.ordem_criada"));
@@ -642,6 +807,9 @@ async function main() {
     check("operacao_roteiro_adicionada registrado", actions.has("producao.operacao_roteiro_adicionada"));
     check("operacao_roteiro_removida registrado", actions.has("producao.operacao_roteiro_removida"));
     check("roteiro_desativado registrado", actions.has("producao.roteiro_desativado"));
+    check("lote_liberado registrado", actions.has("producao.lote_liberado"));
+    check("recurso_alocado registrado", actions.has("producao.recurso_alocado"));
+    check("recurso_transferido registrado", actions.has("producao.recurso_transferido"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

@@ -20,6 +20,9 @@ export async function liberarEngenhariaAction(formData: FormData) {
 export async function criarOrdemProducaoAction(formData: FormData) {
   const pedidoItemId = String(formData.get("pedido_item_id") ?? "");
   const quantidadeRaw = String(formData.get("quantidade") ?? "").trim();
+  // TÓPICO 4 §12 (Fase 3): checkbox desmarcado = OP nasce sem nenhum lote
+  // liberado, precisa de liberar_lote_producao() antes de apontar.
+  const liberarIntegralmente = formData.get("liberar_integralmente") !== null;
   if (!pedidoItemId) throw new Error("Item de pedido inválido.");
   if (quantidadeRaw && (!Number.isFinite(Number(quantidadeRaw)) || Number(quantidadeRaw) <= 0)) {
     throw new Error("Quantidade deve ser um número maior que zero.");
@@ -29,6 +32,26 @@ export async function criarOrdemProducaoAction(formData: FormData) {
   const { error } = await supabase.rpc("criar_ordem_producao", {
     p_pedido_item_id: pedidoItemId,
     p_quantidade: quantidadeRaw ? Number(quantidadeRaw) : null,
+    p_liberar_integralmente: liberarIntegralmente,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function liberarLoteProducaoAction(formData: FormData) {
+  const ordemId = String(formData.get("ordem_producao_id") ?? "");
+  const quantidadeRaw = String(formData.get("quantidade") ?? "").trim();
+  if (!ordemId) throw new Error("Ordem de produção inválida.");
+  const quantidade = Number(quantidadeRaw);
+  if (!quantidadeRaw || !Number.isFinite(quantidade) || quantidade <= 0) {
+    throw new Error("Quantidade deve ser um número maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("liberar_lote_producao", {
+    p_ordem_producao_id: ordemId,
+    p_quantidade: quantidade,
   });
   if (error) throw new Error(error.message);
 
@@ -36,12 +59,12 @@ export async function criarOrdemProducaoAction(formData: FormData) {
 }
 
 export async function apontarProducaoAction(formData: FormData) {
-  const opOperacaoId = String(formData.get("op_operacao_id") ?? "");
+  const opLoteOperacaoId = String(formData.get("op_lote_operacao_id") ?? "");
   const produzida = Number(formData.get("quantidade_produzida") || 0);
   const rejeitada = Number(formData.get("quantidade_rejeitada") || 0);
   const retrabalho = Number(formData.get("quantidade_retrabalho") || 0);
   const observacao = String(formData.get("observacao") ?? "").trim() || null;
-  if (!opOperacaoId) throw new Error("Operação inválida.");
+  if (!opLoteOperacaoId) throw new Error("Operação inválida.");
   if (
     !Number.isFinite(produzida) || !Number.isFinite(rejeitada) || !Number.isFinite(retrabalho) ||
     produzida < 0 || rejeitada < 0 || retrabalho < 0
@@ -54,7 +77,7 @@ export async function apontarProducaoAction(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("apontar_producao", {
-    p_op_operacao_id: opOperacaoId,
+    p_op_lote_operacao_id: opLoteOperacaoId,
     p_quantidade_produzida: produzida,
     p_quantidade_rejeitada: rejeitada,
     p_quantidade_retrabalho: retrabalho,
