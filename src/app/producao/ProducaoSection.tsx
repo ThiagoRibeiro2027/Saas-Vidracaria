@@ -35,6 +35,19 @@ type EngenhariaVersao = {
   liberado_em: string;
   observacoes: string | null;
 };
+type OpOperacao = {
+  id: string;
+  ordem_producao_id: string;
+  sequencia: number;
+  descricao: string;
+  recurso_necessario: string | null;
+  quantidade_planejada: number;
+  quantidade_produzida: number;
+  quantidade_rejeitada: number;
+  quantidade_retrabalho: number;
+  saldo: number;
+  status: "planejada" | "em_andamento" | "concluida";
+};
 export type ListaCorteRow = {
   item_codigo: string;
   item_descricao: string;
@@ -75,6 +88,18 @@ const SITUACAO_COLOR: Record<OrdemProducao["situacao"], string> = {
   bloqueada: "#9b2c2c",
 };
 
+const OPERACAO_STATUS_LABEL: Record<OpOperacao["status"], string> = {
+  planejada: "Planejada",
+  em_andamento: "Em andamento",
+  concluida: "Concluída",
+};
+
+const OPERACAO_STATUS_COLOR: Record<OpOperacao["status"], string> = {
+  planejada: "#6b7a75",
+  em_andamento: "#b7791f",
+  concluida: "#1f5d57",
+};
+
 export default function ProducaoSection({
   pedidos,
   pedidoItensPorPedido,
@@ -85,6 +110,7 @@ export default function ProducaoSection({
   engenhariaVigentePorPedidoItem,
   bloqueioPorPedido,
   listaCortePorOrdem,
+  opOperacoesPorOrdem,
   canManage,
 }: {
   pedidos: Pedido[];
@@ -96,6 +122,7 @@ export default function ProducaoSection({
   engenhariaVigentePorPedidoItem: Map<string, EngenhariaVersao>;
   bloqueioPorPedido: Map<string, boolean>;
   listaCortePorOrdem: Map<string, ListaCorteRow[]>;
+  opOperacoesPorOrdem: Map<string, OpOperacao[]>;
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -224,59 +251,118 @@ export default function ProducaoSection({
                                     {op.acao_necessaria}
                                   </p>
                                 )}
-                                {canManage && (op.status === "planejada" || op.status === "em_producao") && (
-                                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "6px" }}>
-                                    <form
-                                      action={apontarProducaoAction}
-                                      style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}
-                                    >
-                                      <input type="hidden" name="ordem_producao_id" value={op.id} />
-                                      <input
-                                        name="quantidade_produzida"
-                                        type="number"
-                                        step="0.001"
-                                        min="0"
-                                        placeholder="produzida"
-                                        style={{ ...inputStyle, width: "70px" }}
-                                      />
-                                      <input
-                                        name="quantidade_perdida"
-                                        type="number"
-                                        step="0.001"
-                                        min="0"
-                                        placeholder="perdida"
-                                        style={{ ...inputStyle, width: "70px" }}
-                                      />
-                                      <input
-                                        name="observacao"
-                                        placeholder="observação (opcional)"
-                                        style={{ ...inputStyle, width: "140px" }}
-                                      />
-                                      <button type="submit" style={buttonStyle}>
-                                        Apontar
-                                      </button>
-                                    </form>
-                                    <div style={{ display: "flex", gap: "4px" }}>
-                                      <form action={concluirOrdemProducaoAction}>
-                                        <input type="hidden" name="ordem_producao_id" value={op.id} />
-                                        <button
-                                          type="submit"
-                                          style={buttonStyle}
-                                          disabled={op.quantidade_produzida < op.quantidade_planejada}
-                                        >
-                                          Concluir
-                                        </button>
-                                      </form>
-                                      <form action={cancelarOrdemProducaoAction}>
-                                        <input type="hidden" name="ordem_producao_id" value={op.id} />
-                                        <input type="hidden" name="motivo" value="Cancelada pelo operador" />
-                                        <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
-                                          Cancelar
-                                        </button>
-                                      </form>
-                                    </div>
-                                  </div>
-                                )}
+                                {(() => {
+                                  const operacoes = (opOperacoesPorOrdem.get(op.id) ?? [])
+                                    .slice()
+                                    .sort((a, b) => a.sequencia - b.sequencia);
+                                  const todasConcluidas = operacoes.length > 0 && operacoes.every((o) => o.status === "concluida");
+                                  return (
+                                    <>
+                                      {operacoes.length > 0 && (
+                                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", marginTop: "6px" }}>
+                                          <thead>
+                                            <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
+                                              <th style={thStyle}>Operação</th>
+                                              <th style={thStyle}>Status</th>
+                                              <th style={thStyle}>Produzido</th>
+                                              <th style={thStyle}>Rejeitado</th>
+                                              <th style={thStyle}>Retrabalho</th>
+                                              <th style={thStyle}>Saldo</th>
+                                              {canManage && (op.status === "planejada" || op.status === "em_producao") && (
+                                                <th style={thStyle}></th>
+                                              )}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {operacoes.map((o) => (
+                                              <tr key={o.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
+                                                <td style={tdStyle}>
+                                                  {o.sequencia}. {o.descricao}
+                                                </td>
+                                                <td style={tdStyle}>
+                                                  <span style={{ fontFamily: "monospace", color: OPERACAO_STATUS_COLOR[o.status] }}>
+                                                    {OPERACAO_STATUS_LABEL[o.status]}
+                                                  </span>
+                                                </td>
+                                                <td style={tdStyle}>
+                                                  {num(o.quantidade_produzida)} / {num(o.quantidade_planejada)}
+                                                </td>
+                                                <td style={tdStyle}>{num(o.quantidade_rejeitada)}</td>
+                                                <td style={tdStyle}>{num(o.quantidade_retrabalho)}</td>
+                                                <td style={tdStyle}>{num(o.saldo)}</td>
+                                                {canManage && (op.status === "planejada" || op.status === "em_producao") && (
+                                                  <td style={tdStyle}>
+                                                    {o.status !== "concluida" && (
+                                                      <form
+                                                        action={apontarProducaoAction}
+                                                        style={{ display: "flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}
+                                                      >
+                                                        <input type="hidden" name="op_operacao_id" value={o.id} />
+                                                        <input
+                                                          name="quantidade_produzida"
+                                                          type="number"
+                                                          step="0.001"
+                                                          min="0"
+                                                          placeholder="produzida"
+                                                          style={{ ...inputStyle, width: "62px" }}
+                                                        />
+                                                        <input
+                                                          name="quantidade_rejeitada"
+                                                          type="number"
+                                                          step="0.001"
+                                                          min="0"
+                                                          placeholder="rejeitada"
+                                                          style={{ ...inputStyle, width: "62px" }}
+                                                        />
+                                                        <input
+                                                          name="quantidade_retrabalho"
+                                                          type="number"
+                                                          step="0.001"
+                                                          min="0"
+                                                          placeholder="retrabalho"
+                                                          style={{ ...inputStyle, width: "62px" }}
+                                                        />
+                                                        <input
+                                                          name="observacao"
+                                                          placeholder="obs. (opcional)"
+                                                          style={{ ...inputStyle, width: "100px" }}
+                                                        />
+                                                        <button type="submit" style={buttonStyle}>
+                                                          Apontar
+                                                        </button>
+                                                      </form>
+                                                    )}
+                                                  </td>
+                                                )}
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      )}
+                                      {canManage && (op.status === "planejada" || op.status === "em_producao") && (
+                                        <div style={{ display: "flex", gap: "4px", marginTop: "6px" }}>
+                                          <form action={concluirOrdemProducaoAction}>
+                                            <input type="hidden" name="ordem_producao_id" value={op.id} />
+                                            <button
+                                              type="submit"
+                                              style={buttonStyle}
+                                              disabled={op.quantidade_produzida < op.quantidade_planejada || !todasConcluidas}
+                                            >
+                                              Concluir
+                                            </button>
+                                          </form>
+                                          <form action={cancelarOrdemProducaoAction}>
+                                            <input type="hidden" name="ordem_producao_id" value={op.id} />
+                                            <input type="hidden" name="motivo" value="Cancelada pelo operador" />
+                                            <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                                              Cancelar
+                                            </button>
+                                          </form>
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             ))}
                             {ops.length === 0 && <span style={{ color: "#6b7a75" }}>Sem OP</span>}

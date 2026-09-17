@@ -1,14 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import ProducaoSection, { type ListaCorteRow } from "./ProducaoSection";
+import RoteirosSection from "./RoteirosSection";
 
-// TÓPICO 4 — Fase 1 da ampliação de escopo (ADR-002 v2.2): OP parcial (um
-// pedido_item pode ter várias OPs, desde que a soma não ultrapasse a
-// quantidade do item), situação clara (liberada/liberada com
-// restrição/bloqueada) e engenharia liberada versionada. Ainda sem
-// sequenciamento, roteiro operação-a-operação, lote fabril ou
-// capacidade/recursos — isso entra nas fases seguintes do roadmap. Só
-// pedidos liberados entram aqui (ADR-002 §6: Liberação → Engenharia →
-// Produção).
+// TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
+// pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
+// item), situação clara (liberada/liberada com restrição/bloqueada) e
+// engenharia liberada versionada.
+// Fase 2 (2026-09-17): roteiro produtivo configurável por item (§15) e
+// acompanhamento por operação (§16) — item sem roteiro ativo gera OP com
+// uma única operação genérica "Produção". Ainda sem lote fabril, produção
+// paralela/transferência entre recursos ou capacidade/recursos formais —
+// isso entra nas fases seguintes do roadmap. Só pedidos liberados entram
+// aqui (ADR-002 §6: Liberação → Engenharia → Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -37,6 +40,9 @@ export default async function ProducaoPage() {
     { data: obras },
     { data: ordens },
     { data: engenhariaVersoes },
+    { data: opOperacoes },
+    { data: roteiros },
+    { data: roteiroOperacoes },
   ] = await Promise.all([
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
@@ -45,6 +51,9 @@ export default async function ProducaoPage() {
     supabase.from("obras").select("id, nome"),
     supabase.from("ordens_producao").select("*").order("created_at", { ascending: true }),
     supabase.from("engenharia_versoes").select("*").eq("situacao", "liberada"),
+    supabase.from("op_operacoes").select("*").order("sequencia", { ascending: true }),
+    supabase.from("roteiros_produtivos").select("*").order("created_at", { ascending: true }),
+    supabase.from("roteiro_operacoes").select("*").order("sequencia", { ascending: true }),
   ]);
 
   const pedidoItensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
@@ -65,6 +74,24 @@ export default async function ProducaoPage() {
   const engenhariaVigentePorPedidoItem = new Map(
     (engenhariaVersoes ?? []).map((v) => [v.pedido_item_id, v] as const),
   );
+
+  // TÓPICO 4 §16: acompanhamento por operação — snapshot de op_operacoes
+  // por OP, criado em criar_ordem_producao() a partir do roteiro ativo do
+  // item (ou operação única "Produção" quando não há roteiro).
+  const opOperacoesPorOrdem = new Map<string, NonNullable<typeof opOperacoes>>();
+  for (const o of opOperacoes ?? []) {
+    const list = opOperacoesPorOrdem.get(o.ordem_producao_id) ?? [];
+    list.push(o);
+    opOperacoesPorOrdem.set(o.ordem_producao_id, list);
+  }
+
+  // TÓPICO 4 §15: roteiros configurados pela empresa, agrupados por item.
+  const operacoesPorRoteiro = new Map<string, NonNullable<typeof roteiroOperacoes>>();
+  for (const ro of roteiroOperacoes ?? []) {
+    const list = operacoesPorRoteiro.get(ro.roteiro_id) ?? [];
+    list.push(ro);
+    operacoesPorRoteiro.set(ro.roteiro_id, list);
+  }
 
   // Bloqueio por medida (TÓPICO 16 §7) é por pedido, não por item — resolvido
   // aqui (server) pra decidir se o botão "Criar OP" aparece habilitado.
@@ -94,8 +121,9 @@ export default async function ProducaoPage() {
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Ordens de produção</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
           Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
-          por item), engenharia liberada versionada, apontamento, conclusão e lista de corte. Ainda
-          sem sequenciamento, lote fabril, roteiro operação-a-operação ou capacidade/recursos.
+          por item), engenharia liberada versionada, roteiro produtivo configurável com
+          acompanhamento por operação, conclusão e lista de corte. Ainda sem sequenciamento, lote
+          fabril, produção paralela/transferência entre recursos ou capacidade/recursos formais.
         </p>
 
         <ProducaoSection
@@ -108,6 +136,14 @@ export default async function ProducaoPage() {
           engenhariaVigentePorPedidoItem={engenhariaVigentePorPedidoItem}
           bloqueioPorPedido={bloqueioPorPedido}
           listaCortePorOrdem={listaCortePorOrdem}
+          opOperacoesPorOrdem={opOperacoesPorOrdem}
+          canManage={!!canManage}
+        />
+
+        <RoteirosSection
+          itens={itens ?? []}
+          roteiros={roteiros ?? []}
+          operacoesPorRoteiro={operacoesPorRoteiro}
           canManage={!!canManage}
         />
       </div>

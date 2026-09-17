@@ -141,8 +141,11 @@ async function prepararItemAprovado(tenant, sufixo, quantidade = 10) {
 
   const { data: opId, error: criarErr } = await tenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: pedidoItem.id });
   if (criarErr) console.error("[fixture] criar_ordem_producao falhou:", criarErr);
+  // TÓPICO 4 §16 (Fase 2): sem roteiro configurado, a OP nasce com uma
+  // única op_operacao "Produção" — apontar_producao() aponta nela.
+  const { data: opOperacao } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", opId).single();
   const { error: apontarErr } = await tenant.client.rpc("apontar_producao", {
-    p_ordem_producao_id: opId, p_quantidade_produzida: quantidade, p_quantidade_perdida: 0, p_observacao: "lote único",
+    p_op_operacao_id: opOperacao?.id, p_quantidade_produzida: quantidade, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "lote único",
   });
   if (apontarErr) console.error("[fixture] apontar_producao falhou:", apontarErr);
   const { error: concluirErr } = await tenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opId });
@@ -251,8 +254,9 @@ async function main() {
     await admTenant.client.rpc("liberar_pedido", { p_id: pedidoId });
     const { data: pi } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoId).single();
     const { data: opId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: pi.id });
+    const { data: opOperacao } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", opId).single();
     await admTenant.client.rpc("apontar_producao", {
-      p_ordem_producao_id: opId, p_quantidade_produzida: 1, p_quantidade_perdida: 0, p_observacao: null,
+      p_op_operacao_id: opOperacao?.id, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
 
     const { error } = await admTenant.client.rpc("adicionar_item_expedicao", {
@@ -276,8 +280,9 @@ async function main() {
     await admTenant.client.rpc("liberar_pedido", { p_id: pedidoId });
     const { data: pi } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoId).single();
     const { data: opId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: pi.id });
+    const { data: opOperacaoNaoInsp } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", opId).single();
     await admTenant.client.rpc("apontar_producao", {
-      p_ordem_producao_id: opId, p_quantidade_produzida: 4, p_quantidade_perdida: 0, p_observacao: null,
+      p_op_operacao_id: opOperacaoNaoInsp?.id, p_quantidade_produzida: 4, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     await admTenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opId });
     naoInspecionado = { pedidoItemId: pi.id, opId };
@@ -399,8 +404,9 @@ async function main() {
     const { data: op1Id } = await admTenant.client.rpc("criar_ordem_producao", {
       p_pedido_item_id: pedidoItem.id, p_quantidade: 6,
     });
+    const { data: op1Operacao } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", op1Id).single();
     await admTenant.client.rpc("apontar_producao", {
-      p_ordem_producao_id: op1Id, p_quantidade_produzida: 6, p_quantidade_perdida: 0, p_observacao: null,
+      p_op_operacao_id: op1Operacao?.id, p_quantidade_produzida: 6, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
     await admTenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: op1Id });
     await admTenant.client.rpc("registrar_inspecao_qualidade", {
@@ -411,8 +417,9 @@ async function main() {
     const { data: op2Id } = await admTenant.client.rpc("criar_ordem_producao", {
       p_pedido_item_id: pedidoItem.id, p_quantidade: 4,
     });
+    const { data: op2Operacao } = await admin.from("op_operacoes").select("id").eq("ordem_producao_id", op2Id).single();
     await admTenant.client.rpc("apontar_producao", {
-      p_ordem_producao_id: op2Id, p_quantidade_produzida: 2, p_quantidade_perdida: 0, p_observacao: null,
+      p_op_operacao_id: op2Operacao?.id, p_quantidade_produzida: 2, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
     });
 
     const { data: expId } = await admTenant.client.rpc("criar_expedicao", { p_pedido_id: pedidoId });
