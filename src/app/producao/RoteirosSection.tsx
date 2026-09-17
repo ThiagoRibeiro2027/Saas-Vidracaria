@@ -15,27 +15,35 @@ type RoteiroOperacao = {
   roteiro_id: string;
   sequencia: number;
   descricao: string;
-  recurso_necessario: string | null;
+  recurso_produtivo_id: string | null;
   tempo_previsto_minutos: number | null;
   requisitos: string | null;
   criterios_qualidade: string | null;
   equipamentos_alternativos: string | null;
 };
+type RecursoProdutivo = { id: string; codigo: string; nome: string };
 
 export default function RoteirosSection({
   itens,
   roteiros,
   operacoesPorRoteiro,
+  recursos,
   canManage,
 }: {
   itens: Item[];
   roteiros: Roteiro[];
   operacoesPorRoteiro: Map<string, RoteiroOperacao[]>;
+  recursos: RecursoProdutivo[];
   canManage: boolean;
 }) {
   const itemLabel = (id: string) => {
     const it = itens.find((i) => i.id === id);
     return it ? `${it.codigo} — ${it.descricao}` : "(item removido)";
+  };
+  const recursoLabel = (id: string | null) => {
+    if (!id) return "—";
+    const r = recursos.find((rr) => rr.id === id);
+    return r ? `${r.codigo} — ${r.nome}` : "(recurso removido)";
   };
 
   const roteirosPorItem = new Map<string, Roteiro[]>();
@@ -112,7 +120,7 @@ export default function RoteirosSection({
                         <tr key={op.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
                           <td style={tdStyle}>{op.sequencia}</td>
                           <td style={tdStyle}>{op.descricao}</td>
-                          <td style={tdStyle}>{op.recurso_necessario ?? "—"}</td>
+                          <td style={tdStyle}>{recursoLabel(op.recurso_produtivo_id)}</td>
                           <td style={tdStyle}>{op.tempo_previsto_minutos ?? "—"}</td>
                           {canManage && (
                             <td style={tdStyle}>
@@ -144,7 +152,14 @@ export default function RoteirosSection({
                       <input type="hidden" name="roteiro_id" value={r.id} />
                       <input name="sequencia" type="number" min="1" step="1" placeholder="seq." required style={{ ...inputStyle, width: "50px" }} />
                       <input name="descricao" placeholder="descrição" required style={{ ...inputStyle, width: "120px" }} />
-                      <input name="recurso_necessario" placeholder="recurso (opcional)" style={{ ...inputStyle, width: "110px" }} />
+                      <select name="recurso_produtivo_id" style={{ ...inputStyle, width: "150px" }} defaultValue="">
+                        <option value="">Recurso (opcional)</option>
+                        {recursos.map((rec) => (
+                          <option key={rec.id} value={rec.id}>
+                            {rec.codigo} — {rec.nome}
+                          </option>
+                        ))}
+                      </select>
                       <input name="tempo_previsto_minutos" type="number" min="0" step="0.01" placeholder="min (opcional)" style={{ ...inputStyle, width: "90px" }} />
                       <button type="submit" style={buttonStyle}>
                         Adicionar operação

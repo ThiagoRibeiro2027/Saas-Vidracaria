@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import ProducaoSection, { type ListaCorteRow } from "./ProducaoSection";
 import RoteirosSection from "./RoteirosSection";
 import LotesFabrisSection, { type ListaCorteLoteFabrilRow } from "./LotesFabrisSection";
+import RecursosSection, { type CapacidadeRecursoRow } from "./RecursosSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -17,8 +18,14 @@ import LotesFabrisSection, { type ListaCorteLoteFabrilRow } from "./LotesFabrisS
 // paralela/transferência entre recursos (§13) ainda sem UI (só backend).
 // Fase 4 (2026-09-17): lote fabril (§14) — agrupamento operacional e
 // temporário de lotes de liberação de diferentes OPs, com lista de corte
-// combinada. Não altera pedido/item/OP/lote de liberação. Só pedidos
-// liberados entram aqui (ADR-002 §6: Liberação → Engenharia → Produção).
+// combinada. Não altera pedido/item/OP/lote de liberação.
+// Fase 5a (2026-09-17): recursos produtivos e capacidade (§31-32) —
+// cadastro formal de recursos (máquina/equipamento/linha/posto/equipe/
+// operador/ferramenta/dispositivo), capacidade disponível×necessária.
+// "recurso" deixou de ser texto livre em roteiro_operacoes/op_lote_
+// operacao_recursos — agora referencia este cadastro. Manutenção (§33-36)
+// e gargalos (§37) são as próximas sub-fases. Só pedidos liberados entram
+// aqui (ADR-002 §6: Liberação → Engenharia → Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -53,6 +60,7 @@ export default async function ProducaoPage() {
     { data: roteiroOperacoes },
     { data: lotesFabris },
     { data: loteFabrilItens },
+    { data: recursos },
   ] = await Promise.all([
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
@@ -67,6 +75,7 @@ export default async function ProducaoPage() {
     supabase.from("roteiro_operacoes").select("*").order("sequencia", { ascending: true }),
     supabase.from("lotes_fabris").select("*").order("created_at", { ascending: true }),
     supabase.from("lote_fabril_itens").select("*").order("created_at", { ascending: true }),
+    supabase.from("recursos_produtivos").select("*").eq("ativo", true).order("codigo", { ascending: true }),
   ]);
 
   const pedidoItensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
@@ -161,6 +170,17 @@ export default async function ProducaoPage() {
     }),
   );
 
+  // Capacidade disponível × necessária por recurso (§31), janela padrão
+  // de 7 dias — função de leitura, não entidade armazenada.
+  const capacidadePorRecurso = new Map<string, CapacidadeRecursoRow>();
+  await Promise.all(
+    (recursos ?? []).map(async (r) => {
+      const { data } = await supabase.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: r.id, p_dias: 7 });
+      const row = data?.[0];
+      if (row) capacidadePorRecurso.set(r.id, row);
+    }),
+  );
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -169,9 +189,9 @@ export default async function ProducaoPage() {
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
           Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
           por item), engenharia liberada versionada, roteiro produtivo configurável com
-          acompanhamento por operação, produção em lotes, lote fabril, conclusão e lista de corte.
-          Divisão por recurso/transferência (§13) já existe no backend, ainda sem tela. Sem
-          sequenciamento ou capacidade/recursos formais.
+          acompanhamento por operação, produção em lotes, lote fabril, recursos produtivos e
+          capacidade, conclusão e lista de corte. Divisão por recurso/transferência (§13) já existe
+          no backend, ainda sem tela. Sem sequenciamento, manutenção ou gargalos ainda.
         </p>
 
         <ProducaoSection
@@ -193,6 +213,7 @@ export default async function ProducaoPage() {
           itens={itens ?? []}
           roteiros={roteiros ?? []}
           operacoesPorRoteiro={operacoesPorRoteiro}
+          recursos={recursos ?? []}
           canManage={!!canManage}
         />
 
@@ -201,6 +222,12 @@ export default async function ProducaoPage() {
           itensPorLoteFabril={itensPorLoteFabril}
           opLotesOpcoes={opLotesOpcoes}
           listaCortePorLoteFabril={listaCortePorLoteFabril}
+          canManage={!!canManage}
+        />
+
+        <RecursosSection
+          recursos={recursos ?? []}
+          capacidadePorRecurso={capacidadePorRecurso}
           canManage={!!canManage}
         />
       </div>

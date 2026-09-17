@@ -13,10 +13,17 @@
 // recursos (§13) via alocar_recurso_operacao()/transferir_recurso_
 // operacao()/apontar_producao_recurso() — apontar_producao() agora aponta
 // numa op_lote_operacao específica (célula lote × operação do roteiro),
-// não mais na OP como um todo —, e a Fase 4 (2026-09-17): lote fabril
+// não mais na OP como um todo —, a Fase 4 (2026-09-17): lote fabril
 // (§14), agrupamento operacional/temporário de lotes de liberação
 // (op_lotes) de diferentes OPs, com lista de corte combinada
-// (lista_corte_lote_fabril()) — não altera pedido/item/OP/op_lote.
+// (lista_corte_lote_fabril()) — não altera pedido/item/OP/op_lote —, e a
+// Fase 5a (2026-09-17): recursos produtivos e capacidade (§31-32) —
+// "recurso" deixou de ser texto livre em roteiro_operacoes/op_lote_
+// operacao_recursos, agora referencia recursos_produtivos (cadastro de
+// máquina/equipamento/linha/posto/equipe/operador/ferramenta/
+// dispositivo); calcular_capacidade_recurso()/listar_capacidade_
+// recursos() comparam capacidade disponível × necessária (tempo_
+// previsto_minutos × saldo pendente).
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -506,27 +513,31 @@ async function main() {
     check("ADMIN cria roteiro produtivo", !criaError && !!rId);
     roteiroId = rId;
 
+    const { data: mesaCorteId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "MESA-CORTE-1", p_nome: "Mesa de corte 1", p_tipo: "equipamento", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+
     const { data: op1Id, error: op1Error } = await admTenant.client.rpc("adicionar_operacao_roteiro", {
-      p_roteiro_id: roteiroId, p_sequencia: 1, p_descricao: "Corte", p_recurso_necessario: "Mesa de corte 1",
+      p_roteiro_id: roteiroId, p_sequencia: 1, p_descricao: "Corte", p_recurso_produtivo_id: mesaCorteId,
       p_tempo_previsto_minutos: 10, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
     });
     check("adiciona operação 1 (Corte) ao roteiro", !op1Error && !!op1Id);
     opRoteiro1Id = op1Id;
     const { data: op1Row } = await admin.from("roteiro_operacoes").select("*").eq("id", opRoteiro1Id).single();
     check(
-      "operação 1 salva recurso_necessario e tempo_previsto_minutos",
-      op1Row?.recurso_necessario === "Mesa de corte 1" && Number(op1Row?.tempo_previsto_minutos) === 10,
+      "operação 1 salva recurso_produtivo_id e tempo_previsto_minutos",
+      op1Row?.recurso_produtivo_id === mesaCorteId && Number(op1Row?.tempo_previsto_minutos) === 10,
     );
 
     const { data: op2Id, error: op2Error } = await admTenant.client.rpc("adicionar_operacao_roteiro", {
-      p_roteiro_id: roteiroId, p_sequencia: 2, p_descricao: "Montagem", p_recurso_necessario: null,
+      p_roteiro_id: roteiroId, p_sequencia: 2, p_descricao: "Montagem", p_recurso_produtivo_id: null,
       p_tempo_previsto_minutos: null, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
     });
     check("adiciona operação 2 (Montagem) ao roteiro", !op2Error && !!op2Id);
     opRoteiro2Id = op2Id;
 
     const { error: sequenciaDuplicadaError } = await admTenant.client.rpc("adicionar_operacao_roteiro", {
-      p_roteiro_id: roteiroId, p_sequencia: 1, p_descricao: "Corte duplicado", p_recurso_necessario: null,
+      p_roteiro_id: roteiroId, p_sequencia: 1, p_descricao: "Corte duplicado", p_recurso_produtivo_id: null,
       p_tempo_previsto_minutos: null, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
     });
     check("sequência duplicada no mesmo roteiro é rejeitada", !!sequenciaDuplicadaError);
@@ -709,23 +720,33 @@ async function main() {
     const { data: opRecursoId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: recursos.pedidoItemId });
     const opRecursoOpId = await operacaoUnica(opRecursoId);
 
+    const { data: maquinaAId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "MAQ-A-16", p_nome: "Máquina A", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+    const { data: maquinaBId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "MAQ-B-16", p_nome: "Máquina B", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+    const { data: maquinaCId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "MAQ-C-16", p_nome: "Máquina C", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+
     const { error: semPermAlocaError } = await noPermTenant.client.rpc("alocar_recurso_operacao", {
-      p_op_lote_operacao_id: opRecursoOpId, p_recurso: "Máquina A", p_quantidade: 100,
+      p_op_lote_operacao_id: opRecursoOpId, p_recurso_produtivo_id: maquinaAId, p_quantidade: 100,
     });
     check("sem producao.manage não aloca recurso", !!semPermAlocaError);
 
     const { data: recursoAId, error: alocaAError } = await admTenant.client.rpc("alocar_recurso_operacao", {
-      p_op_lote_operacao_id: opRecursoOpId, p_recurso: "Máquina A", p_quantidade: 100,
+      p_op_lote_operacao_id: opRecursoOpId, p_recurso_produtivo_id: maquinaAId, p_quantidade: 100,
     });
     check("aloca 100 pra Máquina A", !alocaAError && !!recursoAId);
 
     const { data: recursoBId, error: alocaBError } = await admTenant.client.rpc("alocar_recurso_operacao", {
-      p_op_lote_operacao_id: opRecursoOpId, p_recurso: "Máquina B", p_quantidade: 100,
+      p_op_lote_operacao_id: opRecursoOpId, p_recurso_produtivo_id: maquinaBId, p_quantidade: 100,
     });
     check("aloca 100 pra Máquina B", !alocaBError && !!recursoBId);
 
     const { error: excedeAlocacaoError } = await admTenant.client.rpc("alocar_recurso_operacao", {
-      p_op_lote_operacao_id: opRecursoOpId, p_recurso: "Máquina C", p_quantidade: 1,
+      p_op_lote_operacao_id: opRecursoOpId, p_recurso_produtivo_id: maquinaCId, p_quantidade: 1,
     });
     check("alocar além do planejado da operação (201 > 200) é rejeitado", !!excedeAlocacaoError);
 
@@ -744,7 +765,7 @@ async function main() {
 
     // Máquina A falha com 30 restantes — transfere o saldo pra Máquina B.
     const { data: transferidoId, error: transfereError } = await admTenant.client.rpc("transferir_recurso_operacao", {
-      p_op_lote_operacao_recurso_id: recursoAId, p_recurso_destino: "Máquina B", p_quantidade: 30,
+      p_op_lote_operacao_recurso_id: recursoAId, p_recurso_produtivo_destino_id: maquinaBId, p_quantidade: 30,
     });
     check("transfere o saldo (30) da Máquina A pra Máquina B", !transfereError && !!transferidoId);
     check("transferência reaproveita o split já existente de Máquina B (mesmo id)", transferidoId === recursoBId);
@@ -759,7 +780,7 @@ async function main() {
     check("Máquina B ganha o saldo transferido (100 + 30 = 130 alocado)", Number(recursoBDepois?.quantidade_alocada) === 130);
 
     const { error: transfereExcedeError } = await admTenant.client.rpc("transferir_recurso_operacao", {
-      p_op_lote_operacao_recurso_id: recursoAId, p_recurso_destino: "Máquina B", p_quantidade: 1,
+      p_op_lote_operacao_recurso_id: recursoAId, p_recurso_produtivo_destino_id: maquinaBId, p_quantidade: 1,
     });
     check("transferir mais do que o saldo restante (0) é rejeitado", !!transfereExcedeError);
 
@@ -779,6 +800,103 @@ async function main() {
 
     const { data: crossRecursos } = await otherTenant.client.from("op_lote_operacao_recursos").select("id").eq("id", recursoAId);
     check("tenant B não enxerga split de recurso do tenant A", (crossRecursos ?? []).length === 0);
+  }
+
+  console.log("\n17. Recursos produtivos e capacidade (TÓPICO 4 §31-32)");
+  {
+    const { error: semPermCriaError } = await noPermTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "SEM-PERM-17", p_nome: "Recurso sem permissão", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+    check("sem producao.manage não cria recurso produtivo", !!semPermCriaError);
+
+    const { error: tipoInvalidoError } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "REC-17-INVALIDO", p_nome: "Recurso tipo inválido", p_tipo: "nao_existe", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+    check("tipo de recurso inválido é rejeitado", !!tipoInvalidoError);
+
+    const { data: recursoId, error: criaError } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "USIN-17", p_nome: "Usinagem 1", p_tipo: "maquina", p_setor: "Usinagem", p_capacidade_horas_dia: 8,
+    });
+    check("ADMIN cria recurso produtivo", !criaError && !!recursoId);
+
+    const { error: codigoDuplicadoError } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "USIN-17", p_nome: "Usinagem duplicada", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+    check("código duplicado na mesma empresa é rejeitado", !!codigoDuplicadoError);
+
+    const { error: semPermEditaError } = await noPermTenant.client.rpc("editar_recurso_produtivo", {
+      p_id: recursoId, p_nome: "Usinagem 1 editada", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+    check("sem producao.manage não edita recurso produtivo", !!semPermEditaError);
+
+    const { error: editaError } = await admTenant.client.rpc("editar_recurso_produtivo", {
+      p_id: recursoId, p_nome: "Usinagem 1 (revisada)", p_setor: "Usinagem", p_capacidade_horas_dia: 10,
+    });
+    check("edita recurso produtivo", !editaError);
+    const { data: recursoEditado } = await admin.from("recursos_produtivos").select("*").eq("id", recursoId).single();
+    check(
+      "capacidade_horas_dia atualizada (10)",
+      recursoEditado?.nome === "Usinagem 1 (revisada)" && Number(recursoEditado?.capacidade_horas_dia) === 10,
+    );
+
+    const { error: situacaoInvalidaError } = await admTenant.client.rpc("atualizar_situacao_recurso", {
+      p_id: recursoId, p_situacao: "nao_existe", p_motivo: null,
+    });
+    check("situação inválida é rejeitada", !!situacaoInvalidaError);
+
+    const { error: semPermSituacaoError } = await noPermTenant.client.rpc("atualizar_situacao_recurso", {
+      p_id: recursoId, p_situacao: "em_manutencao", p_motivo: "troca de peça",
+    });
+    check("sem producao.manage não atualiza situação do recurso", !!semPermSituacaoError);
+
+    const { error: situacaoError } = await admTenant.client.rpc("atualizar_situacao_recurso", {
+      p_id: recursoId, p_situacao: "em_manutencao", p_motivo: "troca de peça",
+    });
+    check("atualiza situação do recurso", !situacaoError);
+    const { data: recursoSituacao } = await admin.from("recursos_produtivos").select("situacao, motivo_situacao").eq("id", recursoId).single();
+    check(
+      "situação e motivo persistidos",
+      recursoSituacao?.situacao === "em_manutencao" && recursoSituacao?.motivo_situacao === "troca de peça",
+    );
+
+    // Roteiro com 1 operação de 20h previstas (tempo_previsto_minutos)
+    // pra esse recurso — necessidade de capacidade deve refletir isso.
+    const capacidade = await prepararPedidoLiberado(admTenant, "17b", { quantidade: 4 });
+    const { data: roteiroCapId } = await admTenant.client.rpc("criar_roteiro_produtivo", {
+      p_item_id: capacidade.itemId, p_nome: "Roteiro capacidade",
+    });
+    await admTenant.client.rpc("adicionar_operacao_roteiro", {
+      p_roteiro_id: roteiroCapId, p_sequencia: 1, p_descricao: "Usinar", p_recurso_produtivo_id: recursoId,
+      p_tempo_previsto_minutos: 300, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
+    });
+    // 4 unidades × 300min = 1200min = 20h de necessidade.
+    await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: capacidade.pedidoItemId });
+
+    const { data: capRows, error: capError } = await admTenant.client.rpc("calcular_capacidade_recurso", {
+      p_recurso_produtivo_id: recursoId, p_dias: 7,
+    });
+    const cap = capRows?.[0];
+    check("calcula capacidade sem erro", !capError && !!cap);
+    check("capacidade disponível = capacidade_horas_dia × dias (10×7=70)", Number(cap?.capacidade_disponivel_horas) === 70);
+    check("capacidade necessária reflete tempo_previsto × saldo pendente (20h)", Number(cap?.capacidade_necessaria_horas) === 20);
+    check("classificação 'normal' quando necessário < disponível", cap?.classificacao === "normal");
+
+    const { data: listaCap, error: listaCapError } = await admTenant.client.rpc("listar_capacidade_recursos", { p_dias: 7 });
+    check(
+      "listar_capacidade_recursos() traz o recurso com a mesma conta",
+      !listaCapError && (listaCap ?? []).some((r) => r.recurso_produtivo_id === recursoId && Number(r.capacidade_necessaria_horas) === 20),
+    );
+
+    const { error: semPermDesativaError } = await noPermTenant.client.rpc("desativar_recurso_produtivo", { p_id: recursoId });
+    check("sem producao.manage não desativa recurso produtivo", !!semPermDesativaError);
+
+    const { error: desativaError } = await admTenant.client.rpc("desativar_recurso_produtivo", { p_id: recursoId });
+    check("desativa recurso produtivo", !desativaError);
+    const { data: recursoDesativado } = await admin.from("recursos_produtivos").select("ativo").eq("id", recursoId).single();
+    check("ativo vira false", recursoDesativado?.ativo === false);
+
+    const { data: crossRecursosProdutivos } = await otherTenant.client.from("recursos_produtivos").select("id").eq("id", recursoId);
+    check("tenant B não enxerga recurso produtivo do tenant A", (crossRecursosProdutivos ?? []).length === 0);
   }
 
   console.log("\n18. Lote fabril (TÓPICO 4 §14)");
@@ -882,6 +1000,10 @@ async function main() {
         "producao.item_lote_fabril_adicionado",
         "producao.item_lote_fabril_removido",
         "producao.lote_fabril_encerrado",
+        "producao.recurso_produtivo_criado",
+        "producao.recurso_produtivo_editado",
+        "producao.recurso_produtivo_situacao_alterada",
+        "producao.recurso_produtivo_desativado",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("ordem_criada registrado", actions.has("producao.ordem_criada"));
@@ -900,6 +1022,10 @@ async function main() {
     check("item_lote_fabril_adicionado registrado", actions.has("producao.item_lote_fabril_adicionado"));
     check("item_lote_fabril_removido registrado", actions.has("producao.item_lote_fabril_removido"));
     check("lote_fabril_encerrado registrado", actions.has("producao.lote_fabril_encerrado"));
+    check("recurso_produtivo_criado registrado", actions.has("producao.recurso_produtivo_criado"));
+    check("recurso_produtivo_editado registrado", actions.has("producao.recurso_produtivo_editado"));
+    check("recurso_produtivo_situacao_alterada registrado", actions.has("producao.recurso_produtivo_situacao_alterada"));
+    check("recurso_produtivo_desativado registrado", actions.has("producao.recurso_produtivo_desativado"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

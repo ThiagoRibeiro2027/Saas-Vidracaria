@@ -52,7 +52,6 @@ type OpOperacao = {
   op_lote_id: string;
   sequencia: number;
   descricao: string;
-  recurso_necessario: string | null;
   quantidade_planejada: number;
   quantidade_produzida: number;
   quantidade_rejeitada: number;

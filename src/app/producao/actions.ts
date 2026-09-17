@@ -116,7 +116,7 @@ export async function adicionarOperacaoRoteiroAction(formData: FormData) {
   const roteiroId = String(formData.get("roteiro_id") ?? "");
   const sequenciaRaw = String(formData.get("sequencia") ?? "").trim();
   const descricao = String(formData.get("descricao") ?? "").trim();
-  const recursoNecessario = String(formData.get("recurso_necessario") ?? "").trim() || null;
+  const recursoProdutivoId = String(formData.get("recurso_produtivo_id") ?? "").trim() || null;
   const tempoPrevistoRaw = String(formData.get("tempo_previsto_minutos") ?? "").trim();
   const requisitos = String(formData.get("requisitos") ?? "").trim() || null;
   const criteriosQualidade = String(formData.get("criterios_qualidade") ?? "").trim() || null;
@@ -138,7 +138,7 @@ export async function adicionarOperacaoRoteiroAction(formData: FormData) {
     p_roteiro_id: roteiroId,
     p_sequencia: sequencia,
     p_descricao: descricao,
-    p_recurso_necessario: recursoNecessario,
+    p_recurso_produtivo_id: recursoProdutivoId,
     p_tempo_previsto_minutos: tempoPrevisto,
     p_requisitos: requisitos,
     p_criterios_qualidade: criteriosQualidade,
@@ -168,6 +168,62 @@ export async function desativarRoteiroAction(formData: FormData) {
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("desativar_roteiro", { p_roteiro_id: roteiroId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function criarRecursoProdutivoAction(formData: FormData) {
+  const codigo = String(formData.get("codigo") ?? "").trim();
+  const nome = String(formData.get("nome") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "").trim();
+  const setor = String(formData.get("setor") ?? "").trim() || null;
+  const capacidadeRaw = String(formData.get("capacidade_horas_dia") ?? "").trim();
+  if (!codigo) throw new Error("Código do recurso é obrigatório.");
+  if (!nome) throw new Error("Nome do recurso é obrigatório.");
+  if (!tipo) throw new Error("Tipo do recurso é obrigatório.");
+  const capacidade = capacidadeRaw ? Number(capacidadeRaw) : null;
+  if (capacidade !== null && (!Number.isFinite(capacidade) || capacidade <= 0)) {
+    throw new Error("Capacidade (horas/dia) deve ser um número maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_recurso_produtivo", {
+    p_codigo: codigo,
+    p_nome: nome,
+    p_tipo: tipo,
+    p_setor: setor,
+    p_capacidade_horas_dia: capacidade,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function atualizarSituacaoRecursoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const situacao = String(formData.get("situacao") ?? "").trim();
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!id) throw new Error("Recurso inválido.");
+  if (!situacao) throw new Error("Situação é obrigatória.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("atualizar_situacao_recurso", {
+    p_id: id,
+    p_situacao: situacao,
+    p_motivo: motivo,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function desativarRecursoProdutivoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Recurso inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("desativar_recurso_produtivo", { p_id: id });
   if (error) throw new Error(error.message);
 
   revalidatePath("/producao");
