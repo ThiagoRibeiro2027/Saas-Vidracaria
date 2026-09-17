@@ -1,11 +1,10 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.3\
+**Versão:** 2.2\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
-escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
-resolvida, ver nota no próprio §4.7)\
+escopo do TÓPICO 4)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
 
@@ -467,36 +466,23 @@ mantidos por este ADR):
   sobras e integração com máquinas de corte — a decisão final de corte
   permanece com o operador (§54, "Limites").
 
-Não fazem parte do MVP:
+Não fazem parte do MVP (demais módulos, sem alteração desta revisão):
+
+- sequenciamento avançado;
+
+- simulação de capacidade;
 
 - otimização matemática;
 
 - balanceamento avançado;
 
-- programação automática (sequenciamento e replanejamento continuam
-  sempre com decisão humana — §6-10 deste mesmo §4.7);
+- programação automática;
 
-- análise avançada de gargalos (a identificação básica de gargalos do
-  §31-32/§37 está incluída acima; o que fica de fora é análise
-  preditiva/estatística sobre isso);
+- análise avançada de gargalos;
 
-- OEE.
+- OEE;
 
-**Correção de 2026-09-17:** esta lista continha "sequenciamento
-avançado", "simulação de capacidade" e "manutenção" como fora do MVP —
-resíduo da versão anterior à ampliação de escopo de 2026-09-16, nunca
-atualizado quando a lista equivalente do §5 foi corrigida na mesma data
-(que já registra: "PCP avançado, sequenciamento avançado, simulação de
-capacidade e manutenção deixam de constar nesta lista — passam a fazer
-parte do MVP conforme o §4.7 revisado"). Essa lista contradizia tanto a
-seção "Incluído" deste mesmo §4.7 (que já lista sequenciamento
-inteligente baseado em regras §6-7, simulação de cenários §8 e
-manutenção preventiva/corretiva com impacto na programação §33-36) quanto
-o próprio §5. Removidos os três itens daqui pra eliminar a contradição —
-nenhuma regra de negócio nova foi criada por esta correção, só alinhada
-a redação ao que o §4.7 e o §5 já diziam desde 16/09. Decisão do
-responsável do produto em 2026-09-17: capacidade produtiva e manutenção
-(§31-37) entram como próxima fase de implementação do TÓPICO 4.
+- manutenção.
 
 **4.8 Expedição / Logística**
 
@@ -1134,19 +1120,8 @@ do pedido.**
 
 **Status final: APROVADO**
 
-**Versão consolidada: 2.3**\
-**Alteração desta versão: correção de uma contradição interna no §4.7 —
-a lista "Não fazem parte do MVP" ao final da seção ainda excluía
-sequenciamento avançado, simulação de capacidade e manutenção, resíduo
-da versão anterior à ampliação de escopo de 16/09/2026 que nunca foi
-atualizado quando o §5 já havia corrigido a mesma contradição. Nenhuma
-regra de negócio nova foi criada — só alinhada a redação ao que o §4.7 e
-o §5 já diziam. Decisão do responsável do produto em 2026-09-17: prioriza
-capacidade produtiva e manutenção (§31-37) como próxima fase de
-implementação do TÓPICO 4. Versão anterior (2.2) arquivada em
-docs/Histórico.**
-
-**Versão 2.2 (16/09/2026): ampliação do escopo do TÓPICO 4 (PCP/Produção,
+**Versão consolidada: 2.2**\
+**Alteração desta versão: ampliação do escopo do TÓPICO 4 (PCP/Produção,
 §4.7) para o documento completo — sequenciamento inteligente baseado em
 regras, simulação de cenários, lote fabril, roteiro produtivo
 configurável, capacidade/recursos, manutenção preventiva/corretiva,
