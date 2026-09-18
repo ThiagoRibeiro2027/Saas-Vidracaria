@@ -30,7 +30,10 @@
 // afetadas (diretas e via split de recurso), listar_recursos_
 // alternativos() sugere recursos do mesmo tipo disponíveis, e a
 // reprogramação usa trocar_recurso_operacao() (recurso único, nova) ou
-// transferir_recurso_operacao() (§13, já existente, produção dividida).
+// transferir_recurso_operacao() (§13, já existente, produção dividida);
+// e a Fase 5c (2026-09-17): gargalos (§37, fecha o §31-37) —
+// listar_gargalos() é um recorte de listar_capacidade_recursos() (Fase
+// 5a) só com os recursos em sobrecarga.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -1085,6 +1088,54 @@ async function main() {
       const { data: operacaoTrocada } = await admin.from("op_lote_operacoes").select("recurso_produtivo_id").eq("id", opImpactoOpId).single();
       check("operação passa a referenciar o novo recurso", operacaoTrocada?.recurso_produtivo_id === usinAltId);
     }
+  }
+
+  console.log("\n17c. Gargalos (TÓPICO 4 §37)");
+  {
+    // Recurso com capacidade baixa (1h/dia) e necessidade alta —
+    // dispara sobrecarga: disponível 1×7=7h, necessário bem maior.
+    const { data: gargaloRecursoId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "GARGALO-17C", p_nome: "Recurso com gargalo", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 1,
+    });
+    const gargalo = await prepararPedidoLiberado(admTenant, "175", { quantidade: 20 });
+    const { data: roteiroGargaloId } = await admTenant.client.rpc("criar_roteiro_produtivo", {
+      p_item_id: gargalo.itemId, p_nome: "Roteiro gargalo",
+    });
+    await admTenant.client.rpc("adicionar_operacao_roteiro", {
+      p_roteiro_id: roteiroGargaloId, p_sequencia: 1, p_descricao: "Usinar gargalo", p_recurso_produtivo_id: gargaloRecursoId,
+      p_tempo_previsto_minutos: 120, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
+    });
+    const { data: opGargaloId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: gargalo.pedidoItemId });
+    const opGargaloOpId = await operacaoUnica(opGargaloId);
+    // 20 unidades × 120min = 2400min = 40h de necessidade >> 7h disponível.
+
+    const { data: gargalosAntes, error: gargalosError } = await admTenant.client.rpc("listar_gargalos", { p_dias: 7 });
+    check("listar_gargalos() executa sem erro", !gargalosError && Array.isArray(gargalosAntes));
+    const gargaloEncontrado = gargalosAntes?.find((g) => g.recurso_produtivo_id === gargaloRecursoId);
+    check(
+      "recurso em sobrecarga aparece em listar_gargalos() (7h disponível, 40h necessário)",
+      !!gargaloEncontrado && Number(gargaloEncontrado.capacidade_disponivel_horas) === 7 && Number(gargaloEncontrado.capacidade_necessaria_horas) === 40,
+    );
+
+    const { error: semPermGargalosError } = await noPermTenant.client.rpc("listar_gargalos", { p_dias: 7 });
+    check("sem producao.view não consulta gargalos de outra empresa", !!semPermGargalosError);
+
+    const { data: crossGargalos } = await otherTenant.client.rpc("listar_gargalos", { p_dias: 7 });
+    check(
+      "tenant B não enxerga o gargalo do tenant A na própria consulta",
+      !(crossGargalos ?? []).some((g) => g.recurso_produtivo_id === gargaloRecursoId),
+    );
+
+    // Aponta a produção inteira — saldo pendente zera, necessidade some,
+    // gargalo deixa de aparecer.
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opGargaloOpId, p_quantidade_produzida: 20, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    const { data: gargalosDepois } = await admTenant.client.rpc("listar_gargalos", { p_dias: 7 });
+    check(
+      "gargalo some da lista quando a operação é concluída (saldo pendente zera)",
+      !(gargalosDepois ?? []).some((g) => g.recurso_produtivo_id === gargaloRecursoId),
+    );
   }
 
   console.log("\n18. Lote fabril (TÓPICO 4 §14)");

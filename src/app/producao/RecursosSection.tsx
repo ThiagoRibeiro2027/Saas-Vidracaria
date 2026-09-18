@@ -57,6 +57,15 @@ export type ImpactoManutencaoRow = {
   impacto_horas: number | null;
 };
 type RecursoAlternativo = { id: string; codigo: string; nome: string };
+export type GargaloRow = {
+  recurso_produtivo_id: string;
+  codigo: string;
+  nome: string;
+  tipo: string;
+  capacidade_disponivel_horas: number;
+  capacidade_necessaria_horas: number;
+  saldo_horas: number;
+};
 
 const num = (v: number) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
@@ -123,6 +132,7 @@ export default function RecursosSection({
   corretivaAbertaPorRecurso,
   impactoPorRecurso,
   alternativosPorRecurso,
+  gargalos,
   canManage,
 }: {
   recursos: RecursoProdutivo[];
@@ -131,10 +141,52 @@ export default function RecursosSection({
   corretivaAbertaPorRecurso: Map<string, ManutencaoCorretivaRow>;
   impactoPorRecurso: Map<string, ImpactoManutencaoRow[]>;
   alternativosPorRecurso: Map<string, RecursoAlternativo[]>;
+  gargalos: GargaloRow[];
   canManage: boolean;
 }) {
   return (
     <section>
+      {gargalos.length > 0 && (
+        <div style={{ border: "1px solid #9b2c2c", borderRadius: "6px", padding: "10px 12px", marginBottom: "16px" }}>
+          <strong style={{ fontSize: "12px", color: "#9b2c2c" }}>
+            Gargalos (TÓPICO 4 §37) — {gargalos.length} recurso(s) com necessidade acima da capacidade disponível
+          </strong>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", marginTop: "6px" }}>
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
+                <th style={thStyle}>Recurso</th>
+                <th style={thStyle}>Tipo</th>
+                <th style={thStyle}>Disponível (h)</th>
+                <th style={thStyle}>Necessário (h)</th>
+                <th style={thStyle}>Déficit (h)</th>
+                <th style={thStyle}>Operações em risco</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gargalos.map((g) => {
+                const impacto = impactoPorRecurso.get(g.recurso_produtivo_id) ?? [];
+                return (
+                  <tr key={g.recurso_produtivo_id} style={{ borderBottom: "1px solid #f4f6f5" }}>
+                    <td style={tdStyle}>
+                      {g.codigo} — {g.nome}
+                    </td>
+                    <td style={tdStyle}>{TIPO_LABEL[g.tipo] ?? g.tipo}</td>
+                    <td style={tdStyle}>{num(g.capacidade_disponivel_horas)}</td>
+                    <td style={tdStyle}>{num(g.capacidade_necessaria_horas)}</td>
+                    <td style={tdStyle}>{num(Math.abs(g.saldo_horas))}</td>
+                    <td style={tdStyle}>
+                      {impacto.length === 0
+                        ? "—"
+                        : impacto.map((i) => `${i.ordem_producao_numero} (${num(i.saldo_pendente)})`).join(", ")}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <h2 style={sectionTitleStyle}>Recursos produtivos e capacidade (TÓPICO 4 §31-32)</h2>
       <p style={hintStyle}>
         Máquinas, equipamentos, linhas, postos, equipes, operadores, ferramentas e dispositivos.

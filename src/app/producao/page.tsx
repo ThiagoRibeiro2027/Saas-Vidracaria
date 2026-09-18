@@ -7,6 +7,7 @@ import RecursosSection, {
   type ManutencaoPreventivaRow,
   type ManutencaoCorretivaRow,
   type ImpactoManutencaoRow,
+  type GargaloRow,
 } from "./RecursosSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
@@ -34,9 +35,15 @@ import RecursosSection, {
 // recurso; corretiva muda a situação do recurso em tempo real; análise
 // de impacto lista as operações afetadas e recursos alternativos
 // (mesmo tipo, disponível), com troca direta de recurso (recurso único)
-// ou transferência (§13, produção dividida entre recursos). Gargalos
-// (§37) é a próxima sub-fase. Só pedidos liberados entram aqui (ADR-002
-// §6: Liberação → Engenharia → Produção).
+// ou transferência (§13, produção dividida entre recursos).
+// Fase 5c (2026-09-17): gargalos (§37) — fecha o §31-37 completo.
+// listar_gargalos() é um recorte de listar_capacidade_recursos()
+// (Fase 5a) só com os recursos em sobrecarga; as operações em risco
+// reaproveitam analisar_impacto_manutencao() (Fase 5b). Sinal passivo no
+// painel, sem notificação ativa (decisão do responsável do produto).
+// Sequenciamento/priorização/simulação/replanejamento automáticos
+// (§6-10) continuam fora de escopo. Só pedidos liberados entram aqui
+// (ADR-002 §6: Liberação → Engenharia → Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -225,6 +232,10 @@ export default async function ProducaoPage() {
     }),
   );
 
+  // TÓPICO 4 §37: gargalos — recorte de listar_capacidade_recursos()
+  // (Fase 5a) só com os recursos em sobrecarga.
+  const { data: gargalos } = await supabase.rpc("listar_gargalos", { p_dias: 7 });
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -234,9 +245,9 @@ export default async function ProducaoPage() {
           Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
           por item), engenharia liberada versionada, roteiro produtivo configurável com
           acompanhamento por operação, produção em lotes, lote fabril, recursos produtivos,
-          capacidade, manutenção preventiva/corretiva com análise de impacto, conclusão e lista de
-          corte. Divisão por recurso/transferência (§13) já existe no backend, ainda sem tela. Sem
-          sequenciamento ou gargalos ainda.
+          capacidade, gargalos, manutenção preventiva/corretiva com análise de impacto, conclusão e
+          lista de corte. Divisão por recurso/transferência (§13) já existe no backend, ainda sem
+          tela. Sem sequenciamento, priorização, simulação ou replanejamento automáticos (§6-10).
         </p>
 
         <ProducaoSection
@@ -277,6 +288,7 @@ export default async function ProducaoPage() {
           corretivaAbertaPorRecurso={corretivaAbertaPorRecurso}
           impactoPorRecurso={impactoPorRecurso}
           alternativosPorRecurso={alternativosPorRecurso}
+          gargalos={(gargalos as GargaloRow[]) ?? []}
           canManage={!!canManage}
         />
       </div>
