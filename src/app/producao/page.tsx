@@ -2,7 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import ProducaoSection, { type ListaCorteRow } from "./ProducaoSection";
 import RoteirosSection from "./RoteirosSection";
 import LotesFabrisSection, { type ListaCorteLoteFabrilRow } from "./LotesFabrisSection";
-import RecursosSection, { type CapacidadeRecursoRow } from "./RecursosSection";
+import RecursosSection, {
+  type CapacidadeRecursoRow,
+  type ManutencaoPreventivaRow,
+  type ManutencaoCorretivaRow,
+  type ImpactoManutencaoRow,
+} from "./RecursosSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -23,9 +28,15 @@ import RecursosSection, { type CapacidadeRecursoRow } from "./RecursosSection";
 // cadastro formal de recursos (máquina/equipamento/linha/posto/equipe/
 // operador/ferramenta/dispositivo), capacidade disponível×necessária.
 // "recurso" deixou de ser texto livre em roteiro_operacoes/op_lote_
-// operacao_recursos — agora referencia este cadastro. Manutenção (§33-36)
-// e gargalos (§37) são as próximas sub-fases. Só pedidos liberados entram
-// aqui (ADR-002 §6: Liberação → Engenharia → Produção).
+// operacao_recursos — agora referencia este cadastro.
+// Fase 5b (2026-09-17): manutenção preventiva/corretiva e impacto no PCP
+// (§33-36) — manutenção preventiva desconta da capacidade futura do
+// recurso; corretiva muda a situação do recurso em tempo real; análise
+// de impacto lista as operações afetadas e recursos alternativos
+// (mesmo tipo, disponível), com troca direta de recurso (recurso único)
+// ou transferência (§13, produção dividida entre recursos). Gargalos
+// (§37) é a próxima sub-fase. Só pedidos liberados entram aqui (ADR-002
+// §6: Liberação → Engenharia → Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -61,6 +72,8 @@ export default async function ProducaoPage() {
     { data: lotesFabris },
     { data: loteFabrilItens },
     { data: recursos },
+    { data: manutencoesPreventivas },
+    { data: manutencoesCorretivasAbertas },
   ] = await Promise.all([
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
@@ -76,6 +89,8 @@ export default async function ProducaoPage() {
     supabase.from("lotes_fabris").select("*").order("created_at", { ascending: true }),
     supabase.from("lote_fabril_itens").select("*").order("created_at", { ascending: true }),
     supabase.from("recursos_produtivos").select("*").eq("ativo", true).order("codigo", { ascending: true }),
+    supabase.from("manutencoes_preventivas").select("*").eq("ativo", true).order("proxima_data", { ascending: true }),
+    supabase.from("manutencoes_corretivas").select("*").eq("status", "aberta"),
   ]);
 
   const pedidoItensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
@@ -171,13 +186,42 @@ export default async function ProducaoPage() {
   );
 
   // Capacidade disponível × necessária por recurso (§31), janela padrão
-  // de 7 dias — função de leitura, não entidade armazenada.
+  // de 7 dias — função de leitura, não entidade armazenada. Desconta
+  // manutenção preventiva agendada na janela (§34).
   const capacidadePorRecurso = new Map<string, CapacidadeRecursoRow>();
   await Promise.all(
     (recursos ?? []).map(async (r) => {
       const { data } = await supabase.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: r.id, p_dias: 7 });
       const row = data?.[0];
       if (row) capacidadePorRecurso.set(r.id, row);
+    }),
+  );
+
+  // TÓPICO 4 §34: manutenções preventivas agendadas, por recurso.
+  const preventivasPorRecurso = new Map<string, ManutencaoPreventivaRow[]>();
+  for (const p of manutencoesPreventivas ?? []) {
+    const list = preventivasPorRecurso.get(p.recurso_produtivo_id) ?? [];
+    list.push(p);
+    preventivasPorRecurso.set(p.recurso_produtivo_id, list);
+  }
+
+  // TÓPICO 4 §35: manutenção corretiva aberta (no máx. 1 por recurso).
+  const corretivaAbertaPorRecurso = new Map<string, ManutencaoCorretivaRow>(
+    (manutencoesCorretivasAbertas ?? []).map((c) => [c.recurso_produtivo_id, c] as const),
+  );
+
+  // TÓPICO 4 §36: análise de impacto (operações afetadas) e recursos
+  // alternativos (mesmo tipo, disponível) — funções de leitura.
+  const impactoPorRecurso = new Map<string, ImpactoManutencaoRow[]>();
+  const alternativosPorRecurso = new Map<string, { id: string; codigo: string; nome: string }[]>();
+  await Promise.all(
+    (recursos ?? []).map(async (r) => {
+      const [{ data: impacto }, { data: alternativos }] = await Promise.all([
+        supabase.rpc("analisar_impacto_manutencao", { p_recurso_produtivo_id: r.id }),
+        supabase.rpc("listar_recursos_alternativos", { p_recurso_produtivo_id: r.id }),
+      ]);
+      impactoPorRecurso.set(r.id, impacto ?? []);
+      alternativosPorRecurso.set(r.id, alternativos ?? []);
     }),
   );
 
@@ -189,9 +233,10 @@ export default async function ProducaoPage() {
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
           Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
           por item), engenharia liberada versionada, roteiro produtivo configurável com
-          acompanhamento por operação, produção em lotes, lote fabril, recursos produtivos e
-          capacidade, conclusão e lista de corte. Divisão por recurso/transferência (§13) já existe
-          no backend, ainda sem tela. Sem sequenciamento, manutenção ou gargalos ainda.
+          acompanhamento por operação, produção em lotes, lote fabril, recursos produtivos,
+          capacidade, manutenção preventiva/corretiva com análise de impacto, conclusão e lista de
+          corte. Divisão por recurso/transferência (§13) já existe no backend, ainda sem tela. Sem
+          sequenciamento ou gargalos ainda.
         </p>
 
         <ProducaoSection
@@ -228,6 +273,10 @@ export default async function ProducaoPage() {
         <RecursosSection
           recursos={recursos ?? []}
           capacidadePorRecurso={capacidadePorRecurso}
+          preventivasPorRecurso={preventivasPorRecurso}
+          corretivaAbertaPorRecurso={corretivaAbertaPorRecurso}
+          impactoPorRecurso={impactoPorRecurso}
+          alternativosPorRecurso={alternativosPorRecurso}
           canManage={!!canManage}
         />
       </div>

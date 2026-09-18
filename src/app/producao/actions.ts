@@ -179,6 +179,7 @@ export async function criarRecursoProdutivoAction(formData: FormData) {
   const tipo = String(formData.get("tipo") ?? "").trim();
   const setor = String(formData.get("setor") ?? "").trim() || null;
   const capacidadeRaw = String(formData.get("capacidade_horas_dia") ?? "").trim();
+  const localizacao = String(formData.get("localizacao") ?? "").trim() || null;
   if (!codigo) throw new Error("Código do recurso é obrigatório.");
   if (!nome) throw new Error("Nome do recurso é obrigatório.");
   if (!tipo) throw new Error("Tipo do recurso é obrigatório.");
@@ -194,6 +195,107 @@ export async function criarRecursoProdutivoAction(formData: FormData) {
     p_tipo: tipo,
     p_setor: setor,
     p_capacidade_horas_dia: capacidade,
+    p_localizacao: localizacao,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function programarManutencaoPreventivaAction(formData: FormData) {
+  const recursoId = String(formData.get("recurso_produtivo_id") ?? "");
+  const tipo = String(formData.get("tipo") ?? "").trim();
+  const proximaData = String(formData.get("proxima_data") ?? "").trim();
+  const periodicidadeRaw = String(formData.get("periodicidade_dias") ?? "").trim();
+  const duracaoRaw = String(formData.get("duracao_estimada_horas") ?? "").trim();
+  if (!recursoId) throw new Error("Recurso inválido.");
+  if (!tipo) throw new Error("Tipo de manutenção é obrigatório.");
+  if (!proximaData) throw new Error("Próxima data é obrigatória.");
+  const periodicidade = periodicidadeRaw ? Number(periodicidadeRaw) : null;
+  if (periodicidade !== null && (!Number.isInteger(periodicidade) || periodicidade <= 0)) {
+    throw new Error("Periodicidade deve ser um número inteiro maior que zero.");
+  }
+  const duracao = duracaoRaw ? Number(duracaoRaw) : null;
+  if (duracao !== null && (!Number.isFinite(duracao) || duracao <= 0)) {
+    throw new Error("Duração estimada deve ser um número maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("programar_manutencao_preventiva", {
+    p_recurso_produtivo_id: recursoId,
+    p_tipo: tipo,
+    p_proxima_data: proximaData,
+    p_periodicidade_dias: periodicidade,
+    p_duracao_estimada_horas: duracao,
+    p_responsavel_id: null,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function cancelarManutencaoPreventivaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Manutenção preventiva inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancelar_manutencao_preventiva", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function iniciarManutencaoCorretivaAction(formData: FormData) {
+  const recursoId = String(formData.get("recurso_produtivo_id") ?? "");
+  const problema = String(formData.get("problema") ?? "").trim();
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!recursoId) throw new Error("Recurso inválido.");
+  if (!problema) throw new Error("Descrição do problema é obrigatória.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("iniciar_manutencao_corretiva", {
+    p_recurso_produtivo_id: recursoId,
+    p_problema: problema,
+    p_motivo: motivo,
+    p_previsao_retorno: null,
+    p_responsavel_id: null,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function encerrarManutencaoCorretivaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const pecas = String(formData.get("pecas") ?? "").trim() || null;
+  const servicos = String(formData.get("servicos") ?? "").trim() || null;
+  const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
+  if (!id) throw new Error("Manutenção corretiva inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("encerrar_manutencao_corretiva", {
+    p_id: id,
+    p_pecas: pecas,
+    p_servicos: servicos,
+    p_observacoes: observacoes,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function trocarRecursoOperacaoAction(formData: FormData) {
+  const opLoteOperacaoId = String(formData.get("op_lote_operacao_id") ?? "");
+  const novoRecursoId = String(formData.get("novo_recurso_produtivo_id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!opLoteOperacaoId) throw new Error("Operação inválida.");
+  if (!novoRecursoId) throw new Error("Selecione o novo recurso.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("trocar_recurso_operacao", {
+    p_op_lote_operacao_id: opLoteOperacaoId,
+    p_novo_recurso_produtivo_id: novoRecursoId,
+    p_motivo: motivo,
   });
   if (error) throw new Error(error.message);
 

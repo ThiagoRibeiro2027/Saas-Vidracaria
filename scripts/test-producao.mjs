@@ -23,7 +23,14 @@
 // máquina/equipamento/linha/posto/equipe/operador/ferramenta/
 // dispositivo); calcular_capacidade_recurso()/listar_capacidade_
 // recursos() comparam capacidade disponível × necessária (tempo_
-// previsto_minutos × saldo pendente).
+// previsto_minutos × saldo pendente); e a Fase 5b (2026-09-17):
+// manutenção preventiva (§34, desconta da capacidade futura), corretiva
+// (§35, muda recursos_produtivos.situacao em tempo real) e análise de
+// impacto no PCP (§36) — analisar_impacto_manutencao() lista operações
+// afetadas (diretas e via split de recurso), listar_recursos_
+// alternativos() sugere recursos do mesmo tipo disponíveis, e a
+// reprogramação usa trocar_recurso_operacao() (recurso único, nova) ou
+// transferir_recurso_operacao() (§13, já existente, produção dividida).
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -899,6 +906,187 @@ async function main() {
     check("tenant B não enxerga recurso produtivo do tenant A", (crossRecursosProdutivos ?? []).length === 0);
   }
 
+  console.log("\n17b. Manutenção e impacto no PCP (TÓPICO 4 §33-36)");
+  {
+    const { data: usinId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "USIN-17B", p_nome: "Usinagem 17b", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+      p_localizacao: "Galpão 2",
+    });
+    const { data: usinAltId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "USIN-17B-ALT", p_nome: "Usinagem 17b alternativa", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+
+    console.log("  Manutenção preventiva (§34) — desconta da capacidade futura");
+    {
+      const { error: semPermError } = await noPermTenant.client.rpc("programar_manutencao_preventiva", {
+        p_recurso_produtivo_id: usinId, p_tipo: "Troca de óleo", p_proxima_data: "2027-01-05",
+        p_periodicidade_dias: 30, p_duracao_estimada_horas: 4, p_responsavel_id: null,
+      });
+      check("sem producao.manage não programa manutenção preventiva", !!semPermError);
+
+      const amanha = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { data: preventivaId, error: programaError } = await admTenant.client.rpc("programar_manutencao_preventiva", {
+        p_recurso_produtivo_id: usinId, p_tipo: "Troca de óleo", p_proxima_data: amanha,
+        p_periodicidade_dias: 30, p_duracao_estimada_horas: 4, p_responsavel_id: null,
+      });
+      check("programa manutenção preventiva dentro da janela de 7 dias", !programaError && !!preventivaId);
+
+      const { data: capAntes } = await admTenant.client.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: usinId, p_dias: 7 });
+      check(
+        "capacidade disponível desconta a duração estimada da preventiva (8×7 - 4 = 52)",
+        Number(capAntes?.[0]?.capacidade_disponivel_horas) === 52,
+      );
+
+      const depoisDeAmanha = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { error: semPermEditaError } = await noPermTenant.client.rpc("editar_manutencao_preventiva", {
+        p_id: preventivaId, p_proxima_data: depoisDeAmanha, p_periodicidade_dias: 30, p_duracao_estimada_horas: 6, p_responsavel_id: null,
+      });
+      check("sem producao.manage não edita manutenção preventiva", !!semPermEditaError);
+
+      const { error: editaError } = await admTenant.client.rpc("editar_manutencao_preventiva", {
+        p_id: preventivaId, p_proxima_data: depoisDeAmanha, p_periodicidade_dias: 30, p_duracao_estimada_horas: 6, p_responsavel_id: null,
+      });
+      check("edita manutenção preventiva", !editaError);
+      const { data: preventivaEditada } = await admin.from("manutencoes_preventivas").select("duracao_estimada_horas").eq("id", preventivaId).single();
+      check("duração estimada atualizada (6h)", Number(preventivaEditada?.duracao_estimada_horas) === 6);
+
+      const { error: semPermCancelaError } = await noPermTenant.client.rpc("cancelar_manutencao_preventiva", { p_id: preventivaId });
+      check("sem producao.manage não cancela manutenção preventiva", !!semPermCancelaError);
+
+      const { error: cancelaError } = await admTenant.client.rpc("cancelar_manutencao_preventiva", { p_id: preventivaId });
+      check("cancela manutenção preventiva", !cancelaError);
+
+      const { data: capDepois } = await admTenant.client.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: usinId, p_dias: 7 });
+      check(
+        "capacidade volta ao normal após cancelar a preventiva (8×7 = 56)",
+        Number(capDepois?.[0]?.capacidade_disponivel_horas) === 56,
+      );
+
+      const { data: crossPreventivas } = await otherTenant.client.from("manutencoes_preventivas").select("id").eq("id", preventivaId);
+      check("tenant B não enxerga manutenção preventiva do tenant A", (crossPreventivas ?? []).length === 0);
+    }
+
+    console.log("  Manutenção corretiva (§35) — muda a situação do recurso em tempo real");
+    let corretivaId;
+    {
+      const { error: semPermError } = await noPermTenant.client.rpc("iniciar_manutencao_corretiva", {
+        p_recurso_produtivo_id: usinId, p_problema: "Sem permissão", p_motivo: null, p_previsao_retorno: null, p_responsavel_id: null,
+      });
+      check("sem producao.manage não inicia manutenção corretiva", !!semPermError);
+
+      const { data: cId, error: iniciaError } = await admTenant.client.rpc("iniciar_manutencao_corretiva", {
+        p_recurso_produtivo_id: usinId, p_problema: "Correia rompida", p_motivo: "desgaste", p_previsao_retorno: null, p_responsavel_id: null,
+      });
+      check("inicia manutenção corretiva", !iniciaError && !!cId);
+      corretivaId = cId;
+
+      const { data: recursoEmManutencao } = await admin.from("recursos_produtivos").select("situacao, motivo_situacao").eq("id", usinId).single();
+      check(
+        "situação do recurso vira 'em_manutencao' com o problema como motivo",
+        recursoEmManutencao?.situacao === "em_manutencao" && recursoEmManutencao?.motivo_situacao === "Correia rompida",
+      );
+
+      const { error: duplicadaError } = await admTenant.client.rpc("iniciar_manutencao_corretiva", {
+        p_recurso_produtivo_id: usinId, p_problema: "Outro problema", p_motivo: null, p_previsao_retorno: null, p_responsavel_id: null,
+      });
+      check("não inicia 2ª corretiva aberta pro mesmo recurso", !!duplicadaError);
+
+      const { error: semPermEncerraError } = await noPermTenant.client.rpc("encerrar_manutencao_corretiva", {
+        p_id: corretivaId, p_pecas: null, p_servicos: null, p_observacoes: null,
+      });
+      check("sem producao.manage não encerra manutenção corretiva", !!semPermEncerraError);
+
+      const { error: encerraError } = await admTenant.client.rpc("encerrar_manutencao_corretiva", {
+        p_id: corretivaId, p_pecas: "correia nova", p_servicos: "troca de correia", p_observacoes: "ok",
+      });
+      check("encerra manutenção corretiva", !encerraError);
+
+      const { data: corretivaEncerrada } = await admin.from("manutencoes_corretivas").select("status, retorno_efetivo, pecas").eq("id", corretivaId).single();
+      check(
+        "corretiva encerrada com retorno efetivo e peças registradas",
+        corretivaEncerrada?.status === "encerrada" && !!corretivaEncerrada?.retorno_efetivo && corretivaEncerrada?.pecas === "correia nova",
+      );
+
+      const { data: recursoDisponivel } = await admin.from("recursos_produtivos").select("situacao, motivo_situacao").eq("id", usinId).single();
+      check(
+        "situação do recurso volta pra 'disponivel' ao encerrar",
+        recursoDisponivel?.situacao === "disponivel" && recursoDisponivel?.motivo_situacao === null,
+      );
+
+      const { error: encerraDeNovoError } = await admTenant.client.rpc("encerrar_manutencao_corretiva", {
+        p_id: corretivaId, p_pecas: null, p_servicos: null, p_observacoes: null,
+      });
+      check("encerrar corretiva já encerrada é rejeitado", !!encerraDeNovoError);
+
+      const { data: crossCorretivas } = await otherTenant.client.from("manutencoes_corretivas").select("id").eq("id", corretivaId);
+      check("tenant B não enxerga manutenção corretiva do tenant A", (crossCorretivas ?? []).length === 0);
+    }
+
+    console.log("  Análise de impacto (§36) — operações afetadas, alternativas e reprogramação");
+    {
+      // Caminho direto: operação do roteiro referencia o recurso.
+      const direto = await prepararPedidoLiberado(admTenant, "173", { quantidade: 4 });
+      const { data: roteiroImpactoId } = await admTenant.client.rpc("criar_roteiro_produtivo", {
+        p_item_id: direto.itemId, p_nome: "Roteiro impacto",
+      });
+      await admTenant.client.rpc("adicionar_operacao_roteiro", {
+        p_roteiro_id: roteiroImpactoId, p_sequencia: 1, p_descricao: "Usinar direto", p_recurso_produtivo_id: usinId,
+        p_tempo_previsto_minutos: 30, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
+      });
+      const { data: opImpactoId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: direto.pedidoItemId });
+      const opImpactoOpId = await operacaoUnica(opImpactoId);
+      await admTenant.client.rpc("apontar_producao", {
+        p_op_lote_operacao_id: opImpactoOpId, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+      });
+      // saldo pendente = 4 - 1 = 3; impacto = 3 * 30min / 60 = 1.5h.
+
+      // Caminho por split de recurso (§13): operação de fallback (sem
+      // recurso direto), com o recurso alocado como split.
+      const viaSplit = await prepararPedidoLiberado(admTenant, "174", { quantidade: 10 });
+      const { data: opSplitId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: viaSplit.pedidoItemId });
+      const opSplitOpId = await operacaoUnica(opSplitId);
+      // A operação de fallback não tem tempo_previsto_minutos — impacto_horas fica null pra essa linha.
+      await admTenant.client.rpc("alocar_recurso_operacao", {
+        p_op_lote_operacao_id: opSplitOpId, p_recurso_produtivo_id: usinId, p_quantidade: 6,
+      });
+
+      const { data: impactoRows, error: impactoError } = await admTenant.client.rpc("analisar_impacto_manutencao", {
+        p_recurso_produtivo_id: usinId,
+      });
+      check("analisar_impacto_manutencao() executa sem erro", !impactoError && Array.isArray(impactoRows));
+      const linhaDireta = impactoRows?.find((r) => r.origem === "operacao" && r.op_lote_operacao_id === opImpactoOpId);
+      check(
+        "linha direta traz saldo pendente e impacto em horas corretos (3 / 1.5h)",
+        Number(linhaDireta?.saldo_pendente) === 3 && Number(linhaDireta?.impacto_horas) === 1.5,
+      );
+      const linhaSplit = impactoRows?.find((r) => r.origem === "split_recurso" && r.op_lote_operacao_id === opSplitOpId);
+      check("linha via split de recurso aparece com saldo pendente correto (6)", Number(linhaSplit?.saldo_pendente) === 6);
+
+      const { error: semPermImpactoError } = await noPermTenant.client.rpc("analisar_impacto_manutencao", { p_recurso_produtivo_id: usinId });
+      check("sem producao.view não consulta impacto de manutenção de outra empresa", !!semPermImpactoError);
+
+      const { data: alternativos, error: alternativosError } = await admTenant.client.rpc("listar_recursos_alternativos", {
+        p_recurso_produtivo_id: usinId,
+      });
+      check(
+        "listar_recursos_alternativos() traz o recurso do mesmo tipo disponível",
+        !alternativosError && (alternativos ?? []).some((a) => a.id === usinAltId),
+      );
+
+      const { error: semPermTrocaError } = await noPermTenant.client.rpc("trocar_recurso_operacao", {
+        p_op_lote_operacao_id: opImpactoOpId, p_novo_recurso_produtivo_id: usinAltId, p_motivo: null,
+      });
+      check("sem producao.manage não troca recurso da operação", !!semPermTrocaError);
+
+      const { error: trocaError } = await admTenant.client.rpc("trocar_recurso_operacao", {
+        p_op_lote_operacao_id: opImpactoOpId, p_novo_recurso_produtivo_id: usinAltId, p_motivo: "máquina em manutenção",
+      });
+      check("troca o recurso da operação (reprogramação, §36)", !trocaError);
+      const { data: operacaoTrocada } = await admin.from("op_lote_operacoes").select("recurso_produtivo_id").eq("id", opImpactoOpId).single();
+      check("operação passa a referenciar o novo recurso", operacaoTrocada?.recurso_produtivo_id === usinAltId);
+    }
+  }
+
   console.log("\n18. Lote fabril (TÓPICO 4 §14)");
   {
     const fabril = await prepararPedidoLiberado(admTenant, "18", { quantidade: 15 });
@@ -1004,6 +1192,12 @@ async function main() {
         "producao.recurso_produtivo_editado",
         "producao.recurso_produtivo_situacao_alterada",
         "producao.recurso_produtivo_desativado",
+        "producao.manutencao_preventiva_programada",
+        "producao.manutencao_preventiva_editada",
+        "producao.manutencao_preventiva_cancelada",
+        "producao.manutencao_corretiva_iniciada",
+        "producao.manutencao_corretiva_encerrada",
+        "producao.recurso_operacao_trocado",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("ordem_criada registrado", actions.has("producao.ordem_criada"));
@@ -1026,6 +1220,12 @@ async function main() {
     check("recurso_produtivo_editado registrado", actions.has("producao.recurso_produtivo_editado"));
     check("recurso_produtivo_situacao_alterada registrado", actions.has("producao.recurso_produtivo_situacao_alterada"));
     check("recurso_produtivo_desativado registrado", actions.has("producao.recurso_produtivo_desativado"));
+    check("manutencao_preventiva_programada registrado", actions.has("producao.manutencao_preventiva_programada"));
+    check("manutencao_preventiva_editada registrado", actions.has("producao.manutencao_preventiva_editada"));
+    check("manutencao_preventiva_cancelada registrado", actions.has("producao.manutencao_preventiva_cancelada"));
+    check("manutencao_corretiva_iniciada registrado", actions.has("producao.manutencao_corretiva_iniciada"));
+    check("manutencao_corretiva_encerrada registrado", actions.has("producao.manutencao_corretiva_encerrada"));
+    check("recurso_operacao_trocado registrado", actions.has("producao.recurso_operacao_trocado"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

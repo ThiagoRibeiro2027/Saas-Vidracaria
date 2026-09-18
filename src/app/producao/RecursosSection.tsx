@@ -1,6 +1,15 @@
 "use client";
 
-import { criarRecursoProdutivoAction, atualizarSituacaoRecursoAction, desativarRecursoProdutivoAction } from "./actions";
+import {
+  criarRecursoProdutivoAction,
+  atualizarSituacaoRecursoAction,
+  desativarRecursoProdutivoAction,
+  programarManutencaoPreventivaAction,
+  cancelarManutencaoPreventivaAction,
+  iniciarManutencaoCorretivaAction,
+  encerrarManutencaoCorretivaAction,
+  trocarRecursoOperacaoAction,
+} from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 
 type RecursoProdutivo = {
@@ -9,6 +18,7 @@ type RecursoProdutivo = {
   nome: string;
   tipo: string;
   setor: string | null;
+  localizacao: string | null;
   capacidade_horas_dia: number | null;
   situacao: string;
   motivo_situacao: string | null;
@@ -21,6 +31,32 @@ export type CapacidadeRecursoRow = {
   saldo_horas: number;
   classificacao: "sem_capacidade_cadastrada" | "sobrecarga" | "ociosa" | "normal";
 };
+export type ManutencaoPreventivaRow = {
+  id: string;
+  recurso_produtivo_id: string;
+  tipo: string;
+  periodicidade_dias: number | null;
+  proxima_data: string;
+  duracao_estimada_horas: number | null;
+};
+export type ManutencaoCorretivaRow = {
+  id: string;
+  recurso_produtivo_id: string;
+  inicio_parada: string;
+  problema: string;
+  motivo: string | null;
+  status: "aberta" | "encerrada";
+};
+export type ImpactoManutencaoRow = {
+  origem: "operacao" | "split_recurso";
+  op_lote_operacao_id: string;
+  op_lote_operacao_recurso_id: string | null;
+  ordem_producao_numero: string;
+  descricao_operacao: string;
+  saldo_pendente: number;
+  impacto_horas: number | null;
+};
+type RecursoAlternativo = { id: string; codigo: string; nome: string };
 
 const num = (v: number) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 
@@ -83,10 +119,18 @@ const TIPOS = Object.keys(TIPO_LABEL);
 export default function RecursosSection({
   recursos,
   capacidadePorRecurso,
+  preventivasPorRecurso,
+  corretivaAbertaPorRecurso,
+  impactoPorRecurso,
+  alternativosPorRecurso,
   canManage,
 }: {
   recursos: RecursoProdutivo[];
   capacidadePorRecurso: Map<string, CapacidadeRecursoRow>;
+  preventivasPorRecurso: Map<string, ManutencaoPreventivaRow[]>;
+  corretivaAbertaPorRecurso: Map<string, ManutencaoCorretivaRow>;
+  impactoPorRecurso: Map<string, ImpactoManutencaoRow[]>;
+  alternativosPorRecurso: Map<string, RecursoAlternativo[]>;
   canManage: boolean;
 }) {
   return (
@@ -124,6 +168,7 @@ export default function RecursosSection({
             placeholder="h/dia (opcional)"
             style={{ ...inputStyle, width: "100px" }}
           />
+          <input name="localizacao" placeholder="Localização (opcional)" style={{ ...inputStyle, width: "110px" }} />
           <button type="submit" style={buttonStyle}>
             Criar recurso
           </button>
@@ -150,7 +195,11 @@ export default function RecursosSection({
               <tr key={r.id} style={{ borderBottom: "1px solid #f4f6f5", verticalAlign: "top" }}>
                 <td style={tdStyle}>
                   {r.codigo} — {r.nome}
-                  {r.setor && <div style={{ color: "#6b7a75", fontSize: "11px" }}>{r.setor}</div>}
+                  {(r.setor || r.localizacao) && (
+                    <div style={{ color: "#6b7a75", fontSize: "11px" }}>
+                      {[r.setor, r.localizacao].filter(Boolean).join(" — ")}
+                    </div>
+                  )}
                 </td>
                 <td style={tdStyle}>{TIPO_LABEL[r.tipo] ?? r.tipo}</td>
                 <td style={tdStyle}>
@@ -210,6 +259,196 @@ export default function RecursosSection({
           )}
         </tbody>
       </table>
+
+      <h3 style={{ ...sectionTitleStyle, fontSize: "13px", marginTop: "20px" }}>
+        Manutenção e impacto no PCP (TÓPICO 4 §33-36)
+      </h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        {recursos.map((r) => {
+          const corretiva = corretivaAbertaPorRecurso.get(r.id);
+          const preventivas = preventivasPorRecurso.get(r.id) ?? [];
+          const impacto = impactoPorRecurso.get(r.id) ?? [];
+          const alternativos = alternativosPorRecurso.get(r.id) ?? [];
+
+          return (
+            <div key={r.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "8px 10px" }}>
+              <strong style={{ fontSize: "12px" }}>
+                {r.codigo} — {r.nome}
+              </strong>
+
+              <div style={{ marginTop: "6px" }}>
+                {corretiva ? (
+                  <div>
+                    <p style={{ ...hintStyle, color: "#9b2c2c", margin: 0 }}>
+                      Corretiva aberta desde {new Date(corretiva.inicio_parada).toLocaleString("pt-BR")}: {corretiva.problema}
+                      {corretiva.motivo && ` (${corretiva.motivo})`}
+                    </p>
+                    {canManage && (
+                      <form
+                        action={encerrarManutencaoCorretivaAction}
+                        style={{ display: "flex", flexWrap: "wrap", gap: "3px", marginTop: "4px", alignItems: "center" }}
+                      >
+                        <input type="hidden" name="id" value={corretiva.id} />
+                        <input name="pecas" placeholder="peças (opcional)" style={{ ...inputStyle, width: "100px", fontSize: "11px" }} />
+                        <input name="servicos" placeholder="serviços (opcional)" style={{ ...inputStyle, width: "100px", fontSize: "11px" }} />
+                        <input name="observacoes" placeholder="observações (opcional)" style={{ ...inputStyle, width: "120px", fontSize: "11px" }} />
+                        <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
+                          Encerrar corretiva
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                ) : (
+                  canManage && (
+                    <form
+                      action={iniciarManutencaoCorretivaAction}
+                      style={{ display: "flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}
+                    >
+                      <input type="hidden" name="recurso_produtivo_id" value={r.id} />
+                      <input name="problema" placeholder="problema" required style={{ ...inputStyle, width: "140px", fontSize: "11px" }} />
+                      <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "110px", fontSize: "11px" }} />
+                      <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#9b2c2c" }}>
+                        Iniciar corretiva
+                      </button>
+                    </form>
+                  )
+                )}
+              </div>
+
+              <details style={{ marginTop: "6px" }}>
+                <summary style={{ fontSize: "11px", color: "#1f5d57", cursor: "pointer" }}>
+                  Manutenção preventiva ({preventivas.length})
+                </summary>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", marginTop: "4px" }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
+                      <th style={thStyle}>Tipo</th>
+                      <th style={thStyle}>Próxima data</th>
+                      <th style={thStyle}>Periodicidade (dias)</th>
+                      <th style={thStyle}>Duração (h)</th>
+                      {canManage && <th style={thStyle}></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preventivas.map((p) => (
+                      <tr key={p.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
+                        <td style={tdStyle}>{p.tipo}</td>
+                        <td style={tdStyle}>{new Date(p.proxima_data).toLocaleDateString("pt-BR")}</td>
+                        <td style={tdStyle}>{p.periodicidade_dias ?? "—"}</td>
+                        <td style={tdStyle}>{p.duracao_estimada_horas ?? "—"}</td>
+                        {canManage && (
+                          <td style={tdStyle}>
+                            <form action={cancelarManutencaoPreventivaAction}>
+                              <input type="hidden" name="id" value={p.id} />
+                              <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#6b7a75" }}>
+                                Cancelar
+                              </button>
+                            </form>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {preventivas.length === 0 && (
+                      <tr>
+                        <td style={tdStyle} colSpan={canManage ? 5 : 4}>
+                          <span style={{ color: "#6b7a75" }}>Nenhuma manutenção preventiva programada.</span>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                {canManage && (
+                  <form
+                    action={programarManutencaoPreventivaAction}
+                    style={{ display: "flex", flexWrap: "wrap", gap: "3px", marginTop: "4px", alignItems: "center" }}
+                  >
+                    <input type="hidden" name="recurso_produtivo_id" value={r.id} />
+                    <input name="tipo" placeholder="tipo" required style={{ ...inputStyle, width: "100px", fontSize: "11px" }} />
+                    <input name="proxima_data" type="date" required style={{ ...inputStyle, width: "130px", fontSize: "11px" }} />
+                    <input
+                      name="periodicidade_dias"
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder="período (dias, opc.)"
+                      style={{ ...inputStyle, width: "110px", fontSize: "11px" }}
+                    />
+                    <input
+                      name="duracao_estimada_horas"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      placeholder="duração h (opc.)"
+                      style={{ ...inputStyle, width: "100px", fontSize: "11px" }}
+                    />
+                    <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
+                      Programar
+                    </button>
+                  </form>
+                )}
+              </details>
+
+              <details style={{ marginTop: "6px" }}>
+                <summary style={{ fontSize: "11px", color: "#1f5d57", cursor: "pointer" }}>
+                  Análise de impacto ({impacto.length} operação(ões) pendente(s))
+                </summary>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", marginTop: "4px" }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
+                      <th style={thStyle}>OP</th>
+                      <th style={thStyle}>Operação</th>
+                      <th style={thStyle}>Saldo pendente</th>
+                      <th style={thStyle}>Impacto (h)</th>
+                      {canManage && <th style={thStyle}></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {impacto.map((i, idx) => (
+                      <tr key={idx} style={{ borderBottom: "1px solid #f4f6f5" }}>
+                        <td style={tdStyle}>{i.ordem_producao_numero}</td>
+                        <td style={tdStyle}>{i.descricao_operacao}</td>
+                        <td style={tdStyle}>{num(i.saldo_pendente)}</td>
+                        <td style={tdStyle}>{i.impacto_horas != null ? num(i.impacto_horas) : "—"}</td>
+                        {canManage && (
+                          <td style={tdStyle}>
+                            {i.origem === "operacao" && alternativos.length > 0 && (
+                              <form
+                                action={trocarRecursoOperacaoAction}
+                                style={{ display: "flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}
+                              >
+                                <input type="hidden" name="op_lote_operacao_id" value={i.op_lote_operacao_id} />
+                                <select name="novo_recurso_produtivo_id" required style={{ ...inputStyle, width: "130px", fontSize: "11px" }}>
+                                  <option value="">Trocar pra...</option>
+                                  {alternativos.map((a) => (
+                                    <option key={a.id} value={a.id}>
+                                      {a.codigo} — {a.nome}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
+                                  Trocar
+                                </button>
+                              </form>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {impacto.length === 0 && (
+                      <tr>
+                        <td style={tdStyle} colSpan={canManage ? 5 : 4}>
+                          <span style={{ color: "#6b7a75" }}>Nenhuma operação pendente usando este recurso.</span>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </details>
+            </div>
+          );
+        })}
+        {recursos.length === 0 && <p style={hintStyle}>Nenhum recurso produtivo cadastrado ainda.</p>}
+      </div>
     </section>
   );
 }
