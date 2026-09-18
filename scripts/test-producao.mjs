@@ -46,8 +46,20 @@
 // por critério, não soma de magnitudes brutas), com pesos configuráveis
 // por empresa (sequenciamento_pesos/definir_peso_sequenciamento(),
 // default 1) e classificação risco/oportunidade/recomendado por
-// comparação entre posição atual × recomendada. Decisão humana/simulação
-// (§7-8), horizonte/congelamento (§9) e replanejamento (§10) — sub-fases
+// comparação entre posição atual x recomendada; e a Fase 6c
+// (2026-09-20): decisão humana (§7) — sequenciamento_decisoes/
+// decidir_sequenciamento() grava recomendação apresentada (snapshot) ->
+// decisão (aceitar/rejeitar/modificar/ignorar/manual) -> usuário -> data/
+// hora -> motivo, aplicando de verdade (via trocar_recurso_operacao/
+// programar_operacao/definir_prioridade_op já existentes) só quando a
+// decisão é aceitar/modificar/manual e algum valor novo é informado —
+// listar_decisoes_sequenciamento() junta com o estado atual da operação
+// pra responder "qual foi o resultado" sem campo redundante; e simulação
+// de cenários (§8) — recomendar_sequenciamento() foi fatorado em
+// calcular_ranking_sequenciamento() (interna, parametrizável por
+// override) pra simular_alteracao_programacao() comparar antes x depois
+// (recurso/data/prioridade hipotéticos) sem NUNCA escrever na tabela
+// real. Horizonte/congelamento (§9) e replanejamento (§10) — sub-fases
 // seguintes, ainda não implementadas.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
@@ -1516,6 +1528,180 @@ async function main() {
       .select("action")
       .eq("action", "producao.peso_sequenciamento_definido");
     check("peso_sequenciamento_definido registrado", (events21 ?? []).length > 0);
+  }
+
+  console.log("\n22. Decisão humana e simulação de cenários (TÓPICO 4 §7-8, Fase 6c)");
+  {
+    const daquiA10dias = new Date(); daquiA10dias.setDate(daquiA10dias.getDate() + 10);
+    const fmt22 = (d) => d.toISOString().slice(0, 10);
+
+    const { data: recursoDecId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "DEC-22", p_nome: "Recurso decisão/simulação", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 4,
+    });
+    const { data: recursoDecBId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "DEC-22B", p_nome: "Recurso destino simulação", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 4,
+    });
+
+    async function prepararOperacaoDecisao(sufixo, recursoId) {
+      const dados = await prepararPedidoLiberado(admTenant, sufixo, { quantidade: 5 });
+      await admin.from("pedidos").update({ previsao_entrega: fmt22(daquiA10dias) }).eq("id", dados.pedidoId);
+      const { data: roteiroId } = await admTenant.client.rpc("criar_roteiro_produtivo", { p_item_id: dados.itemId, p_nome: `Roteiro ${sufixo}` });
+      await admTenant.client.rpc("adicionar_operacao_roteiro", {
+        p_roteiro_id: roteiroId, p_sequencia: 1, p_descricao: `Operação ${sufixo}`, p_recurso_produtivo_id: recursoId,
+        p_tempo_previsto_minutos: 120, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
+      });
+      const { data: opId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: dados.pedidoItemId });
+      return { opId, opLoteOperacaoId: await operacaoUnica(opId) };
+    }
+
+    const X = await prepararOperacaoDecisao("221", recursoDecId);
+    const Y = await prepararOperacaoDecisao("222", recursoDecId);
+
+    // --- §7: decidir_sequenciamento ---
+
+    const { error: decisaoInvalidaError } = await admTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: X.opLoteOperacaoId, p_decisao: "inexistente", p_motivo: null,
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("decisão inválida é rejeitada", !!decisaoInvalidaError);
+
+    const { data: aceitarSemValorId, error: aceitarSemValorError } = await admTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: X.opLoteOperacaoId, p_decisao: "aceitar", p_motivo: "concordo com a recomendação",
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("aceitar sem valor novo é registrado sem erro", !aceitarSemValorError && !!aceitarSemValorId);
+
+    const { data: decisaoAceitar } = await admin.from("sequenciamento_decisoes").select("*").eq("id", aceitarSemValorId).single();
+    check("aceitar sem valor novo fica com aplicado=false e snapshot preenchido", decisaoAceitar?.aplicado === false && !!decisaoAceitar?.recomendacao_snapshot?.classificacao);
+
+    const { error: rejeitarComValorError } = await admTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: X.opLoteOperacaoId, p_decisao: "rejeitar", p_motivo: null,
+      p_nova_data_planejada_inicio: "2026-11-01", p_nova_data_planejada_fim: null, p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("rejeitar acompanhado de valor novo é rejeitado", !!rejeitarComValorError);
+
+    const { data: modificarId, error: modificarError } = await admTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: X.opLoteOperacaoId, p_decisao: "modificar", p_motivo: "adiantar",
+      p_nova_data_planejada_inicio: "2026-11-01", p_nova_data_planejada_fim: "2026-11-02", p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("modificar com nova data é aplicado", !modificarError && !!modificarId);
+    const { data: opAposModificar } = await admin.from("op_lote_operacoes").select("data_planejada_inicio, data_planejada_fim").eq("id", X.opLoteOperacaoId).single();
+    check("data planejada da operação foi atualizada de verdade", opAposModificar?.data_planejada_inicio === "2026-11-01" && opAposModificar?.data_planejada_fim === "2026-11-02");
+
+    const { data: manualId, error: manualError } = await admTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: X.opLoteOperacaoId, p_decisao: "manual", p_motivo: "troquei de máquina",
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_novo_recurso_produtivo_id: recursoDecBId, p_nova_prioridade: 2,
+    });
+    check("manual com novo recurso e prioridade é aplicado", !manualError && !!manualId);
+    const { data: opAposManual } = await admin.from("op_lote_operacoes").select("recurso_produtivo_id").eq("id", X.opLoteOperacaoId).single();
+    const { data: ordemAposManual } = await admin.from("ordens_producao").select("prioridade").eq("id", X.opId).single();
+    check("recurso e prioridade da operação foram atualizados de verdade", opAposManual?.recurso_produtivo_id === recursoDecBId && ordemAposManual?.prioridade === 2);
+
+    const { data: ignorarId, error: ignorarError } = await admTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: Y.opLoteOperacaoId, p_decisao: "ignorar", p_motivo: null,
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("ignorar sem valor novo é registrado sem erro", !ignorarError && !!ignorarId);
+
+    // Operação concluída não participa mais de decisão.
+    await admTenant.client.rpc("apontar_producao", { p_op_lote_operacao_id: Y.opLoteOperacaoId, p_quantidade_produzida: 5, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null });
+    const { error: concluidaError } = await admTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: Y.opLoteOperacaoId, p_decisao: "aceitar", p_motivo: null,
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("operação já concluída não aceita nova decisão de sequenciamento", !!concluidaError);
+
+    const { error: semPermDecisaoError } = await noPermTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: X.opLoteOperacaoId, p_decisao: "aceitar", p_motivo: null,
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("sem producao.manage não decide sequenciamento de outra empresa", !!semPermDecisaoError);
+
+    const { error: crossDecisaoError } = await otherTenant.client.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: X.opLoteOperacaoId, p_decisao: "aceitar", p_motivo: null,
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("tenant B não decide sequenciamento de operação do tenant A", !!crossDecisaoError);
+
+    const { data: decisoesX, error: listaDecisoesError } = await admTenant.client.rpc("listar_decisoes_sequenciamento", { p_op_lote_operacao_id: X.opLoteOperacaoId });
+    check("listar_decisoes_sequenciamento() traz as decisões da operação com o estado atual", !listaDecisoesError && (decisoesX ?? []).length === 3);
+    check("estado atual (recurso/prioridade) refletido nas linhas do histórico", (decisoesX ?? []).every((d) => d.status_atual !== undefined));
+
+    const { error: semPermListaDecisoesError } = await noPermTenant.client.rpc("listar_decisoes_sequenciamento", { p_op_lote_operacao_id: X.opLoteOperacaoId });
+    check("sem producao.view não consulta histórico de decisões de outra empresa", !!semPermListaDecisoesError);
+
+    const { data: crossDecisoes } = await otherTenant.client.rpc("listar_decisoes_sequenciamento", { p_op_lote_operacao_id: X.opLoteOperacaoId });
+    check("tenant B não enxerga decisões do tenant A na própria consulta", (crossDecisoes ?? []).length === 0);
+
+    const { data: eventosDecisao } = await admin.from("activity_logs").select("action").eq("action", "producao.sequenciamento_decidido");
+    check("sequenciamento_decidido registrado", (eventosDecisao ?? []).length >= 4);
+
+    // --- §8: simular_alteracao_programacao ---
+
+    const Z = await prepararOperacaoDecisao("223", recursoDecId);
+
+    const opAntes = (await admin.from("op_lote_operacoes").select("recurso_produtivo_id, data_planejada_inicio, data_planejada_fim").eq("id", Z.opLoteOperacaoId).single()).data;
+    const ordemAntes = (await admin.from("ordens_producao").select("prioridade").eq("id", Z.opId).single()).data;
+
+    const { data: simData, error: simDataError } = await admTenant.client.rpc("simular_alteracao_programacao", {
+      p_op_lote_operacao_id: Z.opLoteOperacaoId, p_novo_recurso_produtivo_id: null,
+      p_nova_data_planejada_inicio: "2026-12-01", p_nova_data_planejada_fim: "2026-12-02", p_nova_prioridade: null,
+    });
+    check("simulação de data (mesmo recurso) executa sem erro e devolve recurso_atual", !simDataError && !!simData?.recurso_atual);
+    check("simulação de data não mexe em recurso_novo (não mudou de recurso)", simData?.recurso_novo === null);
+    check("simulação mostra a operação antes e depois dentro do recurso atual", !!simData?.recurso_atual?.operacao_antes && !!simData?.recurso_atual?.operacao_depois);
+
+    const opDepoisSimData = (await admin.from("op_lote_operacoes").select("recurso_produtivo_id, data_planejada_inicio, data_planejada_fim").eq("id", Z.opLoteOperacaoId).single()).data;
+    check(
+      "simulação de data NÃO altera a operação real (TÓPICO 4 §8)",
+      JSON.stringify(opDepoisSimData) === JSON.stringify(opAntes),
+    );
+
+    const { data: simRecurso, error: simRecursoError } = await admTenant.client.rpc("simular_alteracao_programacao", {
+      p_op_lote_operacao_id: Z.opLoteOperacaoId, p_novo_recurso_produtivo_id: recursoDecBId,
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_nova_prioridade: null,
+    });
+    check("simulação de troca de recurso executa sem erro e devolve recurso_novo", !simRecursoError && !!simRecurso?.recurso_novo);
+    check(
+      "capacidade necessária do recurso novo aumenta com a operação hipotética entrando",
+      Number(simRecurso?.recurso_novo?.capacidade_necessaria_horas_depois) > Number(simRecurso?.recurso_novo?.capacidade_necessaria_horas_antes),
+    );
+    check(
+      "capacidade necessária do recurso atual diminui com a operação hipotética saindo",
+      Number(simRecurso?.recurso_atual?.capacidade_necessaria_horas_depois) < Number(simRecurso?.recurso_atual?.capacidade_necessaria_horas_antes),
+    );
+
+    const opDepoisSimRecurso = (await admin.from("op_lote_operacoes").select("recurso_produtivo_id, data_planejada_inicio, data_planejada_fim").eq("id", Z.opLoteOperacaoId).single()).data;
+    check(
+      "simulação de troca de recurso também NÃO altera a operação real",
+      JSON.stringify(opDepoisSimRecurso) === JSON.stringify(opAntes),
+    );
+
+    const { data: simPrioridade, error: simPrioridadeError } = await admTenant.client.rpc("simular_alteracao_programacao", {
+      p_op_lote_operacao_id: Z.opLoteOperacaoId, p_novo_recurso_produtivo_id: null,
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_nova_prioridade: 1,
+    });
+    check("simulação de prioridade executa sem erro", !simPrioridadeError && !!simPrioridade);
+    const ordemDepoisSimPrioridade = (await admin.from("ordens_producao").select("prioridade").eq("id", Z.opId).single()).data;
+    check("simulação de prioridade NÃO altera a OP real", ordemDepoisSimPrioridade?.prioridade === ordemAntes?.prioridade);
+
+    const { error: prioridadeInvalidaSimError } = await admTenant.client.rpc("simular_alteracao_programacao", {
+      p_op_lote_operacao_id: Z.opLoteOperacaoId, p_novo_recurso_produtivo_id: null,
+      p_nova_data_planejada_inicio: null, p_nova_data_planejada_fim: null, p_nova_prioridade: 9,
+    });
+    check("simulação com prioridade fora da faixa é rejeitada", !!prioridadeInvalidaSimError);
+
+    const { error: semPermSimError } = await noPermTenant.client.rpc("simular_alteracao_programacao", {
+      p_op_lote_operacao_id: Z.opLoteOperacaoId, p_novo_recurso_produtivo_id: null,
+      p_nova_data_planejada_inicio: "2026-12-01", p_nova_data_planejada_fim: "2026-12-02", p_nova_prioridade: null,
+    });
+    check("sem producao.manage não simula alteração de programação de outra empresa", !!semPermSimError);
+
+    const { error: crossSimError } = await otherTenant.client.rpc("simular_alteracao_programacao", {
+      p_op_lote_operacao_id: Z.opLoteOperacaoId, p_novo_recurso_produtivo_id: null,
+      p_nova_data_planejada_inicio: "2026-12-01", p_nova_data_planejada_fim: "2026-12-02", p_nova_prioridade: null,
+    });
+    check("tenant B não simula alteração de operação do tenant A", !!crossSimError);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

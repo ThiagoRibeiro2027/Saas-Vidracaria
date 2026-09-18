@@ -450,6 +450,66 @@ export async function programarOperacaoAction(formData: FormData) {
 
 // TÓPICO 4 §6 (Fase 6b): pesos do sequenciamento inteligente.
 
+// TÓPICO 4 §7 (Fase 6c): decisão humana sobre a recomendação de
+// sequenciamento.
+
+export async function decidirSequenciamentoAction(formData: FormData) {
+  const opLoteOperacaoId = String(formData.get("op_lote_operacao_id") ?? "");
+  const decisao = String(formData.get("decisao") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  const novaDataInicio = String(formData.get("nova_data_planejada_inicio") ?? "").trim() || null;
+  const novaDataFim = String(formData.get("nova_data_planejada_fim") ?? "").trim() || null;
+  const novoRecursoProdutivoId = String(formData.get("novo_recurso_produtivo_id") ?? "").trim() || null;
+  const novaPrioridadeRaw = String(formData.get("nova_prioridade") ?? "").trim();
+  if (!opLoteOperacaoId) throw new Error("Operação inválida.");
+  if (!["aceitar", "rejeitar", "modificar", "ignorar", "manual"].includes(decisao)) throw new Error("Decisão inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("decidir_sequenciamento", {
+    p_op_lote_operacao_id: opLoteOperacaoId,
+    p_decisao: decisao,
+    p_motivo: motivo,
+    p_nova_data_planejada_inicio: novaDataInicio,
+    p_nova_data_planejada_fim: novaDataFim,
+    p_novo_recurso_produtivo_id: novoRecursoProdutivoId,
+    p_nova_prioridade: novaPrioridadeRaw ? Number(novaPrioridadeRaw) : null,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+// TÓPICO 4 §8 (Fase 6c): simulação de cenários — nunca persiste nada, por
+// isso usa useActionState (como src/app/login/actions.ts) em vez do
+// padrão de formulário + revalidatePath do resto do módulo: o resultado
+// é só pra exibir inline, não há dado novo pra revalidar.
+
+export type SimulacaoState = { data?: unknown; error?: string } | undefined;
+
+export async function simularAlteracaoProgramacaoAction(
+  _prevState: SimulacaoState,
+  formData: FormData,
+): Promise<SimulacaoState> {
+  const opLoteOperacaoId = String(formData.get("op_lote_operacao_id") ?? "");
+  const novoRecursoProdutivoId = String(formData.get("novo_recurso_produtivo_id") ?? "").trim() || null;
+  const novaDataInicio = String(formData.get("nova_data_planejada_inicio") ?? "").trim() || null;
+  const novaDataFim = String(formData.get("nova_data_planejada_fim") ?? "").trim() || null;
+  const novaPrioridadeRaw = String(formData.get("nova_prioridade") ?? "").trim();
+  if (!opLoteOperacaoId) return { error: "Operação inválida." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("simular_alteracao_programacao", {
+    p_op_lote_operacao_id: opLoteOperacaoId,
+    p_novo_recurso_produtivo_id: novoRecursoProdutivoId,
+    p_nova_data_planejada_inicio: novaDataInicio,
+    p_nova_data_planejada_fim: novaDataFim,
+    p_nova_prioridade: novaPrioridadeRaw ? Number(novaPrioridadeRaw) : null,
+  });
+  if (error) return { error: error.message };
+
+  return { data };
+}
+
 export async function definirPesoSequenciamentoAction(formData: FormData) {
   const criterio = String(formData.get("criterio") ?? "");
   const pesoRaw = String(formData.get("peso") ?? "");
