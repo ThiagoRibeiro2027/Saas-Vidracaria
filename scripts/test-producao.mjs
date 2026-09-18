@@ -65,8 +65,15 @@
 // (Fase 6a) ganhou uma guarda (assert_pode_reprogramar) que exige
 // producao.reprogramar_congelado quando a data atual OU a nova data cai
 // num período "congelado" — decidir_sequenciamento() (Fase 6c) herda a
-// proteção porque já chama programar_operacao() por baixo. Replanejamento
-// (§10) — última sub-fase, ainda não implementada.
+// proteção porque já chama programar_operacao() por baixo; e a Fase 6e
+// (2026-09-22): replanejamento orientado por eventos (§10) — fecha o
+// bloco §5-10. listar_eventos_replanejamento() é só um filtro sobre
+// activity_logs pra um conjunto curado de ações que já existem
+// (cancelamento, engenharia liberada, manutenção preventiva/corretiva,
+// recurso editado/situação alterada, prioridade definida, apontamento
+// com perda/retrabalho) — "recalcular os impactos" já é verdade por
+// construção (calcular_ranking_sequenciamento/calcular_capacidade_
+// recurso nunca cacheiam), sem lógica de cálculo nova nem mutação.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -1818,6 +1825,97 @@ async function main() {
       .in("action", ["producao.horizonte_criado", "producao.horizonte_removido"]);
     check("horizonte_criado registrado", (eventosHorizonte ?? []).some((e) => e.action === "producao.horizonte_criado"));
     check("horizonte_removido registrado", (eventosHorizonte ?? []).some((e) => e.action === "producao.horizonte_removido"));
+  }
+
+  console.log("\n24. Replanejamento orientado por eventos (TÓPICO 4 §10, Fase 6e)");
+  {
+    // Um evento de cada categoria com dado real.
+    const cancelamento = await prepararPedidoLiberado(admTenant, "241", { quantidade: 5 });
+    const { data: opCancelarId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: cancelamento.pedidoItemId });
+    await admTenant.client.rpc("cancelar_ordem_producao", { p_ordem_producao_id: opCancelarId, p_motivo: "teste replanejamento" });
+
+    const engenharia = await prepararPedidoLiberado(admTenant, "242", { quantidade: 5 });
+    await admTenant.client.rpc("liberar_engenharia", { p_pedido_item_id: engenharia.pedidoItemId, p_observacoes: null });
+
+    const { data: recursoReplanId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "REPLAN-24", p_nome: "Recurso replanejamento", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+    await admTenant.client.rpc("programar_manutencao_preventiva", {
+      p_recurso_produtivo_id: recursoReplanId, p_tipo: "lubrificação", p_proxima_data: "2027-06-01",
+      p_periodicidade_dias: null, p_duracao_estimada_horas: null, p_responsavel_id: null,
+    });
+    await admTenant.client.rpc("iniciar_manutencao_corretiva", {
+      p_recurso_produtivo_id: recursoReplanId, p_problema: "quebrou a correia", p_motivo: null,
+      p_previsao_retorno: null, p_responsavel_id: null,
+    });
+    await admTenant.client.rpc("editar_recurso_produtivo", {
+      p_id: recursoReplanId, p_nome: "Recurso replanejamento (revisado)", p_setor: null, p_capacidade_horas_dia: 6,
+    });
+    await admTenant.client.rpc("atualizar_situacao_recurso", { p_id: recursoReplanId, p_situacao: "indisponivel", p_motivo: "teste" });
+
+    const prioridade = await prepararPedidoLiberado(admTenant, "243", { quantidade: 5 });
+    const { data: opPrioridadeId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: prioridade.pedidoItemId });
+    await admTenant.client.rpc("definir_prioridade_op", { p_ordem_producao_id: opPrioridadeId, p_prioridade: 1 });
+
+    const perdaRetrabalho = await prepararPedidoLiberado(admTenant, "244", { quantidade: 10 });
+    const { data: opPerdaId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: perdaRetrabalho.pedidoItemId });
+    const opPerdaOperacaoId = await operacaoUnica(opPerdaId);
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opPerdaOperacaoId, p_quantidade_produzida: 0, p_quantidade_rejeitada: 2, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opPerdaOperacaoId, p_quantidade_produzida: 0, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 3, p_observacao: null,
+    });
+
+    // Apontamento normal (sem perda/retrabalho) não deve aparecer.
+    const normal = await prepararPedidoLiberado(admTenant, "245", { quantidade: 5 });
+    const { data: opNormalId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: normal.pedidoItemId });
+    const opNormalOperacaoId = await operacaoUnica(opNormalId);
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opNormalOperacaoId, p_quantidade_produzida: 5, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+
+    const { data: eventos, error: eventosError } = await admTenant.client.rpc("listar_eventos_replanejamento", { p_dias: 7 });
+    check("listar_eventos_replanejamento() executa sem erro", !eventosError && Array.isArray(eventos));
+
+    const categoriasEsperadas = [
+      ["cancelamento", opCancelarId],
+      ["alteracao_engenharia", engenharia.pedidoItemId],
+      ["manutencao", recursoReplanId],
+      ["quebra_maquina", recursoReplanId],
+      ["alteracao_capacidade", recursoReplanId],
+      ["alteracao_prioridade", opPrioridadeId],
+    ];
+    for (const [categoria, entityId] of categoriasEsperadas) {
+      check(
+        `evento de categoria '${categoria}' aparece com a referência certa`,
+        (eventos ?? []).some((e) => e.categoria === categoria && e.entity_id === entityId),
+      );
+    }
+    check(
+      "alteracao_capacidade aparece 2x (recurso editado + situação alterada)",
+      (eventos ?? []).filter((e) => e.categoria === "alteracao_capacidade" && e.entity_id === recursoReplanId).length === 2,
+    );
+    check(
+      "perda_retrabalho aparece pros 2 apontamentos com rejeição/retrabalho",
+      (eventos ?? []).filter((e) => e.categoria === "perda_retrabalho" && e.entity_id === opPerdaId).length === 2,
+    );
+    check(
+      "apontamento normal (sem perda/retrabalho) não aparece na lista",
+      !(eventos ?? []).some((e) => e.categoria === "perda_retrabalho" && e.entity_id === opNormalId),
+    );
+
+    const { error: diasInvalidoError } = await admTenant.client.rpc("listar_eventos_replanejamento", { p_dias: 0 });
+    check("p_dias <= 0 é rejeitado", !!diasInvalidoError);
+
+    const { error: semPermEventosError } = await noPermTenant.client.rpc("listar_eventos_replanejamento", { p_dias: 7 });
+    check("sem producao.view não consulta eventos de replanejamento de outra empresa", !!semPermEventosError);
+
+    const { data: crossEventos } = await otherTenant.client.rpc("listar_eventos_replanejamento", { p_dias: 7 });
+    check(
+      "tenant B não enxerga eventos do tenant A na própria consulta",
+      !(crossEventos ?? []).some((e) => e.entity_id === opCancelarId || e.entity_id === recursoReplanId),
+    );
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

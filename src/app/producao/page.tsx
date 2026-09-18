@@ -12,6 +12,7 @@ import RecursosSection, {
 import ProgramacaoSection, { type ProgramacaoRow } from "./ProgramacaoSection";
 import SequenciamentoSection, { type RecomendacaoRow } from "./SequenciamentoSection";
 import HorizontesSection, { type HorizonteProgramacao } from "./HorizontesSection";
+import ReplanejamentoSection, { type EventoReplanejamento } from "./ReplanejamentoSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -62,10 +63,15 @@ import HorizontesSection, { type HorizonteProgramacao } from "./HorizontesSectio
 // horizontes/criar_horizonte_programacao() configuram períodos por
 // empresa; programar_operacao() exige producao.reprogramar_congelado
 // quando a data (atual ou nova) cai num período "congelado" —
-// decidir_sequenciamento() herda a proteção. Replanejamento automático
-// (§10) continua fora de escopo — próxima sub-fase (6e), ainda não
-// implementada. Só pedidos liberados entram aqui (ADR-002 §6: Liberação
-// → Engenharia → Produção).
+// decidir_sequenciamento() herda a proteção.
+// Fase 6e (2026-09-22): replanejamento orientado por eventos (§10) —
+// fecha o bloco §5-10. listar_eventos_replanejamento() filtra
+// activity_logs pra um conjunto curado de ações que já existem
+// (cancelamento, engenharia, manutenção, recurso editado/situação,
+// prioridade, perda/retrabalho); "recalcular os impactos" já é verdade
+// por construção (Sequenciamento/Gargalos nunca cacheiam), sem cálculo
+// novo. Só pedidos liberados entram aqui (ADR-002 §6: Liberação →
+// Engenharia → Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -291,6 +297,18 @@ export default async function ProducaoPage() {
     .filter((h) => h.tipo === "congelado")
     .map((h) => ({ data_inicio: h.data_inicio, data_fim: h.data_fim }));
 
+  // TÓPICO 4 §10 (Fase 6e): eventos recentes que podem exigir
+  // reavaliar a programação — sinal passivo, sem recálculo automático.
+  const { data: eventosReplanejamento } = await supabase.rpc("listar_eventos_replanejamento", { p_dias: 7 });
+  const recursoLabelPorId = new Map((recursos ?? []).map((r) => [r.id, `${r.codigo} — ${r.nome}`] as const));
+  const itemPorId = new Map((itens ?? []).map((i) => [i.id, i] as const));
+  const itemLabelPorPedidoItemId = new Map(
+    (pedidoItens ?? []).map((pi) => {
+      const item = itemPorId.get(pi.item_id);
+      return [pi.id, item ? `${item.codigo} — ${item.descricao}` : "(item removido)"] as const;
+    }),
+  );
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -356,6 +374,13 @@ export default async function ProducaoPage() {
         />
 
         <HorizontesSection horizontes={(horizontes as HorizonteProgramacao[]) ?? []} canManage={!!canManage} />
+
+        <ReplanejamentoSection
+          eventos={(eventosReplanejamento as EventoReplanejamento[]) ?? []}
+          recursoLabelPorId={recursoLabelPorId}
+          ordemNumeroPorId={ordemNumeroPorId}
+          itemLabelPorPedidoItemId={itemLabelPorPedidoItemId}
+        />
 
         <SequenciamentoSection
           recursos={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
