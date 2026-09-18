@@ -39,15 +39,22 @@ export default function ProgramacaoSection({
   linhas,
   recursosOpcoes,
   setoresOpcoes,
+  periodosCongelados,
   canManage,
 }: {
   linhas: ProgramacaoRow[];
   recursosOpcoes: { id: string; codigo: string; nome: string }[];
   setoresOpcoes: string[];
+  periodosCongelados: { data_inicio: string; data_fim: string }[];
   canManage: boolean;
 }) {
   const [filtroRecurso, setFiltroRecurso] = useState("");
   const [filtroSetor, setFiltroSetor] = useState("");
+
+  // TÓPICO 4 §9 (Fase 6d) — só um aviso visual (client-side, sem RPC
+  // extra); a garantia real é assert_pode_reprogramar() no banco.
+  const estaCongelado = (data: string | null) =>
+    !!data && periodosCongelados.some((p) => data >= p.data_inicio && data <= p.data_fim);
 
   const linhasFiltradas = linhas.filter((l) => {
     if (filtroRecurso && l.recurso_produtivo_id !== filtroRecurso) return false;
@@ -60,8 +67,9 @@ export default function ProgramacaoSection({
       <h2 style={sectionTitleStyle}>Programação (TÓPICO 4 §5)</h2>
       <p style={hintStyle}>
         Prioridade da OP e datas planejadas por operação/recurso — base pro PCP planejar. Prazo
-        prometido vem do pedido (previsão de entrega). Sem sequenciamento, simulação, congelamento
-        ou replanejamento automáticos ainda (§6-10, sub-fases seguintes).
+        prometido vem do pedido (previsão de entrega). Reprogramar uma operação dentro de um
+        período congelado (§9, ver seção abaixo) exige permissão adicional. Sem replanejamento
+        automático ainda (§10, próxima sub-fase).
       </p>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
@@ -136,6 +144,9 @@ export default function ProgramacaoSection({
                 {Number(l.quantidade_planejada).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} / {Number(l.saldo).toLocaleString("pt-BR", { maximumFractionDigits: 3 })}
               </td>
               <td style={tdStyle}>
+                {estaCongelado(l.data_planejada_inicio) && (
+                  <div style={{ color: "#9b2c2c", fontSize: "11px" }}>🔒 período congelado</div>
+                )}
                 {canManage ? (
                   <form action={programarOperacaoAction} style={{ display: "flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}>
                     <input type="hidden" name="op_lote_operacao_id" value={l.op_lote_operacao_id} />

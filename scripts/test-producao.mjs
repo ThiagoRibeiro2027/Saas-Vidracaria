@@ -59,8 +59,14 @@
 // calcular_ranking_sequenciamento() (interna, parametrizável por
 // override) pra simular_alteracao_programacao() comparar antes x depois
 // (recurso/data/prioridade hipotéticos) sem NUNCA escrever na tabela
-// real. Horizonte/congelamento (§9) e replanejamento (§10) — sub-fases
-// seguintes, ainda não implementadas.
+// real; e a Fase 6d (2026-09-21): horizonte e congelamento (§9) —
+// producao_horizontes/criar_horizonte_programacao() configuram períodos
+// (longo_prazo/flexivel/congelado) por empresa; programar_operacao()
+// (Fase 6a) ganhou uma guarda (assert_pode_reprogramar) que exige
+// producao.reprogramar_congelado quando a data atual OU a nova data cai
+// num período "congelado" — decidir_sequenciamento() (Fase 6c) herda a
+// proteção porque já chama programar_operacao() por baixo. Replanejamento
+// (§10) — última sub-fase, ainda não implementada.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -1702,6 +1708,116 @@ async function main() {
       p_nova_data_planejada_inicio: "2026-12-01", p_nova_data_planejada_fim: "2026-12-02", p_nova_prioridade: null,
     });
     check("tenant B não simula alteração de operação do tenant A", !!crossSimError);
+  }
+
+  console.log("\n23. Horizonte e congelamento da programação (TÓPICO 4 §9, Fase 6d)");
+  {
+    // Papel só com producao.manage (sem producao.reprogramar_congelado)
+    // — mesmo padrão de scripts/test-instalacao.mjs (17-18) pra provar
+    // que manage sozinho não basta dentro de período congelado.
+    const soManageRole = await admin.from("roles").insert({
+      company_id: admTenant.company.id, key: "PRODUCAO_SO_MANAGE", name: "Produção (só manage)",
+    }).select().single();
+    const { data: manageP } = await admin.from("permissions").select("id").eq("resource", "producao").eq("action", "manage").single();
+    await admin.from("role_permissions").insert({ role_id: soManageRole.data.id, permission_id: manageP.id });
+
+    const email23 = "23h01.producao-test-admin@users.internal";
+    const { data: created23 } = await admin.auth.admin.createUser({ email: email23, password: "senha-de-teste-123456", email_confirm: true });
+    let userId23 = created23?.user?.id;
+    if (!userId23) {
+      const { data: list } = await admin.auth.admin.listUsers();
+      userId23 = list.users.find((u) => u.email === email23)?.id;
+    }
+    await admin.from("profiles").upsert(
+      { id: userId23, company_id: admTenant.company.id, login_identifier: "23h01", display_name: "Produção Só Manage" },
+      { onConflict: "id" },
+    );
+    await admin.from("user_roles").insert({ profile_id: userId23, role_id: soManageRole.data.id });
+    const soManageClient = createClient(url, anonKey);
+    await soManageClient.auth.signInWithPassword({ email: email23, password: "senha-de-teste-123456" });
+
+    const { error: tipoInvalidoError } = await admTenant.client.rpc("criar_horizonte_programacao", {
+      p_tipo: "inexistente", p_data_inicio: "2027-01-01", p_data_fim: "2027-01-31", p_motivo: null,
+    });
+    check("tipo de horizonte inválido é rejeitado", !!tipoInvalidoError);
+
+    const { error: datasInvertidasError } = await admTenant.client.rpc("criar_horizonte_programacao", {
+      p_tipo: "congelado", p_data_inicio: "2027-01-31", p_data_fim: "2027-01-01", p_motivo: null,
+    });
+    check("data de fim anterior à de início é rejeitada", !!datasInvertidasError);
+
+    const { error: semPermHorizonteError } = await noPermTenant.client.rpc("criar_horizonte_programacao", {
+      p_tipo: "congelado", p_data_inicio: "2027-01-01", p_data_fim: "2027-01-31", p_motivo: null,
+    });
+    check("sem producao.manage não cria horizonte de outra empresa", !!semPermHorizonteError);
+
+    const { data: horizonteCongeladoId, error: criaCongeladoError } = await admTenant.client.rpc("criar_horizonte_programacao", {
+      p_tipo: "congelado", p_data_inicio: "2027-01-01", p_data_fim: "2027-01-31", p_motivo: "fechamento do trimestre",
+    });
+    check("cria período congelado", !criaCongeladoError && !!horizonteCongeladoId);
+
+    await admTenant.client.rpc("criar_horizonte_programacao", {
+      p_tipo: "flexivel", p_data_inicio: "2027-02-01", p_data_fim: "2027-02-28", p_motivo: null,
+    });
+
+    const { data: dentroCongelado } = await admTenant.client.rpc("data_em_periodo_congelado", { p_data: "2027-01-15" });
+    check("data dentro do período congelado retorna true", dentroCongelado === true);
+    const { data: foraCongelado } = await admTenant.client.rpc("data_em_periodo_congelado", { p_data: "2027-03-01" });
+    check("data fora de qualquer período congelado retorna false", foraCongelado === false);
+    const { data: dentroFlexivel } = await admTenant.client.rpc("data_em_periodo_congelado", { p_data: "2027-02-15" });
+    check("data dentro de período 'flexível' (não congelado) retorna false", dentroFlexivel === false);
+
+    const { data: crossHorizontes } = await otherTenant.client.from("producao_horizontes").select("id").eq("id", horizonteCongeladoId);
+    check("tenant B não enxerga horizonte do tenant A", (crossHorizontes ?? []).length === 0);
+
+    const congelado = await prepararPedidoLiberado(admTenant, "231", { quantidade: 5 });
+    const { data: opCongeladoId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: congelado.pedidoItemId });
+    const opCongeladoOperacaoId = await operacaoUnica(opCongeladoId);
+
+    const { error: soManageParaDentroError } = await soManageClient.rpc("programar_operacao", {
+      p_op_lote_operacao_id: opCongeladoOperacaoId, p_data_planejada_inicio: "2027-01-10", p_data_planejada_fim: "2027-01-12",
+    });
+    check("producao.manage sozinho não programa operação PARA dentro de período congelado", !!soManageParaDentroError);
+
+    const { error: adminParaDentroError } = await admTenant.client.rpc("programar_operacao", {
+      p_op_lote_operacao_id: opCongeladoOperacaoId, p_data_planejada_inicio: "2027-01-10", p_data_planejada_fim: "2027-01-12",
+    });
+    check("com producao.reprogramar_congelado (ADMIN) a mesma chamada funciona", !adminParaDentroError);
+
+    const { error: soManageParaForaError } = await soManageClient.rpc("programar_operacao", {
+      p_op_lote_operacao_id: opCongeladoOperacaoId, p_data_planejada_inicio: "2027-03-10", p_data_planejada_fim: "2027-03-12",
+    });
+    check("producao.manage sozinho também não move operação JÁ DENTRO do período congelado pra fora", !!soManageParaForaError);
+
+    const { error: removeSemPermError } = await noPermTenant.client.rpc("remover_horizonte_programacao", { p_id: horizonteCongeladoId });
+    check("sem producao.manage não remove horizonte de outra empresa", !!removeSemPermError);
+
+    const { error: removeError } = await admTenant.client.rpc("remover_horizonte_programacao", { p_id: horizonteCongeladoId });
+    check("remove período congelado", !removeError);
+
+    const { error: soManageAposRemoverError } = await soManageClient.rpc("programar_operacao", {
+      p_op_lote_operacao_id: opCongeladoOperacaoId, p_data_planejada_inicio: "2027-01-10", p_data_planejada_fim: "2027-01-12",
+    });
+    check("depois de remover o período, producao.manage sozinho volta a programar normalmente", !soManageAposRemoverError);
+
+    // decidir_sequenciamento (Fase 6c) herda a proteção via programar_operacao().
+    const { data: horizonteCongelado2Id } = await admTenant.client.rpc("criar_horizonte_programacao", {
+      p_tipo: "congelado", p_data_inicio: "2027-05-01", p_data_fim: "2027-05-31", p_motivo: null,
+    });
+    const { error: decidirProtegidoError } = await soManageClient.rpc("decidir_sequenciamento", {
+      p_op_lote_operacao_id: opCongeladoOperacaoId, p_decisao: "modificar", p_motivo: null,
+      p_nova_data_planejada_inicio: "2027-05-10", p_nova_data_planejada_fim: "2027-05-12",
+      p_novo_recurso_produtivo_id: null, p_nova_prioridade: null,
+    });
+    check("decidir_sequenciamento também é bloqueado por período congelado (herdado de programar_operacao)", !!decidirProtegidoError);
+    await admTenant.client.rpc("remover_horizonte_programacao", { p_id: horizonteCongelado2Id });
+
+    const { data: eventosHorizonte } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", ["producao.horizonte_criado", "producao.horizonte_removido"]);
+    check("horizonte_criado registrado", (eventosHorizonte ?? []).some((e) => e.action === "producao.horizonte_criado"));
+    check("horizonte_removido registrado", (eventosHorizonte ?? []).some((e) => e.action === "producao.horizonte_removido"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

@@ -34,6 +34,7 @@ insert into public.permissions (resource, action, description) values
   ('estoque', 'manage', 'Ajustar saldo, reservar/liberar/consumir e registrar sobra de estoque (TÓPICO 6)'),
   ('producao', 'view', 'Visualizar ordens de produção e lista de corte da empresa (TÓPICO 4)'),
   ('producao', 'manage', 'Criar ordem de produção, apontar, concluir e cancelar (TÓPICO 4)'),
+  ('producao', 'reprogramar_congelado', 'Alterar programação de operação em período congelado (TÓPICO 4 §9)'),
   ('qualidade', 'view', 'Visualizar inspeções e não conformidades da empresa (TÓPICO 8)'),
   ('qualidade', 'manage', 'Registrar inspeção, executar retrabalho e reinspecionar (TÓPICO 8)'),
   ('expedicao', 'view', 'Visualizar expedições, itens e ocorrências da empresa (TÓPICO 9)'),

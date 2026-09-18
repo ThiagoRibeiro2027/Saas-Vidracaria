@@ -510,6 +510,39 @@ export async function simularAlteracaoProgramacaoAction(
   return { data };
 }
 
+// TÓPICO 4 §9 (Fase 6d): horizonte e congelamento da programação.
+
+export async function criarHorizonteProgramacaoAction(formData: FormData) {
+  const tipo = String(formData.get("tipo") ?? "");
+  const dataInicio = String(formData.get("data_inicio") ?? "").trim();
+  const dataFim = String(formData.get("data_fim") ?? "").trim();
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!["longo_prazo", "flexivel", "congelado"].includes(tipo)) throw new Error("Tipo de horizonte inválido.");
+  if (!dataInicio || !dataFim) throw new Error("Data de início e fim são obrigatórias.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_horizonte_programacao", {
+    p_tipo: tipo,
+    p_data_inicio: dataInicio,
+    p_data_fim: dataFim,
+    p_motivo: motivo,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function removerHorizonteProgramacaoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Horizonte inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remover_horizonte_programacao", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
 export async function definirPesoSequenciamentoAction(formData: FormData) {
   const criterio = String(formData.get("criterio") ?? "");
   const pesoRaw = String(formData.get("peso") ?? "");

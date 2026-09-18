@@ -11,6 +11,7 @@ import RecursosSection, {
 } from "./RecursosSection";
 import ProgramacaoSection, { type ProgramacaoRow } from "./ProgramacaoSection";
 import SequenciamentoSection, { type RecomendacaoRow } from "./SequenciamentoSection";
+import HorizontesSection, { type HorizonteProgramacao } from "./HorizontesSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -52,11 +53,19 @@ import SequenciamentoSection, { type RecomendacaoRow } from "./SequenciamentoSec
 // perfil/ferramenta/processo (setup); recomendar_sequenciamento() rankeia
 // operações pendentes de um recurso por prazo/prioridade/setup
 // compartilhado, pesos configuráveis por empresa, classificação
-// risco/oportunidade/recomendado. Decisão humana, simulação, horizonte/
-// congelamento e replanejamento automáticos (§7-10) continuam fora de
-// escopo — sub-fases seguintes (6c-6e), ainda não implementadas. Só
-// pedidos liberados entram aqui (ADR-002 §6: Liberação → Engenharia →
-// Produção).
+// risco/oportunidade/recomendado.
+// Fase 6c (2026-09-20): decisão humana (§7) — decidir_sequenciamento()
+// grava recomendação apresentada → decisão → usuário → motivo, aplicando
+// de verdade quando cabível; simulação (§8) — simular_alteracao_
+// programacao() compara antes×depois sem nunca escrever na tabela real.
+// Fase 6d (2026-09-21): horizonte e congelamento (§9) — producao_
+// horizontes/criar_horizonte_programacao() configuram períodos por
+// empresa; programar_operacao() exige producao.reprogramar_congelado
+// quando a data (atual ou nova) cai num período "congelado" —
+// decidir_sequenciamento() herda a proteção. Replanejamento automático
+// (§10) continua fora de escopo — próxima sub-fase (6e), ainda não
+// implementada. Só pedidos liberados entram aqui (ADR-002 §6: Liberação
+// → Engenharia → Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -276,6 +285,12 @@ export default async function ProducaoPage() {
     ((gargalos as GargaloRow[]) ?? []).map((g) => g.recurso_produtivo_id),
   );
 
+  // TÓPICO 4 §9 (Fase 6d): horizontes de planejamento da empresa.
+  const { data: horizontes } = await supabase.from("producao_horizontes").select("*").order("data_inicio", { ascending: true });
+  const periodosCongelados = ((horizontes as HorizonteProgramacao[]) ?? [])
+    .filter((h) => h.tipo === "congelado")
+    .map((h) => ({ data_inicio: h.data_inicio, data_fim: h.data_fim }));
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -336,8 +351,11 @@ export default async function ProducaoPage() {
           linhas={(programacao as ProgramacaoRow[]) ?? []}
           recursosOpcoes={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
           setoresOpcoes={setoresProgramacao}
+          periodosCongelados={periodosCongelados}
           canManage={!!canManage}
         />
+
+        <HorizontesSection horizontes={(horizontes as HorizonteProgramacao[]) ?? []} canManage={!!canManage} />
 
         <SequenciamentoSection
           recursos={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
