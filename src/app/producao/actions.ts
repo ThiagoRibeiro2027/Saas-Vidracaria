@@ -406,3 +406,38 @@ export async function cancelarOrdemProducaoAction(formData: FormData) {
 
   revalidatePath("/producao");
 }
+
+// TÓPICO 4 §5 (Fase 6a): prioridade e programação por operação.
+
+export async function definirPrioridadeOpAction(formData: FormData) {
+  const ordemId = String(formData.get("ordem_producao_id") ?? "");
+  const prioridadeRaw = String(formData.get("prioridade") ?? "");
+  if (!ordemId) throw new Error("Ordem de produção inválida.");
+  if (!Number.isFinite(Number(prioridadeRaw))) throw new Error("Prioridade inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_prioridade_op", {
+    p_ordem_producao_id: ordemId,
+    p_prioridade: Number(prioridadeRaw),
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+export async function programarOperacaoAction(formData: FormData) {
+  const opLoteOperacaoId = String(formData.get("op_lote_operacao_id") ?? "");
+  const dataInicio = String(formData.get("data_planejada_inicio") ?? "").trim() || null;
+  const dataFim = String(formData.get("data_planejada_fim") ?? "").trim() || null;
+  if (!opLoteOperacaoId) throw new Error("Operação inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("programar_operacao", {
+    p_op_lote_operacao_id: opLoteOperacaoId,
+    p_data_planejada_inicio: dataInicio,
+    p_data_planejada_fim: dataFim,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}

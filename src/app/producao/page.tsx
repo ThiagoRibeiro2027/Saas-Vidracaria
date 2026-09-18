@@ -9,6 +9,7 @@ import RecursosSection, {
   type ImpactoManutencaoRow,
   type GargaloRow,
 } from "./RecursosSection";
+import ProgramacaoSection, { type ProgramacaoRow } from "./ProgramacaoSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -41,9 +42,15 @@ import RecursosSection, {
 // (Fase 5a) só com os recursos em sobrecarga; as operações em risco
 // reaproveitam analisar_impacto_manutencao() (Fase 5b). Sinal passivo no
 // painel, sem notificação ativa (decisão do responsável do produto).
-// Sequenciamento/priorização/simulação/replanejamento automáticos
-// (§6-10) continuam fora de escopo. Só pedidos liberados entram aqui
-// (ADR-002 §6: Liberação → Engenharia → Produção).
+// Fase 6a (2026-09-18): base de dados de planejamento (§5) — prioridade
+// da OP (1-5, 1=mais urgente) e datas planejadas por operação/recurso.
+// listar_programacao() é leitura, traz o prazo prometido por join em
+// pedidos.previsao_entrega (sem duplicar dado) e filtra por data/recurso/
+// setor. Sequenciamento inteligente, decisão humana, simulação,
+// horizonte/congelamento e replanejamento automáticos (§6-10) continuam
+// fora de escopo — sub-fases seguintes (6b-6e), ainda não implementadas.
+// Só pedidos liberados entram aqui (ADR-002 §6: Liberação → Engenharia →
+// Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -236,6 +243,18 @@ export default async function ProducaoPage() {
   // (Fase 5a) só com os recursos em sobrecarga.
   const { data: gargalos } = await supabase.rpc("listar_gargalos", { p_dias: 7 });
 
+  // TÓPICO 4 §5 (Fase 6a): painel de programação — sem filtro de data por
+  // padrão (mostra tudo), filtro fica no client (recurso/setor).
+  const { data: programacao } = await supabase.rpc("listar_programacao", {
+    p_data_inicio: null,
+    p_data_fim: null,
+    p_recurso_produtivo_id: null,
+    p_setor: null,
+  });
+  const setoresProgramacao = Array.from(
+    new Set((recursos ?? []).map((r) => r.setor).filter((s): s is string => !!s)),
+  ).sort();
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -289,6 +308,13 @@ export default async function ProducaoPage() {
           impactoPorRecurso={impactoPorRecurso}
           alternativosPorRecurso={alternativosPorRecurso}
           gargalos={(gargalos as GargaloRow[]) ?? []}
+          canManage={!!canManage}
+        />
+
+        <ProgramacaoSection
+          linhas={(programacao as ProgramacaoRow[]) ?? []}
+          recursosOpcoes={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
+          setoresOpcoes={setoresProgramacao}
           canManage={!!canManage}
         />
       </div>

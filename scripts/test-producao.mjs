@@ -33,7 +33,14 @@
 // transferir_recurso_operacao() (§13, já existente, produção dividida);
 // e a Fase 5c (2026-09-17): gargalos (§37, fecha o §31-37) —
 // listar_gargalos() é um recorte de listar_capacidade_recursos() (Fase
-// 5a) só com os recursos em sobrecarga.
+// 5a) só com os recursos em sobrecarga; e a Fase 6a (2026-09-18): base de
+// dados de planejamento (§5) — prioridade (ordens_producao, 1-5, 1=mais
+// urgente) e programação por operação/recurso (op_lote_operacoes.
+// data_planejada_inicio/fim); listar_programacao() é leitura, traz o
+// prazo prometido por join em pedidos.previsao_entrega (não duplicado) e
+// filtra por intervalo de data, recurso e setor. Sem sequenciamento
+// (§6), decisão humana/simulação (§7-8), horizonte/congelamento (§9) nem
+// replanejamento (§10) — sub-fases seguintes, ainda não implementadas.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -1277,6 +1284,113 @@ async function main() {
     check("manutencao_corretiva_iniciada registrado", actions.has("producao.manutencao_corretiva_iniciada"));
     check("manutencao_corretiva_encerrada registrado", actions.has("producao.manutencao_corretiva_encerrada"));
     check("recurso_operacao_trocado registrado", actions.has("producao.recurso_operacao_trocado"));
+  }
+
+  console.log("\n20. Planejamento — prioridade e programação por operação (TÓPICO 4 §5, Fase 6a)");
+  {
+    const prog = await prepararPedidoLiberado(admTenant, "20", { quantidade: 5 });
+    await admin.from("pedidos").update({ previsao_entrega: "2026-10-15" }).eq("id", prog.pedidoId);
+
+    const { data: recursoProgId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "PROG-20", p_nome: "Recurso de programação", p_tipo: "maquina", p_setor: "Corte", p_capacidade_horas_dia: 8,
+    });
+    const { data: roteiroProgId } = await admTenant.client.rpc("criar_roteiro_produtivo", {
+      p_item_id: prog.itemId, p_nome: "Roteiro programação",
+    });
+    await admTenant.client.rpc("adicionar_operacao_roteiro", {
+      p_roteiro_id: roteiroProgId, p_sequencia: 1, p_descricao: "Cortar programação", p_recurso_produtivo_id: recursoProgId,
+      p_tempo_previsto_minutos: 60, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
+    });
+    const { data: opProgId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: prog.pedidoItemId });
+    const opProgOperacaoId = await operacaoUnica(opProgId);
+
+    const { error: prioridadeForaFaixaError } = await admTenant.client.rpc("definir_prioridade_op", {
+      p_ordem_producao_id: opProgId, p_prioridade: 6,
+    });
+    check("prioridade fora da faixa 1-5 é rejeitada", !!prioridadeForaFaixaError);
+
+    const { error: prioridadeError } = await admTenant.client.rpc("definir_prioridade_op", {
+      p_ordem_producao_id: opProgId, p_prioridade: 1,
+    });
+    check("define prioridade 1 (mais urgente)", !prioridadeError);
+
+    const { error: semPermPrioridadeError } = await noPermTenant.client.rpc("definir_prioridade_op", {
+      p_ordem_producao_id: opProgId, p_prioridade: 2,
+    });
+    check("sem producao.manage não define prioridade de OP de outra empresa", !!semPermPrioridadeError);
+
+    const { error: crossPrioridadeError } = await otherTenant.client.rpc("definir_prioridade_op", {
+      p_ordem_producao_id: opProgId, p_prioridade: 2,
+    });
+    check("tenant B não define prioridade de OP do tenant A", !!crossPrioridadeError);
+
+    const { error: dataInvalidaError } = await admTenant.client.rpc("programar_operacao", {
+      p_op_lote_operacao_id: opProgOperacaoId, p_data_planejada_inicio: "2026-10-10", p_data_planejada_fim: "2026-10-05",
+    });
+    check("data planejada de fim anterior ao início é rejeitada", !!dataInvalidaError);
+
+    const { error: programaError } = await admTenant.client.rpc("programar_operacao", {
+      p_op_lote_operacao_id: opProgOperacaoId, p_data_planejada_inicio: "2026-10-01", p_data_planejada_fim: "2026-10-03",
+    });
+    check("programa a operação (datas válidas)", !programaError);
+
+    const { error: semPermProgramaError } = await noPermTenant.client.rpc("programar_operacao", {
+      p_op_lote_operacao_id: opProgOperacaoId, p_data_planejada_inicio: "2026-10-01", p_data_planejada_fim: "2026-10-03",
+    });
+    check("sem producao.manage não programa operação de outra empresa", !!semPermProgramaError);
+
+    const { data: programacao, error: listaProgramacaoError } = await admTenant.client.rpc("listar_programacao", {
+      p_data_inicio: "2026-09-25", p_data_fim: "2026-10-31", p_recurso_produtivo_id: null, p_setor: null,
+    });
+    check("listar_programacao() executa sem erro", !listaProgramacaoError && Array.isArray(programacao));
+    const linhaProg = programacao?.find((r) => r.op_lote_operacao_id === opProgOperacaoId);
+    check(
+      "linha traz prioridade, prazo do pedido e datas planejadas",
+      !!linhaProg && linhaProg.prioridade === 1 && linhaProg.previsao_entrega === "2026-10-15" &&
+        linhaProg.data_planejada_inicio === "2026-10-01" && linhaProg.data_planejada_fim === "2026-10-03",
+    );
+
+    const { data: foraDoIntervalo } = await admTenant.client.rpc("listar_programacao", {
+      p_data_inicio: "2026-11-01", p_data_fim: "2026-11-30", p_recurso_produtivo_id: null, p_setor: null,
+    });
+    check(
+      "filtro de intervalo de data exclui operação fora da janela",
+      !(foraDoIntervalo ?? []).some((r) => r.op_lote_operacao_id === opProgOperacaoId),
+    );
+
+    const { data: porRecurso } = await admTenant.client.rpc("listar_programacao", {
+      p_data_inicio: null, p_data_fim: null, p_recurso_produtivo_id: recursoProgId, p_setor: null,
+    });
+    check("filtro por recurso encontra a operação", (porRecurso ?? []).some((r) => r.op_lote_operacao_id === opProgOperacaoId));
+
+    const { data: porSetorErrado } = await admTenant.client.rpc("listar_programacao", {
+      p_data_inicio: null, p_data_fim: null, p_recurso_produtivo_id: null, p_setor: "Setor Inexistente",
+    });
+    check(
+      "filtro por setor errado não encontra a operação",
+      !(porSetorErrado ?? []).some((r) => r.op_lote_operacao_id === opProgOperacaoId),
+    );
+
+    const { error: semPermListaProgramacaoError } = await noPermTenant.client.rpc("listar_programacao", {
+      p_data_inicio: null, p_data_fim: null, p_recurso_produtivo_id: null, p_setor: null,
+    });
+    check("sem producao.view não consulta programação de outra empresa", !!semPermListaProgramacaoError);
+
+    const { data: crossProgramacao } = await otherTenant.client.rpc("listar_programacao", {
+      p_data_inicio: null, p_data_fim: null, p_recurso_produtivo_id: null, p_setor: null,
+    });
+    check(
+      "tenant B não enxerga a programação do tenant A na própria consulta",
+      !(crossProgramacao ?? []).some((r) => r.op_lote_operacao_id === opProgOperacaoId),
+    );
+
+    const { data: events20 } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", ["producao.prioridade_definida", "producao.operacao_programada"]);
+    const actions20 = new Set((events20 ?? []).map((e) => e.action));
+    check("prioridade_definida registrado", actions20.has("producao.prioridade_definida"));
+    check("operacao_programada registrado", actions20.has("producao.operacao_programada"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
