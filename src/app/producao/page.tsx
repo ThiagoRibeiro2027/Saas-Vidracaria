@@ -10,6 +10,7 @@ import RecursosSection, {
   type GargaloRow,
 } from "./RecursosSection";
 import ProgramacaoSection, { type ProgramacaoRow } from "./ProgramacaoSection";
+import SequenciamentoSection, { type RecomendacaoRow } from "./SequenciamentoSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -46,10 +47,15 @@ import ProgramacaoSection, { type ProgramacaoRow } from "./ProgramacaoSection";
 // da OP (1-5, 1=mais urgente) e datas planejadas por operação/recurso.
 // listar_programacao() é leitura, traz o prazo prometido por join em
 // pedidos.previsao_entrega (sem duplicar dado) e filtra por data/recurso/
-// setor. Sequenciamento inteligente, decisão humana, simulação,
-// horizonte/congelamento e replanejamento automáticos (§6-10) continuam
-// fora de escopo — sub-fases seguintes (6b-6e), ainda não implementadas.
-// Só pedidos liberados entram aqui (ADR-002 §6: Liberação → Engenharia →
+// setor.
+// Fase 6b (2026-09-19): sequenciamento inteligente (§6) — roteiro ganha
+// perfil/ferramenta/processo (setup); recomendar_sequenciamento() rankeia
+// operações pendentes de um recurso por prazo/prioridade/setup
+// compartilhado, pesos configuráveis por empresa, classificação
+// risco/oportunidade/recomendado. Decisão humana, simulação, horizonte/
+// congelamento e replanejamento automáticos (§7-10) continuam fora de
+// escopo — sub-fases seguintes (6c-6e), ainda não implementadas. Só
+// pedidos liberados entram aqui (ADR-002 §6: Liberação → Engenharia →
 // Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
@@ -255,6 +261,21 @@ export default async function ProducaoPage() {
     new Set((recursos ?? []).map((r) => r.setor).filter((s): s is string => !!s)),
   ).sort();
 
+  // TÓPICO 4 §6 (Fase 6b): recomendação de sequenciamento por recurso —
+  // mesmo padrão de Promise.all sobre `recursos` já usado pra
+  // capacidade/impacto de manutenção.
+  const recomendacaoPorRecurso = new Map<string, RecomendacaoRow[]>();
+  await Promise.all(
+    (recursos ?? []).map(async (r) => {
+      const { data } = await supabase.rpc("recomendar_sequenciamento", { p_recurso_produtivo_id: r.id });
+      recomendacaoPorRecurso.set(r.id, (data as RecomendacaoRow[]) ?? []);
+    }),
+  );
+  const { data: pesosSequenciamento } = await supabase.from("sequenciamento_pesos").select("criterio, peso");
+  const recursosEmGargalo = new Set(
+    ((gargalos as GargaloRow[]) ?? []).map((g) => g.recurso_produtivo_id),
+  );
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -315,6 +336,14 @@ export default async function ProducaoPage() {
           linhas={(programacao as ProgramacaoRow[]) ?? []}
           recursosOpcoes={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
           setoresOpcoes={setoresProgramacao}
+          canManage={!!canManage}
+        />
+
+        <SequenciamentoSection
+          recursos={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
+          recomendacaoPorRecurso={recomendacaoPorRecurso}
+          pesos={pesosSequenciamento ?? []}
+          recursosEmGargalo={recursosEmGargalo}
           canManage={!!canManage}
         />
       </div>

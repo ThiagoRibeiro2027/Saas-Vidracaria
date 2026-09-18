@@ -38,9 +38,17 @@
 // urgente) e programação por operação/recurso (op_lote_operacoes.
 // data_planejada_inicio/fim); listar_programacao() é leitura, traz o
 // prazo prometido por join em pedidos.previsao_entrega (não duplicado) e
-// filtra por intervalo de data, recurso e setor. Sem sequenciamento
-// (§6), decisão humana/simulação (§7-8), horizonte/congelamento (§9) nem
-// replanejamento (§10) — sub-fases seguintes, ainda não implementadas.
+// filtra por intervalo de data, recurso e setor; e a Fase 6b
+// (2026-09-19): sequenciamento inteligente (§6) — roteiro_operacoes/
+// op_lote_operacoes ganham perfil/ferramenta/processo (viabiliza detecção
+// de setup compartilhado); recomendar_sequenciamento() rankeia operações
+// pendentes de um recurso por prazo/prioridade/setup compartilhado (rank
+// por critério, não soma de magnitudes brutas), com pesos configuráveis
+// por empresa (sequenciamento_pesos/definir_peso_sequenciamento(),
+// default 1) e classificação risco/oportunidade/recomendado por
+// comparação entre posição atual × recomendada. Decisão humana/simulação
+// (§7-8), horizonte/congelamento (§9) e replanejamento (§10) — sub-fases
+// seguintes, ainda não implementadas.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -1391,6 +1399,123 @@ async function main() {
     const actions20 = new Set((events20 ?? []).map((e) => e.action));
     check("prioridade_definida registrado", actions20.has("producao.prioridade_definida"));
     check("operacao_programada registrado", actions20.has("producao.operacao_programada"));
+  }
+
+  console.log("\n21. Sequenciamento inteligente (TÓPICO 4 §6, Fase 6b)");
+  {
+    const hoje = new Date();
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    const menos5 = new Date(hoje); menos5.setDate(hoje.getDate() - 5);
+    const mais30 = new Date(hoje); mais30.setDate(hoje.getDate() + 30);
+
+    const { data: recursoSeqId } = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "SEQ-21", p_nome: "Recurso de sequenciamento", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+
+    async function prepararOperacaoSequenciamento(sufixo, { previsaoEntrega, perfil, ferramenta, processo }) {
+      const dados = await prepararPedidoLiberado(admTenant, sufixo, { quantidade: 5 });
+      await admin.from("pedidos").update({ previsao_entrega: previsaoEntrega }).eq("id", dados.pedidoId);
+      const { data: roteiroId } = await admTenant.client.rpc("criar_roteiro_produtivo", {
+        p_item_id: dados.itemId, p_nome: `Roteiro ${sufixo}`,
+      });
+      await admTenant.client.rpc("adicionar_operacao_roteiro", {
+        p_roteiro_id: roteiroId, p_sequencia: 1, p_descricao: `Operação ${sufixo}`, p_recurso_produtivo_id: recursoSeqId,
+        p_tempo_previsto_minutos: 30, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
+        p_perfil: perfil, p_ferramenta: ferramenta, p_processo: processo,
+      });
+      const { data: opId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: dados.pedidoItemId });
+      const { data: op } = await admin.from("ordens_producao").select("numero").eq("id", opId).single();
+      return { opId, numero: op.numero, opLoteOperacaoId: await operacaoUnica(opId) };
+    }
+
+    // A: prazo vencido (5 dias atrás), setup isolado — sempre 'risco',
+    // qualquer que seja a posição. B e C: mesmo prazo futuro e mesma
+    // prioridade (empate nesses 2 critérios), mesmo perfil/ferramenta/
+    // processo (setup compartilhado entre os 2) — nenhum vencido.
+    const A = await prepararOperacaoSequenciamento("211", {
+      previsaoEntrega: fmt(menos5), perfil: "SetupA", ferramenta: "ToolA", processo: "ProcA",
+    });
+    const B = await prepararOperacaoSequenciamento("212", {
+      previsaoEntrega: fmt(mais30), perfil: "Comum", ferramenta: "FComum", processo: "ProcComum",
+    });
+    const C = await prepararOperacaoSequenciamento("213", {
+      previsaoEntrega: fmt(mais30), perfil: "Comum", ferramenta: "FComum", processo: "ProcComum",
+    });
+
+    const { data: recDefault, error: recDefaultError } = await admTenant.client.rpc("recomendar_sequenciamento", {
+      p_recurso_produtivo_id: recursoSeqId,
+    });
+    check("recomendar_sequenciamento() executa sem erro", !recDefaultError && Array.isArray(recDefault));
+
+    const rowA = recDefault?.find((r) => r.op_lote_operacao_id === A.opLoteOperacaoId);
+    const rowB = recDefault?.find((r) => r.op_lote_operacao_id === B.opLoteOperacaoId);
+    const rowC = recDefault?.find((r) => r.op_lote_operacao_id === C.opLoteOperacaoId);
+    check("as 3 operações pendentes aparecem na recomendação", !!rowA && !!rowB && !!rowC);
+
+    check("OP com prazo vencido é classificada 'risco', com dias_para_prazo negativo", rowA?.classificacao === "risco" && rowA?.dias_para_prazo < 0);
+    check("explicação de risco menciona atraso", (rowA?.explicacao ?? "").includes("atrasada"));
+
+    check(
+      "B e C compartilham setup (perfil/ferramenta/processo iguais) — setup_compartilhado_count=1 pros dois",
+      rowB?.setup_compartilhado_count === 1 && rowC?.setup_compartilhado_count === 1 && rowA?.setup_compartilhado_count === 0,
+    );
+    check("perfil/ferramenta/processo retornados batem com o cadastrado", rowB?.perfil === "Comum" && rowB?.ferramenta === "FComum" && rowB?.processo === "ProcComum");
+
+    // Sem data planejada em nenhuma das 3 (Fase 6a), posição atual empata
+    // por prioridade e desempata por número da OP — ordem de criação
+    // (A, B, C). Com pesos default (1/1/1), B e C (score 4) vêm antes de
+    // A (score 5, penalizado por não compartilhar setup com ninguém) —
+    // A cai pra 3ª posição recomendada mesmo sendo a 1ª na ordem atual.
+    check("posição atual segue a ordem de criação (A=1, B=2, C=3), sem programação ainda", rowA?.posicao_atual === 1 && rowB?.posicao_atual === 2 && rowC?.posicao_atual === 3);
+    check(
+      "com pesos default, B e C (setup compartilhado) vêm à frente de A na posição recomendada",
+      rowA?.posicao_recomendada === 3 && [rowB?.posicao_recomendada, rowC?.posicao_recomendada].sort().join(",") === "1,2",
+    );
+    check(
+      "A (atrasada, posição recomendada pior que a atual) é classificada 'risco', não 'oportunidade'",
+      rowA?.classificacao === "risco",
+    );
+    check("B e C (posição recomendada melhor que a atual) são classificadas 'oportunidade'", rowB?.classificacao === "oportunidade" && rowC?.classificacao === "oportunidade");
+    check("explicação de oportunidade menciona o agrupamento por setup", (rowB?.explicacao ?? "").includes("agrupa com 1 operação"));
+
+    const { error: semPermRecError } = await noPermTenant.client.rpc("recomendar_sequenciamento", { p_recurso_produtivo_id: recursoSeqId });
+    check("sem producao.view não consulta recomendação de outra empresa", !!semPermRecError);
+
+    const { data: crossRec } = await otherTenant.client.rpc("recomendar_sequenciamento", { p_recurso_produtivo_id: recursoSeqId });
+    check("tenant B não enxerga a recomendação do tenant A na própria consulta", (crossRec ?? []).length === 0);
+
+    // Pesos — validação, permissão, isolamento por empresa e efeito
+    // observável no ranking.
+    const { error: criterioInvalidoError } = await admTenant.client.rpc("definir_peso_sequenciamento", { p_criterio: "inexistente", p_peso: 1 });
+    check("critério inválido é rejeitado", !!criterioInvalidoError);
+
+    const { error: pesoNegativoError } = await admTenant.client.rpc("definir_peso_sequenciamento", { p_criterio: "prazo", p_peso: -1 });
+    check("peso negativo é rejeitado", !!pesoNegativoError);
+
+    const { error: semPermPesoError } = await noPermTenant.client.rpc("definir_peso_sequenciamento", { p_criterio: "prazo", p_peso: 2 });
+    check("sem producao.manage não define peso de sequenciamento", !!semPermPesoError);
+
+    // Outro tenant define um peso enorme na própria empresa — não deve
+    // afetar em nada o cálculo do tenant A (isolamento por company_id).
+    await otherTenant.client.rpc("definir_peso_sequenciamento", { p_criterio: "prazo", p_peso: 999 });
+    const { data: recAposOutroTenant } = await admTenant.client.rpc("recomendar_sequenciamento", { p_recurso_produtivo_id: recursoSeqId });
+    const rowAAposOutroTenant = recAposOutroTenant?.find((r) => r.op_lote_operacao_id === A.opLoteOperacaoId);
+    check("peso definido por outro tenant não afeta o ranking do tenant A", rowAAposOutroTenant?.posicao_recomendada === 3);
+
+    // O próprio tenant A aumenta bastante o peso de prazo — A (mais
+    // urgente por prazo) deve saltar pra 1ª posição recomendada.
+    const { error: pesoPrazoError } = await admTenant.client.rpc("definir_peso_sequenciamento", { p_criterio: "prazo", p_peso: 100 });
+    check("define peso de prazo (100)", !pesoPrazoError);
+
+    const { data: recPesoAlto } = await admTenant.client.rpc("recomendar_sequenciamento", { p_recurso_produtivo_id: recursoSeqId });
+    const rowAPesoAlto = recPesoAlto?.find((r) => r.op_lote_operacao_id === A.opLoteOperacaoId);
+    check("com peso de prazo dominante, A (mais urgente) assume a 1ª posição recomendada", rowAPesoAlto?.posicao_recomendada === 1);
+
+    const { data: events21 } = await admin
+      .from("activity_logs")
+      .select("action")
+      .eq("action", "producao.peso_sequenciamento_definido");
+    check("peso_sequenciamento_definido registrado", (events21 ?? []).length > 0);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

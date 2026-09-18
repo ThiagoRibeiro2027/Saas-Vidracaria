@@ -20,6 +20,9 @@ type RoteiroOperacao = {
   requisitos: string | null;
   criterios_qualidade: string | null;
   equipamentos_alternativos: string | null;
+  perfil: string | null;
+  ferramenta: string | null;
+  processo: string | null;
 };
 type RecursoProdutivo = { id: string; codigo: string; nome: string };
 
@@ -59,7 +62,9 @@ export default function RoteirosSection({
       <p style={hintStyle}>
         Sequência de operações (Corte → Usinagem → Montagem → Inspeção, por exemplo) que toda nova
         ordem de produção desse item vai seguir. Item sem roteiro ativo gera OP com uma única
-        operação genérica &quot;Produção&quot; — configurar um roteiro aqui é opcional.
+        operação genérica &quot;Produção&quot; — configurar um roteiro aqui é opcional. Perfil/
+        ferramenta/processo (opcionais) são usados pelo Sequenciamento (§6) pra detectar setup
+        compartilhado entre operações pendentes do mesmo recurso.
       </p>
 
       {canManage && (
@@ -112,6 +117,7 @@ export default function RoteirosSection({
                         <th style={thStyle}>Operação</th>
                         <th style={thStyle}>Recurso</th>
                         <th style={thStyle}>Tempo prev. (min)</th>
+                        <th style={thStyle}>Setup (perfil/ferramenta/processo)</th>
                         {canManage && <th style={thStyle}></th>}
                       </tr>
                     </thead>
@@ -122,6 +128,11 @@ export default function RoteirosSection({
                           <td style={tdStyle}>{op.descricao}</td>
                           <td style={tdStyle}>{recursoLabel(op.recurso_produtivo_id)}</td>
                           <td style={tdStyle}>{op.tempo_previsto_minutos ?? "—"}</td>
+                          <td style={tdStyle}>
+                            {op.perfil || op.ferramenta || op.processo
+                              ? [op.perfil, op.ferramenta, op.processo].filter(Boolean).join(" / ")
+                              : "—"}
+                          </td>
                           {canManage && (
                             <td style={tdStyle}>
                               <form action={removerOperacaoRoteiroAction}>
@@ -136,7 +147,7 @@ export default function RoteirosSection({
                       ))}
                       {operacoes.length === 0 && (
                         <tr>
-                          <td style={tdStyle} colSpan={canManage ? 5 : 4}>
+                          <td style={tdStyle} colSpan={canManage ? 6 : 5}>
                             <span style={{ color: "#6b7a75" }}>Roteiro sem operações ainda.</span>
                           </td>
                         </tr>
@@ -161,6 +172,9 @@ export default function RoteirosSection({
                         ))}
                       </select>
                       <input name="tempo_previsto_minutos" type="number" min="0" step="0.01" placeholder="min (opcional)" style={{ ...inputStyle, width: "90px" }} />
+                      <input name="perfil" placeholder="perfil (opcional)" style={{ ...inputStyle, width: "100px" }} />
+                      <input name="ferramenta" placeholder="ferramenta (opcional)" style={{ ...inputStyle, width: "100px" }} />
+                      <input name="processo" placeholder="processo (opcional)" style={{ ...inputStyle, width: "100px" }} />
                       <button type="submit" style={buttonStyle}>
                         Adicionar operação
                       </button>

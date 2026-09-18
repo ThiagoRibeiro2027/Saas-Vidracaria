@@ -121,6 +121,9 @@ export async function adicionarOperacaoRoteiroAction(formData: FormData) {
   const requisitos = String(formData.get("requisitos") ?? "").trim() || null;
   const criteriosQualidade = String(formData.get("criterios_qualidade") ?? "").trim() || null;
   const equipamentosAlternativos = String(formData.get("equipamentos_alternativos") ?? "").trim() || null;
+  const perfil = String(formData.get("perfil") ?? "").trim() || null;
+  const ferramenta = String(formData.get("ferramenta") ?? "").trim() || null;
+  const processo = String(formData.get("processo") ?? "").trim() || null;
 
   if (!roteiroId) throw new Error("Roteiro inválido.");
   const sequencia = Number(sequenciaRaw);
@@ -143,6 +146,9 @@ export async function adicionarOperacaoRoteiroAction(formData: FormData) {
     p_requisitos: requisitos,
     p_criterios_qualidade: criteriosQualidade,
     p_equipamentos_alternativos: equipamentosAlternativos,
+    p_perfil: perfil,
+    p_ferramenta: ferramenta,
+    p_processo: processo,
   });
   if (error) throw new Error(error.message);
 
@@ -436,6 +442,24 @@ export async function programarOperacaoAction(formData: FormData) {
     p_op_lote_operacao_id: opLoteOperacaoId,
     p_data_planejada_inicio: dataInicio,
     p_data_planejada_fim: dataFim,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+// TÓPICO 4 §6 (Fase 6b): pesos do sequenciamento inteligente.
+
+export async function definirPesoSequenciamentoAction(formData: FormData) {
+  const criterio = String(formData.get("criterio") ?? "");
+  const pesoRaw = String(formData.get("peso") ?? "");
+  if (!["prazo", "prioridade", "setup_compartilhado"].includes(criterio)) throw new Error("Critério inválido.");
+  if (!Number.isFinite(Number(pesoRaw))) throw new Error("Peso inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_peso_sequenciamento", {
+    p_criterio: criterio,
+    p_peso: Number(pesoRaw),
   });
   if (error) throw new Error(error.message);
 
