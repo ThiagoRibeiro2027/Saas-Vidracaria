@@ -312,8 +312,11 @@ com testes automatizados em `scripts/test-lgpd-anonymization.mjs`;
 inventário de dados pessoais preenchido — **ainda pendente**, não tratado
 nas decisões de 12–13/09/2026;
 
-relação de suboperadores publicada — **ainda pendente**, não tratado nas
-decisões de 12–13/09/2026.
+relação de suboperadores — **inventário levantado em 19/09/2026**, ver
+`docs/RUNBOOK-SUBOPERADORES-LGPD.md` (Supabase, Vercel, Resend). Duas
+pendências técnicas identificadas ali (região da Vercel não fixada;
+região de processamento do Resend não confirmada) e a **publicação**
+formal à empresa-cliente continuam em aberto.
 
 **16. Dependências**
 
