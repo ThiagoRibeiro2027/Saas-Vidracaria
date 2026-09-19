@@ -514,6 +514,24 @@ duplicando o que `ordens_producao.quantidade_produzida` +
 `status_qualidade` já resolvem — mesmo risco de duplicação de autoridade
 evitado em §43/§48. §44 fica encerrado sem alteração de schema.
 
+**Decisão do responsável do produto em 2026-09-19 (adia §45 / Fase 7b da
+ampliação de escopo):** investigação prévia mostrou que não existe
+nenhum dado de preço/custo em lugar nenhum do schema aprovado, e não por
+lacuna acidental — três exclusões de ADR já decididas se cruzam
+exatamente onde §45 pisa. Material: `itens` (T2) não tem custo unitário,
+e ADR-002 §4.18/§5 são taxativos — "o módulo completo de Compras não
+fará parte do MVP", cotação/preço ficam pro TÓPICO 7 completo, fase
+futura fora do MVP. Mão de obra/máquina: `recursos_produtivos` (T4
+§31-32) só tem `capacidade_horas_dia`, nenhum campo de custo/hora — o
+próprio TÓPICO 4 doc (§31-37) nunca menciona valor monetário, só horas.
+Centro de custo: T11 Financeiro já exclui isso explicitamente do MVP, e
+"análise por OP/item/pedido/lote/operação/produto" do §45 é um centro de
+custo por outro nome. Implementar §45 como especificado (custo planejado
+× real em valor monetário) exigiria inventar preço unitário de material
+e taxa/hora de mão de obra/máquina do zero — regra de negócio nova sem
+base em ADR. §45 fica adiado (não descartado) para quando Compras e/ou
+centro de custo forem decididos para uma fase futura do MVP.
+
 **4.8 Expedição / Logística**
 
 Incluído:
