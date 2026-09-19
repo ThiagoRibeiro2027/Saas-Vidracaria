@@ -73,7 +73,18 @@
 // recurso editado/situação alterada, prioridade definida, apontamento
 // com perda/retrabalho) — "recalcular os impactos" já é verdade por
 // construção (calcular_ranking_sequenciamento/calcular_capacidade_
-// recurso nunca cacheiam), sem lógica de cálculo nova nem mutação.
+// recurso nunca cacheiam), sem lógica de cálculo nova nem mutação; e a
+// Fase 7a (2026-09-22): primeira das 4 sub-fases combinadas do bloco
+// §40-48 — categoria_bloqueio estruturada (§42, único gatilho real hoje
+// é medição não confirmada, categorizado como 'cliente');
+// rastrear_ordem_producao() reconstrói a cadeia Pedido->Item->OP->Lote->
+// Operação->Recurso->Apontamento->Qualidade num jsonb só (§46);
+// historico_ordem_producao() filtra activity_logs por uma OP específica
+// (§47). §43 (encerramento por critério de processo) foi investigado e
+// descartado nesta fase — status_qualidade (T8) só pode virar
+// 'bloqueado' depois que a OP já está concluída (T8 inspeciona pós-
+// produção), então checar isso em concluir_ordem_producao() seria
+// código morto.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-producao.mjs
 
@@ -1916,6 +1927,98 @@ async function main() {
       "tenant B não enxerga eventos do tenant A na própria consulta",
       !(crossEventos ?? []).some((e) => e.entity_id === opCancelarId || e.entity_id === recursoReplanId),
     );
+  }
+
+  console.log("\n25. Encerramento, bloqueio estruturado e rastreabilidade (TÓPICO 4 §42/§46-47, Fase 7a)");
+  {
+    await admTenant.client.rpc("upsert_measurement_rule", {
+      p_tipo_item: "produto_acabado", p_exige_medicao_confirmada: true, p_ativo: true,
+    });
+
+    const categoria = await prepararPedidoLiberado(admTenant, "251", { itemTipo: "produto_acabado", quantidade: 2 });
+    const { data: opCategoriaId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: categoria.pedidoItemId });
+    const { data: opCategoriaAntes } = await admin.from("ordens_producao").select("situacao, categoria_bloqueio").eq("id", opCategoriaId).single();
+    check(
+      "OP nasce bloqueada por medição com categoria_bloqueio='cliente'",
+      opCategoriaAntes?.situacao === "bloqueada" && opCategoriaAntes?.categoria_bloqueio === "cliente",
+    );
+
+    const { data: ipCategoriaId } = await admTenant.client.rpc("criar_item_producao", { p_pedido_item_id: categoria.pedidoItemId });
+    await admTenant.client.rpc("registrar_medicao", { p_id: ipCategoriaId, p_ambiente: "Sala", p_largura_mm: 1000, p_altura_mm: 700 });
+    await admTenant.client.rpc("confirmar_medicao", { p_id: ipCategoriaId });
+    const opCategoriaOperacaoId = await operacaoUnica(opCategoriaId);
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opCategoriaOperacaoId, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    const { data: opCategoriaDepois } = await admin.from("ordens_producao").select("situacao, categoria_bloqueio").eq("id", opCategoriaId).single();
+    check(
+      "categoria_bloqueio volta a null quando a OP é liberada",
+      opCategoriaDepois?.situacao === "liberada" && opCategoriaDepois?.categoria_bloqueio === null,
+    );
+
+    // --- rastrear_ordem_producao (§46) ---
+
+    const recurso252 = await admTenant.client.rpc("criar_recurso_produtivo", {
+      p_codigo: "RASTRO-25", p_nome: "Recurso rastreabilidade", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 8,
+    });
+    const rastro = await prepararPedidoLiberado(admTenant, "252", { quantidade: 4 });
+    const { data: roteiroRastroId } = await admTenant.client.rpc("criar_roteiro_produtivo", { p_item_id: rastro.itemId, p_nome: "Roteiro rastro" });
+    await admTenant.client.rpc("adicionar_operacao_roteiro", {
+      p_roteiro_id: roteiroRastroId, p_sequencia: 1, p_descricao: "Operação rastro", p_recurso_produtivo_id: recurso252.data,
+      p_tempo_previsto_minutos: 30, p_requisitos: null, p_criterios_qualidade: null, p_equipamentos_alternativos: null,
+    });
+    const { data: opRastroId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: rastro.pedidoItemId });
+    const opRastroOperacaoId = await operacaoUnica(opRastroId);
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opRastroOperacaoId, p_quantidade_produzida: 4, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: "apontamento rastreável",
+    });
+    await admTenant.client.rpc("concluir_ordem_producao", { p_ordem_producao_id: opRastroId });
+    await admTenant.client.rpc("registrar_inspecao_qualidade", {
+      p_ordem_producao_id: opRastroId, p_quantidade_aprovada: 3, p_quantidade_reprovada: 1, p_observacoes: "1 reprovada",
+    });
+
+    const { data: rastreio, error: rastreioError } = await admTenant.client.rpc("rastrear_ordem_producao", { p_ordem_producao_id: opRastroId });
+    check("rastrear_ordem_producao() executa sem erro", !rastreioError && !!rastreio);
+    check("rastreio traz pedido e item", !!rastreio?.pedido?.numero && !!rastreio?.item?.codigo);
+    check(
+      "rastreio traz lote → operação → recurso → apontamento",
+      rastreio?.lotes?.length === 1 &&
+        rastreio.lotes[0]?.operacoes?.length === 1 &&
+        rastreio.lotes[0].operacoes[0]?.recurso?.codigo === "RASTRO-25" &&
+        rastreio.lotes[0].operacoes[0]?.apontamentos?.length === 1 &&
+        rastreio.lotes[0].operacoes[0].apontamentos[0]?.observacao === "apontamento rastreável",
+    );
+    check(
+      "rastreio traz qualidade (inspeção e não conformidade)",
+      rastreio?.qualidade?.inspecoes?.length === 1 && rastreio.qualidade.nao_conformidades?.length === 1,
+    );
+
+    const { error: semPermRastroError } = await noPermTenant.client.rpc("rastrear_ordem_producao", { p_ordem_producao_id: opRastroId });
+    check("sem producao.view não rastreia OP de outra empresa", !!semPermRastroError);
+
+    const { error: crossRastroError } = await otherTenant.client.rpc("rastrear_ordem_producao", { p_ordem_producao_id: opRastroId });
+    check("tenant B não rastreia OP do tenant A", !!crossRastroError);
+
+    // --- historico_ordem_producao (§47) ---
+
+    const { data: historico, error: historicoError } = await admTenant.client.rpc("historico_ordem_producao", { p_ordem_producao_id: opRastroId });
+    check("historico_ordem_producao() executa sem erro", !historicoError && Array.isArray(historico));
+    check(
+      "histórico traz ordem_criada, apontamento_registrado e ordem_concluida desta OP",
+      ["producao.ordem_criada", "producao.apontamento_registrado", "producao.ordem_concluida"].every((a) =>
+        (historico ?? []).some((h) => h.action === a),
+      ),
+    );
+    check(
+      "histórico não traz eventos da OP de outro teste (categoria)",
+      !(historico ?? []).some((h) => h.entity_id === opCategoriaId),
+    );
+
+    const { error: semPermHistoricoError } = await noPermTenant.client.rpc("historico_ordem_producao", { p_ordem_producao_id: opRastroId });
+    check("sem producao.view não consulta histórico de OP de outra empresa", !!semPermHistoricoError);
+
+    const { error: crossHistoricoError } = await otherTenant.client.rpc("historico_ordem_producao", { p_ordem_producao_id: opRastroId });
+    check("tenant B não consulta histórico de OP do tenant A", !!crossHistoricoError);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

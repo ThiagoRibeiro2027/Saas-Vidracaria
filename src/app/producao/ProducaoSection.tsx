@@ -26,9 +26,30 @@ type OrdemProducao = {
   situacao: "liberada" | "liberada_com_restricao" | "bloqueada";
   motivo_bloqueio: string | null;
   origem_bloqueio: string | null;
+  categoria_bloqueio: string | null;
   impacto_bloqueio: string | null;
   acao_necessaria: string | null;
 };
+export type RastreioOrdemProducao = {
+  pedido?: { numero: string; pessoa_nome: string; obra_nome: string | null; previsao_entrega: string | null };
+  item?: { codigo: string; descricao: string };
+  lotes?: {
+    numero: number;
+    status: string;
+    operacoes: {
+      sequencia: number;
+      descricao: string;
+      status: string;
+      recurso: { codigo: string; nome: string } | null;
+      apontamentos: { quantidade_produzida: number; quantidade_perdida: number; quantidade_retrabalho: number; registrado_em: string }[];
+    }[];
+  }[];
+  qualidade?: {
+    inspecoes: { resultado: string; quantidade_aprovada: number; quantidade_reprovada: number; inspecionado_em: string }[];
+    nao_conformidades: { status: string; quantidade: number; disposicao: string }[];
+  };
+};
+export type HistoricoEvento = { id: string; action: string; description: string | null; criado_por_nome: string | null; criado_em: string };
 type EngenhariaVersao = {
   id: string;
   pedido_item_id: string;
@@ -99,6 +120,21 @@ const SITUACAO_COLOR: Record<OrdemProducao["situacao"], string> = {
   bloqueada: "#9b2c2c",
 };
 
+const CATEGORIA_BLOQUEIO_LABEL: Record<string, string> = {
+  material: "Material",
+  vidro: "Vidro",
+  engenharia: "Engenharia",
+  maquina: "Máquina",
+  operador: "Operador",
+  ferramenta: "Ferramenta",
+  qualidade: "Qualidade",
+  manutencao: "Manutenção",
+  fornecedor: "Fornecedor",
+  prioridade: "Prioridade",
+  cliente: "Cliente",
+  outro: "Outro",
+};
+
 const LOTE_STATUS_LABEL: Record<OpLote["status"], string> = {
   liberado: "Liberado",
   em_andamento: "Em andamento",
@@ -133,6 +169,8 @@ export default function ProducaoSection({
   engenhariaVigentePorPedidoItem,
   bloqueioPorPedido,
   listaCortePorOrdem,
+  rastreioPorOrdem,
+  historicoPorOrdem,
   opLotesPorOrdem,
   opOperacoesPorLote,
   canManage,
@@ -146,6 +184,8 @@ export default function ProducaoSection({
   engenhariaVigentePorPedidoItem: Map<string, EngenhariaVersao>;
   bloqueioPorPedido: Map<string, boolean>;
   listaCortePorOrdem: Map<string, ListaCorteRow[]>;
+  rastreioPorOrdem: Map<string, RastreioOrdemProducao>;
+  historicoPorOrdem: Map<string, HistoricoEvento[]>;
   opLotesPorOrdem: Map<string, OpLote[]>;
   opOperacoesPorLote: Map<string, OpOperacao[]>;
   canManage: boolean;
@@ -276,10 +316,63 @@ export default function ProducaoSection({
                                 </div>
                                 {op.situacao === "bloqueada" && (
                                   <p style={{ ...hintStyle, color: "#9b2c2c", margin: "4px 0 0" }}>
+                                    [{CATEGORIA_BLOQUEIO_LABEL[op.categoria_bloqueio ?? "outro"] ?? op.categoria_bloqueio}]{" "}
                                     {op.motivo_bloqueio} {op.impacto_bloqueio} Ação necessária:{" "}
                                     {op.acao_necessaria}
                                   </p>
                                 )}
+                                <details style={{ marginTop: "4px" }}>
+                                  <summary style={{ fontSize: "11px", color: "#1f5d57", cursor: "pointer" }}>
+                                    Rastreabilidade e histórico (TÓPICO 4 §46-47)
+                                  </summary>
+                                  {(() => {
+                                    const rastreio = rastreioPorOrdem.get(op.id);
+                                    const historico = historicoPorOrdem.get(op.id) ?? [];
+                                    return (
+                                      <div style={{ fontSize: "11px", marginTop: "4px" }}>
+                                        {rastreio?.pedido && rastreio?.item && (
+                                          <p style={hintStyle}>
+                                            {rastreio.pedido.numero} — {rastreio.pedido.pessoa_nome}
+                                            {rastreio.pedido.obra_nome ? ` (${rastreio.pedido.obra_nome})` : ""} — {rastreio.item.codigo} —{" "}
+                                            {rastreio.item.descricao}
+                                          </p>
+                                        )}
+                                        {(rastreio?.lotes ?? []).map((lote) => (
+                                          <div key={lote.numero} style={{ marginBottom: "4px" }}>
+                                            <strong>Lote {lote.numero}</strong> ({lote.status})
+                                            {lote.operacoes.map((o) => (
+                                              <div key={o.sequencia} style={{ marginLeft: "8px", color: "#3e4d49" }}>
+                                                {o.sequencia}. {o.descricao} ({o.status}) — recurso: {o.recurso ? `${o.recurso.codigo} — ${o.recurso.nome}` : "—"}
+                                                {o.apontamentos.map((a, idx) => (
+                                                  <div key={idx} style={{ marginLeft: "8px", color: "#6b7a75" }}>
+                                                    {new Date(a.registrado_em).toLocaleString("pt-BR")} — produzido {num(a.quantidade_produzida)}, perdido{" "}
+                                                    {num(a.quantidade_perdida)}, retrabalho {num(a.quantidade_retrabalho)}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ))}
+                                        {rastreio?.qualidade && (rastreio.qualidade.inspecoes.length > 0 || rastreio.qualidade.nao_conformidades.length > 0) && (
+                                          <p style={hintStyle}>
+                                            Qualidade: {rastreio.qualidade.inspecoes.length} inspeção(ões), {rastreio.qualidade.nao_conformidades.length} não
+                                            conformidade(s).
+                                          </p>
+                                        )}
+                                        <strong>Histórico</strong>
+                                        <ul style={{ margin: "2px 0 0", paddingLeft: "16px" }}>
+                                          {historico.map((h) => (
+                                            <li key={h.id} style={{ color: "#3e4d49" }}>
+                                              {new Date(h.criado_em).toLocaleString("pt-BR")} — {h.action}
+                                              {h.description ? ` (${h.description})` : ""} — {h.criado_por_nome ?? "—"}
+                                            </li>
+                                          ))}
+                                          {historico.length === 0 && <li style={{ color: "#6b7a75" }}>Sem eventos registrados.</li>}
+                                        </ul>
+                                      </div>
+                                    );
+                                  })()}
+                                </details>
                                 {(() => {
                                   const lotes = (opLotesPorOrdem.get(op.id) ?? []).slice().sort((a, b) => a.numero - b.numero);
                                   const podeMexer = canManage && (op.status === "planejada" || op.status === "em_producao");

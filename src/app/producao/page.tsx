@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import ProducaoSection, { type ListaCorteRow } from "./ProducaoSection";
+import ProducaoSection, { type ListaCorteRow, type RastreioOrdemProducao, type HistoricoEvento } from "./ProducaoSection";
 import RoteirosSection from "./RoteirosSection";
 import LotesFabrisSection, { type ListaCorteLoteFabrilRow } from "./LotesFabrisSection";
 import RecursosSection, {
@@ -70,8 +70,18 @@ import ReplanejamentoSection, { type EventoReplanejamento } from "./Replanejamen
 // (cancelamento, engenharia, manutenção, recurso editado/situação,
 // prioridade, perda/retrabalho); "recalcular os impactos" já é verdade
 // por construção (Sequenciamento/Gargalos nunca cacheiam), sem cálculo
-// novo. Só pedidos liberados entram aqui (ADR-002 §6: Liberação →
-// Engenharia → Produção).
+// novo.
+// Fase 7a (2026-09-22): primeira das 4 sub-fases combinadas do bloco
+// §40-48 — categoria_bloqueio estruturada (§42), rastrear_ordem_
+// producao() reconstrói Pedido→Item→OP→Lote→Operação→Recurso→
+// Apontamento→Qualidade (§46), historico_ordem_producao() filtra
+// activity_logs por OP (§47). §43 (status_qualidade em concluir_ordem_
+// producao) foi investigado e descartado — código morto pelo próprio
+// desenho de T8 (qualidade inspeciona pós-conclusão). Custos (§45),
+// status configurável (§41) e liberação pra estoque (§44) ficam pras
+// próximas sub-fases (7b-7d), cada uma com aprovação própria. Só
+// pedidos liberados entram aqui (ADR-002 §6: Liberação → Engenharia →
+// Produção).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -210,6 +220,21 @@ export default async function ProducaoPage() {
     }),
   );
 
+  // TÓPICO 4 §46-47 (Fase 7a): rastreabilidade e histórico por OP —
+  // mesmo padrão zero-JS-extra da lista de corte acima.
+  const rastreioPorOrdem = new Map<string, RastreioOrdemProducao>();
+  const historicoPorOrdem = new Map<string, HistoricoEvento[]>();
+  await Promise.all(
+    (ordens ?? []).map(async (o) => {
+      const [{ data: rastreio }, { data: historico }] = await Promise.all([
+        supabase.rpc("rastrear_ordem_producao", { p_ordem_producao_id: o.id }),
+        supabase.rpc("historico_ordem_producao", { p_ordem_producao_id: o.id }),
+      ]);
+      if (rastreio) rastreioPorOrdem.set(o.id, rastreio as RastreioOrdemProducao);
+      historicoPorOrdem.set(o.id, (historico as HistoricoEvento[]) ?? []);
+    }),
+  );
+
   // Lista de corte combinada por lote fabril (§14) — mesma lógica, uma
   // chamada de leitura por lote fabril existente.
   const listaCortePorLoteFabril = new Map<string, ListaCorteLoteFabrilRow[]>();
@@ -333,6 +358,8 @@ export default async function ProducaoPage() {
           engenhariaVigentePorPedidoItem={engenhariaVigentePorPedidoItem}
           bloqueioPorPedido={bloqueioPorPedido}
           listaCortePorOrdem={listaCortePorOrdem}
+          rastreioPorOrdem={rastreioPorOrdem}
+          historicoPorOrdem={historicoPorOrdem}
           opLotesPorOrdem={opLotesPorOrdem}
           opOperacoesPorLote={opOperacoesPorLote}
           canManage={!!canManage}
