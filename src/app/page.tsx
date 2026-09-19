@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "./login/actions";
+import { marcarNotificacaoLidaAction } from "./notificacoes/actions";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -23,6 +24,22 @@ export default async function Home() {
     .select("roles(name, key)")
     .is("valid_until", null);
 
+  // ADR-007 — só as não lidas aqui; histórico completo fica pra quando
+  // houver tela dedicada (fora deste recorte).
+  const { data: notificacoes } = await supabase
+    .from("notificacoes")
+    .select("id, titulo, mensagem, prioridade, acao_necessaria, created_at")
+    .eq("lida", false)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const PRIORIDADE_COR: Record<string, string> = {
+    informativa: "#6b7a75",
+    atencao: "#b7791f",
+    importante: "#c05621",
+    critica: "#9b2c2c",
+  };
+
   return (
     <main
       style={{
@@ -44,6 +61,37 @@ export default async function Home() {
           Empresa: {profile?.companies?.name} ({profile?.companies?.slug}) · Matrícula:{" "}
           {profile?.login_identifier}
         </p>
+
+        {(notificacoes ?? []).length > 0 && (
+          <div style={{ marginTop: "20px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            <p style={{ fontSize: "13px", color: "#6b7a75", margin: 0 }}>
+              Notificações não lidas ({notificacoes?.length}):
+            </p>
+            {notificacoes?.map((n) => (
+              <div
+                key={n.id}
+                style={{ border: "1px solid #eef1ef", borderRadius: "6px", padding: "8px 10px", fontSize: "13px" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px" }}>
+                  <strong style={{ color: PRIORIDADE_COR[n.prioridade] ?? "#3e4d49" }}>{n.titulo}</strong>
+                  <form action={marcarNotificacaoLidaAction}>
+                    <input type="hidden" name="id" value={n.id} />
+                    <button
+                      type="submit"
+                      style={{ background: "none", border: "none", color: "#1f5d57", fontSize: "11px", cursor: "pointer" }}
+                    >
+                      marcar como lida
+                    </button>
+                  </form>
+                </div>
+                <p style={{ margin: "2px 0 0", color: "#3e4d49" }}>{n.mensagem}</p>
+                {n.acao_necessaria && (
+                  <p style={{ margin: "2px 0 0", color: "#6b7a75", fontStyle: "italic" }}>{n.acao_necessaria}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         <p style={{ fontSize: "13px", color: "#6b7a75", marginTop: "24px" }}>
           Papéis ativos (lidos via RLS, isolados por empresa):

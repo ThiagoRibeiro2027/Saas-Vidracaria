@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/storage-reconciliation",
       "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/notificacoes-email",
+      "schedule": "0 9 * * *"
     }
   ]
 }
