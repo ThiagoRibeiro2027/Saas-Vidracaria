@@ -498,6 +498,22 @@ a redação ao que o §4.7 e o §5 já diziam desde 16/09. Decisão do
 responsável do produto em 2026-09-17: capacidade produtiva e manutenção
 (§31-37) entram como próxima fase de implementação do TÓPICO 4.
 
+**Decisão do responsável do produto em 2026-09-19 (fecha §44 / Fase 7d da
+ampliação de escopo):** liberação para expedição já está implementada
+(`adicionar_item_expedicao()`, T9, exige `ordens_producao.status=
+'concluida'` e `status_qualidade='aprovado'`) — nenhum código novo
+necessário desse lado. Liberação para **estoque** de produto acabado
+fica fora do MVP: T6 (Estoque, recorte de 13/09/2026, anterior a esta
+ampliação de escopo de T4) não modela produto acabado, só matéria-prima
+consumida na produção — `estoque_saldos`/`estoque_movimentacoes` não têm
+nenhum tipo de entrada para OP concluída. Cada `ordens_producao` é 1:1
+com um `pedido_item_id` (fabricação sob encomenda, sem produto de
+catálogo genérico pra estocar); um saldo compartilhado por `item_id`
+misturaria quantidades já comprometidas com pedidos/clientes diferentes,
+duplicando o que `ordens_producao.quantidade_produzida` +
+`status_qualidade` já resolvem — mesmo risco de duplicação de autoridade
+evitado em §43/§48. §44 fica encerrado sem alteração de schema.
+
 **4.8 Expedição / Logística**
 
 Incluído:
