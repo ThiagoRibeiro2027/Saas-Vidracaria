@@ -6,6 +6,7 @@ import {
   removeOrcamentoItemAction,
   decidirOrcamentoAction,
   cancelarOrcamentoAction,
+  vincularOportunidadeOrcamentoAction,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -35,7 +36,10 @@ type Orcamento = {
   condicao_comercial: string | null;
   observacoes: string | null;
   status: "rascunho" | "aprovado" | "rejeitado" | "cancelado";
+  oportunidade_id: string | null;
 };
+
+type OportunidadeResumo = { id: string; descricao: string | null; pessoa_id: string };
 
 type OrcamentoItem = {
   id: string;
@@ -70,6 +74,7 @@ export default function OrcamentosSection({
   todasPessoas,
   obras,
   itens,
+  oportunidadesAbertas,
   canManage,
 }: {
   orcamentos: Orcamento[];
@@ -79,6 +84,7 @@ export default function OrcamentosSection({
   todasPessoas: Pessoa[];
   obras: Obra[];
   itens: Item[];
+  oportunidadesAbertas: OportunidadeResumo[];
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => todasPessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -213,6 +219,14 @@ export default function OrcamentosSection({
                 </form>
               )}
 
+              {editavel && (
+                <OportunidadeVinculoForm
+                  orcamentoId={orc.id}
+                  oportunidadeAtualId={orc.oportunidade_id}
+                  oportunidades={oportunidadesAbertas.filter((o) => o.pessoa_id === orc.pessoa_id)}
+                />
+              )}
+
               <Table className="mt-2">
                 <thead>
                   <tr>
@@ -286,6 +300,45 @@ export default function OrcamentosSection({
         {orcamentos.length === 0 && <p className="text-xs text-text-muted">Nenhum orçamento ainda.</p>}
       </div>
     </section>
+  );
+}
+
+function OportunidadeVinculoForm({
+  orcamentoId,
+  oportunidadeAtualId,
+  oportunidades,
+}: {
+  orcamentoId: string;
+  oportunidadeAtualId: string | null;
+  oportunidades: OportunidadeResumo[];
+}) {
+  if (oportunidadeAtualId) {
+    const op = oportunidades.find((o) => o.id === oportunidadeAtualId);
+    return (
+      <p className="mt-1.5 text-xs text-text-muted">
+        Origem: oportunidade {op?.descricao ?? oportunidadeAtualId}
+      </p>
+    );
+  }
+  if (oportunidades.length === 0) return null;
+
+  return (
+    <form action={vincularOportunidadeOrcamentoAction} className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <input type="hidden" name="orcamento_id" value={orcamentoId} />
+      <Select name="oportunidade_id" defaultValue="" required className="min-w-40">
+        <option value="" disabled>
+          Vincular a oportunidade
+        </option>
+        {oportunidades.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.descricao ?? o.id}
+          </option>
+        ))}
+      </Select>
+      <Button type="submit" variant="secondary">
+        Vincular
+      </Button>
+    </form>
   );
 }
 

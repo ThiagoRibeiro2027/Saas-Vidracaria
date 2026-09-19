@@ -1,7 +1,7 @@
-// Testes automatizados do TÓPICO 10 — Comercial, recorte mínimo do M1
-// (PLANO DE ENTREGA — MVP DO PILOTO v1.0, outubro): orçamento simples com
-// itens e decisão de aprovação/rejeição/cancelamento. Sem versionamento,
-// sem conversão em Pedido (TÓPICO 3 ainda não existe).
+// Testes automatizados do TÓPICO 10 — Comercial: orçamento simples com
+// itens e decisão de aprovação/rejeição/cancelamento (recorte mínimo do
+// M1), mais oportunidades e funil comercial fixo (ampliação de escopo,
+// ADR-002 v2.4, 19/09/2026). Sem versionamento de orçamento.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-comercial.mjs
 
@@ -340,6 +340,146 @@ async function main() {
       p_document_type: "orcamento",
     });
     check("com orcamentos.manage emite número normalmente", !error && !!numero);
+  }
+
+  console.log("\n13. Oportunidades — escrita exige oportunidades.manage");
+  let oportunidadeId;
+  {
+    const { error } = await noPermTenant.client.rpc("upsert_oportunidade", {
+      p_id: null, p_pessoa_id: clienteId, p_origem: "site", p_descricao: "Fachada comercial",
+      p_valor_potencial: 5000, p_probabilidade: 50, p_previsao_fechamento: "2026-12-01", p_observacoes: null,
+    });
+    check("sem oportunidades.manage não cria oportunidade", !!error);
+  }
+
+  console.log("\n14. Oportunidade nasce em 'prospeccao'; probabilidade fora de 0-100 é rejeitada");
+  {
+    const { error: probInvalida } = await admTenant.client.rpc("upsert_oportunidade", {
+      p_id: null, p_pessoa_id: clienteId, p_origem: "site", p_descricao: "Fachada comercial",
+      p_valor_potencial: 5000, p_probabilidade: 150, p_previsao_fechamento: "2026-12-01", p_observacoes: null,
+    });
+    check("probabilidade > 100 é rejeitada", !!probInvalida);
+
+    const { data: id, error } = await admTenant.client.rpc("upsert_oportunidade", {
+      p_id: null, p_pessoa_id: clienteId, p_origem: "site", p_descricao: "Fachada comercial",
+      p_valor_potencial: 5000, p_probabilidade: 50, p_previsao_fechamento: "2026-12-01", p_observacoes: null,
+    });
+    check("ADMIN cria oportunidade", !error && !!id);
+    oportunidadeId = id;
+
+    const { data: row } = await admin.from("oportunidades").select("estagio").eq("id", oportunidadeId).single();
+    check("nasce no estágio 'prospeccao'", row?.estagio === "prospeccao");
+  }
+
+  console.log("\n15. Funil fixo — mudança de estágio e motivo de perda");
+  {
+    const { error: estagioInvalido } = await admTenant.client.rpc("mudar_estagio_oportunidade", {
+      p_id: oportunidadeId, p_estagio: "inventado", p_motivo_perda: null,
+    });
+    check("estágio fora da lista fixa é rejeitado", !!estagioInvalido);
+
+    const { error: perdidaSemMotivo } = await admTenant.client.rpc("mudar_estagio_oportunidade", {
+      p_id: oportunidadeId, p_estagio: "perdida", p_motivo_perda: null,
+    });
+    check("mover para 'perdida' sem motivo é rejeitado", !!perdidaSemMotivo);
+
+    const { error: motivoForaDeContexto } = await admTenant.client.rpc("mudar_estagio_oportunidade", {
+      p_id: oportunidadeId, p_estagio: "contato", p_motivo_perda: "preco",
+    });
+    check("motivo de perda fora do estágio 'perdida' é rejeitado", !!motivoForaDeContexto);
+
+    const { error: avancaEstagio } = await admTenant.client.rpc("mudar_estagio_oportunidade", {
+      p_id: oportunidadeId, p_estagio: "contato", p_motivo_perda: null,
+    });
+    check("avança estágio normalmente", !avancaEstagio);
+  }
+
+  console.log("\n16. Estágio terminal (ganha/perdida) é terminal");
+  {
+    const { data: outraId } = await admTenant.client.rpc("upsert_oportunidade", {
+      p_id: null, p_pessoa_id: clienteId, p_origem: "indicação", p_descricao: "Box de banheiro",
+      p_valor_potencial: 1200, p_probabilidade: 30, p_previsao_fechamento: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("mudar_estagio_oportunidade", {
+      p_id: outraId, p_estagio: "perdida", p_motivo_perda: "preco",
+    });
+
+    const { error: editaTerminal } = await admTenant.client.rpc("upsert_oportunidade", {
+      p_id: outraId, p_pessoa_id: clienteId, p_origem: "indicação", p_descricao: "mudou",
+      p_valor_potencial: 1200, p_probabilidade: 30, p_previsao_fechamento: null, p_observacoes: null,
+    });
+    check("oportunidade perdida não pode ser editada", !!editaTerminal);
+
+    const { error: mudaDeNovo } = await admTenant.client.rpc("mudar_estagio_oportunidade", {
+      p_id: outraId, p_estagio: "contato", p_motivo_perda: null,
+    });
+    check("oportunidade perdida não pode mudar de estágio de novo", !!mudaDeNovo);
+  }
+
+  console.log("\n17. vincular_oportunidade_orcamento() — exige orcamentos.manage e orçamento em rascunho");
+  {
+    const { data: novoOrcId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: null, p_validade: null,
+      p_condicao_comercial: null, p_observacoes: null,
+    });
+
+    const { error: semPermError } = await noPermTenant.client.rpc("vincular_oportunidade_orcamento", {
+      p_orcamento_id: novoOrcId, p_oportunidade_id: oportunidadeId,
+    });
+    check("sem orcamentos.manage não vincula oportunidade ao orçamento", !!semPermError);
+
+    const { error } = await admTenant.client.rpc("vincular_oportunidade_orcamento", {
+      p_orcamento_id: novoOrcId, p_oportunidade_id: oportunidadeId,
+    });
+    check("ADMIN vincula oportunidade ao orçamento em rascunho", !error);
+
+    const { data: row } = await admin.from("orcamentos").select("oportunidade_id").eq("id", novoOrcId).single();
+    check("orçamento fica com oportunidade_id preenchido", row?.oportunidade_id === oportunidadeId);
+
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: novoOrcId, p_item_id: itemId, p_quantidade: 1, p_preco_unitario: 100,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: novoOrcId, p_decisao: "aprovado" });
+
+    const { error: naoRascunho } = await admTenant.client.rpc("vincular_oportunidade_orcamento", {
+      p_orcamento_id: novoOrcId, p_oportunidade_id: oportunidadeId,
+    });
+    check("orçamento fora de rascunho não pode ser (re)vinculado", !!naoRascunho);
+  }
+
+  console.log("\n18. Isolamento cross-tenant de oportunidades");
+  {
+    const { data: crossOportunidades } = await otherTenant.client
+      .from("oportunidades")
+      .select("id")
+      .eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga oportunidades do tenant A", (crossOportunidades ?? []).length === 0);
+
+    const { error: crossMudaEstagio } = await otherTenant.client.rpc("mudar_estagio_oportunidade", {
+      p_id: oportunidadeId, p_estagio: "negociacao", p_motivo_perda: null,
+    });
+    check("tenant B não consegue mudar estágio de oportunidade do tenant A", !!crossMudaEstagio);
+
+    const { error: crossVincula } = await otherTenant.client.rpc("vincular_oportunidade_orcamento", {
+      p_orcamento_id: orcamentoId, p_oportunidade_id: oportunidadeId,
+    });
+    check("tenant B não vincula oportunidade/orçamento de outro tenant", !!crossVincula);
+  }
+
+  console.log("\n19. Auditoria das oportunidades");
+  {
+    const { data: events } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", [
+        "comercial.oportunidade_upserted",
+        "comercial.oportunidade_estagio_mudado",
+        "comercial.orcamento_vinculado_oportunidade",
+      ]);
+    const actions = new Set((events ?? []).map((e) => e.action));
+    check("oportunidade_upserted registrado", actions.has("comercial.oportunidade_upserted"));
+    check("oportunidade_estagio_mudado registrado", actions.has("comercial.oportunidade_estagio_mudado"));
+    check("orcamento_vinculado_oportunidade registrado", actions.has("comercial.orcamento_vinculado_oportunidade"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

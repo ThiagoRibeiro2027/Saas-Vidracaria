@@ -1,18 +1,26 @@
 import { createClient } from "@/lib/supabase/server";
 import OrcamentosSection from "./OrcamentosSection";
+import OportunidadesSection from "./OportunidadesSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
-// TÓPICO 10 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
-// outubro: "entrada do pedido", sequência T2 → T10 → T3). Só orçamento
-// simples (cabeçalho + itens + decisão) — sem versionamento, proposta,
-// oportunidades/funil ou formação de custo/preço. A conversão real em
-// Pedido é do TÓPICO 3, que ainda não existe.
+// TÓPICO 10 — orçamento simples (cabeçalho + itens + decisão), recorte
+// mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0). Oportunidades e
+// funil comercial fixo são ampliação de escopo aprovada em ADR-002 v2.4
+// (19/09/2026) — ainda sem versionamento de orçamento, proposta formal ou
+// formação de custo. A conversão real em Pedido é do TÓPICO 3.
 export default async function ComercialPage() {
   const supabase = await createClient();
 
-  const [{ data: canView }, { data: canManage }] = await Promise.all([
+  const [
+    { data: canView },
+    { data: canManage },
+    { data: canViewOportunidades },
+    { data: canManageOportunidades },
+  ] = await Promise.all([
     supabase.rpc("has_permission", { p_resource: "orcamentos", p_action: "view" }),
     supabase.rpc("has_permission", { p_resource: "orcamentos", p_action: "manage" }),
+    supabase.rpc("has_permission", { p_resource: "oportunidades", p_action: "view" }),
+    supabase.rpc("has_permission", { p_resource: "oportunidades", p_action: "manage" }),
   ]);
 
   if (!canView) {
@@ -27,15 +35,25 @@ export default async function ComercialPage() {
   // de referenciado por um orçamento ainda precisa aparecer (rótulo + guard
   // de seleção atual no formulário de edição) — o filtro pra "ativo" fica só
   // na hora de montar a lista de opções selecionáveis, dentro da seção.
-  const [{ data: orcamentos }, { data: orcamentoItens }, { data: pessoas }, { data: papeis }, { data: obras }, { data: itens }] =
-    await Promise.all([
-      supabase.from("orcamentos").select("*").order("created_at", { ascending: false }),
-      supabase.from("orcamento_itens").select("*"),
-      supabase.from("pessoas").select("id, nome").order("nome"),
-      supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
-      supabase.from("obras").select("id, nome, pessoa_id, situacao").order("nome"),
-      supabase.from("itens").select("id, codigo, descricao, unidade_principal, situacao").order("codigo"),
-    ]);
+  const [
+    { data: orcamentos },
+    { data: orcamentoItens },
+    { data: pessoas },
+    { data: papeis },
+    { data: obras },
+    { data: itens },
+    { data: oportunidades },
+  ] = await Promise.all([
+    supabase.from("orcamentos").select("*").order("created_at", { ascending: false }),
+    supabase.from("orcamento_itens").select("*"),
+    supabase.from("pessoas").select("id, nome").order("nome"),
+    supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
+    supabase.from("obras").select("id, nome, pessoa_id, situacao").order("nome"),
+    supabase.from("itens").select("id, codigo, descricao, unidade_principal, situacao").order("codigo"),
+    canViewOportunidades
+      ? supabase.from("oportunidades").select("*").order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as never[] }),
+  ]);
 
   const clienteIds = new Set(
     (papeis ?? []).filter((pp) => pp.papel === "CLIENTE" && pp.ativo).map((pp) => pp.pessoa_id),
@@ -61,6 +79,10 @@ export default async function ComercialPage() {
   );
   const totais = new Map(totaisEntries);
 
+  const oportunidadesAbertas = (oportunidades ?? []).filter(
+    (o) => o.estagio !== "ganha" && o.estagio !== "perdida",
+  );
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 10 — Comercial</p>
@@ -79,9 +101,18 @@ export default async function ComercialPage() {
           todasPessoas={pessoas ?? []}
           obras={obras ?? []}
           itens={itens ?? []}
+          oportunidadesAbertas={oportunidadesAbertas}
           canManage={!!canManage}
         />
       </div>
+
+      {canViewOportunidades && (
+        <OportunidadesSection
+          oportunidades={oportunidades ?? []}
+          todasPessoas={pessoas ?? []}
+          canManage={!!canManageOportunidades}
+        />
+      )}
     </div>
   );
 }

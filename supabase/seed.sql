@@ -26,6 +26,8 @@ insert into public.permissions (resource, action, description) values
   ('itens', 'manage', 'Criar/editar itens (TÓPICO 2)'),
   ('orcamentos', 'view', 'Visualizar orçamentos da empresa (TÓPICO 10)'),
   ('orcamentos', 'manage', 'Criar/editar itens, aprovar, rejeitar e cancelar orçamentos (TÓPICO 10)'),
+  ('oportunidades', 'view', 'Visualizar oportunidades e funil comercial da empresa (TÓPICO 10, ADR-002 v2.4)'),
+  ('oportunidades', 'manage', 'Criar/editar oportunidades e mudar estágio do funil (TÓPICO 10, ADR-002 v2.4)'),
   ('pedidos', 'view', 'Visualizar pedidos da empresa (TÓPICO 3)'),
   ('pedidos', 'manage', 'Converter orçamento em pedido, conferir, abrir/resolver pendência, liberar e cancelar pedidos (TÓPICO 3)'),
   ('engenharia', 'view', 'Visualizar itens de produção e medidas da empresa (TÓPICO 5)'),
