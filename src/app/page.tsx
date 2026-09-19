@@ -86,6 +86,11 @@ export default async function Home() {
           </a>
         </p>
         <p style={{ marginTop: "4px" }}>
+          <Link href="/usuarios" style={{ color: "#1f5d57", fontSize: "13px" }}>
+            Usuários e Permissões →
+          </Link>
+        </p>
+        <p style={{ marginTop: "4px" }}>
           <Link href="/campo" style={{ color: "#1f5d57", fontSize: "13px" }}>
             Instalação — Campo (PWA) →
           </Link>

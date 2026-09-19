@@ -38,6 +38,7 @@ const TEST_SCRIPTS = [
   "scripts/test-rh.mjs",
   "scripts/test-bi.mjs",
   "scripts/test-fiscal.mjs",
+  "scripts/test-usuarios.mjs",
 ];
 
 function supabaseCredentials() {
