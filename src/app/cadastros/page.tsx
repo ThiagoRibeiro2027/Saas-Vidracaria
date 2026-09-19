@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import PessoasSection from "./PessoasSection";
 import ObrasSection from "./ObrasSection";
 import ItensSection from "./ItensSection";
+import ImportacaoSection from "./ImportacaoSection";
 
 // TÓPICO 2 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // outubro: "entrada do pedido"). Pessoa + Papéis (§4-6) em vez de tabelas
@@ -91,6 +92,7 @@ export default async function CadastrosPage() {
           />
         )}
         {canViewItens && <ItensSection rows={itens ?? []} canManage={!!canManageItens} />}
+        {(canManagePessoas || canManageItens) && <ImportacaoSection />}
       </div>
     </main>
   );

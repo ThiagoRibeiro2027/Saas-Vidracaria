@@ -2,6 +2,41 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import Papa from "papaparse";
+
+// TÓPICO 2 §28 / ADR-002 §4.2.1 — importação inicial de dados. Só CSV
+// nesta fase (decisão de escopo registrada na migration
+// 20260929000000_topico2_importacao_inicial.sql).
+export type ImportacaoLinha = Record<string, string>;
+export type ImportacaoResultadoLinha = {
+  linha: number;
+  identificador: string | null;
+  rotulo: string | null;
+  status: "novo" | "atualizacao" | "invalido" | "duplicado_no_arquivo" | null;
+  erro: string | null;
+  campos_alterados: string[] | null;
+};
+export type ImportacaoState =
+  | { linhas: ImportacaoLinha[]; resultados: ImportacaoResultadoLinha[]; confirmado: boolean; error?: undefined }
+  | { error: string; linhas?: undefined; resultados?: undefined; confirmado?: undefined }
+  | undefined;
+
+async function lerCsv(file: File): Promise<ImportacaoLinha[]> {
+  const texto = await file.text();
+  const resultado = Papa.parse<ImportacaoLinha>(texto, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (h) => h.trim(),
+  });
+  if (resultado.errors.length > 0) {
+    const e = resultado.errors[0];
+    throw new Error(`Erro ao ler o CSV (linha ${e.row ?? "?"}): ${e.message}`);
+  }
+  if (resultado.data.length === 0) {
+    throw new Error("Arquivo CSV vazio ou sem linhas de dados.");
+  }
+  return resultado.data;
+}
 
 export async function upsertPessoaAction(formData: FormData) {
   const id = String(formData.get("id") ?? "") || null;
@@ -130,4 +165,122 @@ export async function upsertItemAction(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/cadastros");
+}
+
+function normalizarResultadosPessoas(rows: {
+  linha: number;
+  documento: string | null;
+  nome: string | null;
+  status: string | null;
+  erro: string | null;
+  campos_alterados: string[] | null;
+}[]): ImportacaoResultadoLinha[] {
+  return rows.map((r) => ({
+    linha: r.linha,
+    identificador: r.documento,
+    rotulo: r.nome,
+    status: r.status as ImportacaoResultadoLinha["status"],
+    erro: r.erro,
+    campos_alterados: r.campos_alterados,
+  }));
+}
+
+function normalizarResultadosItens(rows: {
+  linha: number;
+  codigo: string | null;
+  descricao: string | null;
+  status: string | null;
+  erro: string | null;
+  campos_alterados: string[] | null;
+}[]): ImportacaoResultadoLinha[] {
+  return rows.map((r) => ({
+    linha: r.linha,
+    identificador: r.codigo,
+    rotulo: r.descricao,
+    status: r.status as ImportacaoResultadoLinha["status"],
+    erro: r.erro,
+    campos_alterados: r.campos_alterados,
+  }));
+}
+
+export async function previsualizarImportacaoPessoasAction(
+  _prevState: ImportacaoState,
+  formData: FormData,
+): Promise<ImportacaoState> {
+  const arquivo = formData.get("arquivo") as File | null;
+  if (!arquivo || arquivo.size === 0) return { error: "Selecione um arquivo CSV." };
+
+  let linhas: ImportacaoLinha[];
+  try {
+    linhas = await lerCsv(arquivo);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Falha ao ler o arquivo." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("importar_pessoas", { p_linhas: linhas, p_dry_run: true });
+  if (error) return { error: error.message };
+
+  return { linhas, resultados: normalizarResultadosPessoas(data ?? []), confirmado: false };
+}
+
+export async function confirmarImportacaoPessoasAction(
+  _prevState: ImportacaoState,
+  formData: FormData,
+): Promise<ImportacaoState> {
+  const linhasRaw = String(formData.get("linhas") ?? "");
+  let linhas: ImportacaoLinha[];
+  try {
+    linhas = JSON.parse(linhasRaw);
+  } catch {
+    return { error: "Sessão de importação inválida — reenvie o arquivo." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("importar_pessoas", { p_linhas: linhas, p_dry_run: false });
+  if (error) return { error: error.message };
+
+  revalidatePath("/cadastros");
+  return { linhas, resultados: normalizarResultadosPessoas(data ?? []), confirmado: true };
+}
+
+export async function previsualizarImportacaoItensAction(
+  _prevState: ImportacaoState,
+  formData: FormData,
+): Promise<ImportacaoState> {
+  const arquivo = formData.get("arquivo") as File | null;
+  if (!arquivo || arquivo.size === 0) return { error: "Selecione um arquivo CSV." };
+
+  let linhas: ImportacaoLinha[];
+  try {
+    linhas = await lerCsv(arquivo);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Falha ao ler o arquivo." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("importar_itens", { p_linhas: linhas, p_dry_run: true });
+  if (error) return { error: error.message };
+
+  return { linhas, resultados: normalizarResultadosItens(data ?? []), confirmado: false };
+}
+
+export async function confirmarImportacaoItensAction(
+  _prevState: ImportacaoState,
+  formData: FormData,
+): Promise<ImportacaoState> {
+  const linhasRaw = String(formData.get("linhas") ?? "");
+  let linhas: ImportacaoLinha[];
+  try {
+    linhas = JSON.parse(linhasRaw);
+  } catch {
+    return { error: "Sessão de importação inválida — reenvie o arquivo." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("importar_itens", { p_linhas: linhas, p_dry_run: false });
+  if (error) return { error: error.message };
+
+  revalidatePath("/cadastros");
+  return { linhas, resultados: normalizarResultadosItens(data ?? []), confirmado: true };
 }
