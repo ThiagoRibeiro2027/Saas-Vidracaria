@@ -242,6 +242,37 @@ async function operacaoUnica(ordemProducaoId) {
   return data?.id;
 }
 
+// TÓPICO 4 §50 (Fase 7e): papel customizado com só um subconjunto das
+// ações finas de 'producao' (nunca 'manage'), pra provar que cada ação
+// granular só libera o próprio balde de funções.
+async function criarUsuarioComPermissoes(company, identifier, roleKey, acoes) {
+  const { data: role } = await admin
+    .from("roles")
+    .insert({ company_id: company.id, key: roleKey, name: roleKey })
+    .select()
+    .single();
+
+  for (const action of acoes) {
+    const { data: perm } = await admin.from("permissions").select("id").eq("resource", "producao").eq("action", action).single();
+    await admin.from("role_permissions").insert({ role_id: role.id, permission_id: perm.id });
+  }
+
+  const email = `${identifier}@users.internal`;
+  const password = "senha-de-teste-123456";
+  const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  let userId = created?.user?.id;
+  if (!userId) {
+    const { data: list } = await admin.auth.admin.listUsers();
+    userId = list.users.find((u) => u.email === email)?.id;
+  }
+  await admin.from("profiles").upsert({ id: userId, company_id: company.id, login_identifier: identifier, display_name: roleKey }, { onConflict: "id" });
+  await admin.from("user_roles").insert({ profile_id: userId, role_id: role.id });
+
+  const client = createClient(url, anonKey);
+  await client.auth.signInWithPassword({ email, password });
+  return client;
+}
+
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão, outro tenant)...");
   const admTenant = await createTenant("producao-test-admin", "Produção Admin Teste", "9c01", "ADMIN");
@@ -2074,6 +2105,66 @@ async function main() {
       apos2?.filter((r) => r.campo === "status" && r.valor_interno === "concluida").length === 1 &&
         apos2?.find((r) => r.campo === "status" && r.valor_interno === "concluida")?.rotulo === "Finalizada",
     );
+  }
+
+  console.log("\n27. Permissões granulares por perfil (TÓPICO 4 §50, Fase 7e)");
+  {
+    const fixture = await prepararPedidoLiberado(admTenant, "270", { quantidade: 5 });
+    const { data: opGranularId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: fixture.pedidoItemId });
+    const opGranularOperacaoId = await operacaoUnica(opGranularId);
+
+    const soApontar = await criarUsuarioComPermissoes(admTenant.company, "270a.producao-granular", "SO_APONTAR", ["apontar"]);
+    const soPlanejar = await criarUsuarioComPermissoes(admTenant.company, "270b.producao-granular", "SO_PLANEJAR", ["planejar"]);
+    const soConfigurar = await criarUsuarioComPermissoes(admTenant.company, "270c.producao-granular", "SO_CONFIGURAR", ["configurar"]);
+
+    // --- producao.apontar: só apontamento/conclusão/manutenção corretiva ---
+    const { error: apontarOkError } = await soApontar.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opGranularOperacaoId, p_quantidade_produzida: 2, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    check("producao.apontar aponta produção", !apontarOkError);
+
+    const { error: apontarNaoPlanejaError } = await soApontar.rpc("criar_ordem_producao", { p_pedido_item_id: fixture.pedidoItemId });
+    check("producao.apontar sozinho não cria OP (isso é producao.planejar)", !!apontarNaoPlanejaError);
+
+    const { error: apontarNaoConfiguraError } = await soApontar.rpc("definir_prioridade_op", { p_ordem_producao_id: opGranularId, p_prioridade: 1 });
+    check("producao.apontar sozinho não define prioridade (isso é producao.configurar)", !!apontarNaoConfiguraError);
+
+    // --- producao.planejar: só criação/programação/lotes ---
+    const fixture2 = await prepararPedidoLiberado(admTenant, "271", { quantidade: 3 });
+    const { data: opPlanejarId, error: planejarOkError } = await soPlanejar.rpc("criar_ordem_producao", { p_pedido_item_id: fixture2.pedidoItemId });
+    check("producao.planejar cria OP", !planejarOkError && !!opPlanejarId);
+
+    const opPlanejarOperacaoId = await operacaoUnica(opPlanejarId);
+    const { error: planejarNaoApontaError } = await soPlanejar.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opPlanejarOperacaoId, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    check("producao.planejar sozinho não aponta produção (isso é producao.apontar)", !!planejarNaoApontaError);
+
+    const { error: planejarNaoConfiguraError } = await soPlanejar.rpc("criar_recurso_produtivo", {
+      p_codigo: "GRAN-01", p_nome: "Recurso granular", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: null,
+    });
+    check("producao.planejar sozinho não cria recurso produtivo (isso é producao.configurar)", !!planejarNaoConfiguraError);
+
+    // --- producao.configurar: só cadastro/regra/prioridade/cancelamento ---
+    const { data: recursoConfigId, error: configuraOkError } = await soConfigurar.rpc("criar_recurso_produtivo", {
+      p_codigo: "GRAN-02", p_nome: "Recurso granular 2", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: null,
+    });
+    check("producao.configurar cria recurso produtivo", !configuraOkError && !!recursoConfigId);
+
+    const { error: configuraDefinirPrioridadeError } = await soConfigurar.rpc("definir_prioridade_op", { p_ordem_producao_id: opGranularId, p_prioridade: 2 });
+    check("producao.configurar define prioridade", !configuraDefinirPrioridadeError);
+
+    const { error: configuraNaoPlanejaError } = await soConfigurar.rpc("criar_ordem_producao", { p_pedido_item_id: fixture2.pedidoItemId });
+    check("producao.configurar sozinho não cria OP (isso é producao.planejar)", !!configuraNaoPlanejaError);
+
+    // --- producao.manage continua liberando tudo (superset, sem quebrar quem já tinha) ---
+    const { error: manageApontaError } = await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opPlanejarOperacaoId, p_quantidade_produzida: 1, p_quantidade_rejeitada: 0, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    check("producao.manage (ADMIN) continua apontando produção sem precisar de producao.apontar", !manageApontaError);
+
+    const { error: manageConfiguraError } = await admTenant.client.rpc("definir_prioridade_op", { p_ordem_producao_id: opPlanejarId, p_prioridade: 3 });
+    check("producao.manage (ADMIN) continua configurando sem precisar de producao.configurar", !manageConfiguraError);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

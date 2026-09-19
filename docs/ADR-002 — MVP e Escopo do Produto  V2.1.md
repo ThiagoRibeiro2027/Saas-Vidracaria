@@ -550,6 +550,28 @@ fase, com os 3 campos fixos cobrindo os outros 8 estados de referência.
 Fecha o bloco combinado da Fase 7 (§40-48): 7a (22/09), 7b adiado e 7d
 fechado (19/09), 7c fechado (19/09).
 
+**Decisão do responsável do produto em 2026-09-19 (fecha §50 / Fase 7e,
+"ok, conforme recomendado"):** 3 ações finas em `producao`
+(`apontar`/`planejar`/`configurar`, TÓPICO 4 §50) substituem parte do que
+hoje só `producao.manage` cobria, mapeando os 3 perfis que já
+correspondem a função existente — Operador (apontar/perda/retrabalho,
+concluir OP, reportar/encerrar manutenção corretiva), PCP (criar/
+programar/sequenciar OP, lote, lote fabril, manutenção preventiva,
+transferência de recurso) e Gestor (roteiro, recurso, prioridade, peso
+de sequenciamento, horizonte, rótulo de status, cancelar OP). Ficam de
+fora, por não mapearem pra nada que já existe: "validar apontamentos"
+(perfil Líder/Supervisor) exigiria um workflow de aprovação de
+apontamento que não existe — regra de negócio nova sem base em ADR,
+mesmo problema do §45; "tratar ocorrências" não é conceito de T4 (existe
+em T9/T16). `assert_tenant_write_any()` aceita a ação fina OU `manage` —
+nenhuma empresa que já tinha `producao.manage` perde acesso a nada, sem
+backfill de `role_permissions` necessário. §51 (configurabilidade
+ampla) tem só 2 itens pendentes fora do que já foi decidido nesta e nas
+fases anteriores — tolerância de perdas (também fecha §30) segue como
+próxima sub-fase (7f); turnos e regras de notificação do PCP já estavam
+fora do MVP por decisão anterior (Release 1 e módulo de Notificações
+ainda não implementado, respectivamente).
+
 **4.8 Expedição / Logística**
 
 Incluído:
