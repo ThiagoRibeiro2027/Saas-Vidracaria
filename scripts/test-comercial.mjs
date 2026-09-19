@@ -482,6 +482,46 @@ async function main() {
     check("orcamento_vinculado_oportunidade registrado", actions.has("comercial.orcamento_vinculado_oportunidade"));
   }
 
+  console.log("\n20. Formação de custo simplificada (custo_unitario, ADR-002 v2.4 Fase 2)");
+  {
+    const { data: outroOrcId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: null, p_validade: null,
+      p_condicao_comercial: null, p_observacoes: null,
+    });
+
+    const { error: custoNegativoError } = await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: outroOrcId, p_item_id: itemId, p_quantidade: 2, p_preco_unitario: 100,
+      p_custo_unitario: -1,
+    });
+    check("custo unitário negativo é rejeitado", !!custoNegativoError);
+
+    const { data: comCustoId, error: comCustoError } = await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: outroOrcId, p_item_id: itemId, p_quantidade: 2, p_preco_unitario: 100,
+      p_custo_unitario: 60,
+    });
+    check("item com custo informado é criado", !comCustoError && !!comCustoId);
+
+    const { data: comCustoRow } = await admin
+      .from("orcamento_itens")
+      .select("custo_unitario")
+      .eq("id", comCustoId)
+      .single();
+    check("custo_unitario persistido corretamente", Number(comCustoRow?.custo_unitario) === 60);
+
+    const { data: semCustoId, error: semCustoError } = await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: outroOrcId, p_item_id: itemId, p_quantidade: 1, p_preco_unitario: 50,
+      p_custo_unitario: null,
+    });
+    check("item sem custo informado (compatibilidade retroativa) é criado", !semCustoError && !!semCustoId);
+
+    const { data: semCustoRow } = await admin
+      .from("orcamento_itens")
+      .select("custo_unitario")
+      .eq("id", semCustoId)
+      .single();
+    check("custo_unitario fica null quando não informado", semCustoRow?.custo_unitario === null);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

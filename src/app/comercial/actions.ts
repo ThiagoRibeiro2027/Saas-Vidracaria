@@ -33,9 +33,14 @@ export async function upsertOrcamentoItemAction(formData: FormData) {
   const itemId = String(formData.get("item_id") ?? "");
   const quantidade = Number(formData.get("quantidade"));
   const precoUnitario = Number(formData.get("preco_unitario"));
+  const custoUnitarioRaw = String(formData.get("custo_unitario") ?? "").trim();
+  const custoUnitario = custoUnitarioRaw ? Number(custoUnitarioRaw) : null;
 
   if (!orcamentoId || !itemId || !Number.isFinite(quantidade) || !Number.isFinite(precoUnitario)) {
     throw new Error("Dados inválidos para item do orçamento.");
+  }
+  if (custoUnitario !== null && !Number.isFinite(custoUnitario)) {
+    throw new Error("Custo unitário inválido.");
   }
 
   const supabase = await createClient();
@@ -45,6 +50,7 @@ export async function upsertOrcamentoItemAction(formData: FormData) {
     p_item_id: itemId,
     p_quantidade: quantidade,
     p_preco_unitario: precoUnitario,
+    p_custo_unitario: custoUnitario,
   });
   if (error) throw new Error(error.message);
 

@@ -47,6 +47,7 @@ type OrcamentoItem = {
   item_id: string;
   quantidade: number;
   preco_unitario: number;
+  custo_unitario: number | null;
 };
 
 const STATUS_LABEL: Record<Orcamento["status"], string> = {
@@ -234,6 +235,7 @@ export default function OrcamentosSection({
                     <Th>Qtd</Th>
                     <Th>Preço unit.</Th>
                     <Th>Subtotal</Th>
+                    {canManage && <Th>Custo / margem</Th>}
                     {editavel && <Th />}
                   </tr>
                 </thead>
@@ -246,6 +248,7 @@ export default function OrcamentosSection({
                       itemAtualFallback={itens.find((i) => i.id === oi.item_id)}
                       itens={itens}
                       editavel={editavel}
+                      canManage={canManage}
                     />
                   ))}
                   {editavel && (
@@ -255,6 +258,7 @@ export default function OrcamentosSection({
                       itensAtivos={itensAtivos}
                       itens={itens}
                       editavel={editavel}
+                      canManage={canManage}
                     />
                   )}
                 </tbody>
@@ -347,6 +351,13 @@ function itemLabel(itens: Item[], id: string) {
   return it ? `${it.codigo} — ${it.descricao}` : "(item removido)";
 }
 
+// Margem/markup nunca ficam persistidos (ver comentário da migration) —
+// só derivados aqui, na hora de exibir, a partir de preço e custo.
+function margemPercentual(preco: number, custo: number | null) {
+  if (custo === null || preco <= 0) return null;
+  return ((preco - custo) / preco) * 100;
+}
+
 function OrcamentoItemRow({
   item,
   orcamentoId,
@@ -354,6 +365,7 @@ function OrcamentoItemRow({
   itemAtualFallback,
   itens,
   editavel,
+  canManage,
 }: {
   item: OrcamentoItem | null;
   orcamentoId?: string;
@@ -361,9 +373,11 @@ function OrcamentoItemRow({
   itemAtualFallback?: Item;
   itens: Item[];
   editavel: boolean;
+  canManage: boolean;
 }) {
   const subtotal = item ? item.quantidade * item.preco_unitario : 0;
-  const totalColumns = editavel ? 5 : 4;
+  const margem = item ? margemPercentual(item.preco_unitario, item.custo_unitario) : null;
+  const totalColumns = 4 + (canManage ? 1 : 0) + (editavel ? 1 : 0);
   // Mesmo guard de seleção atual do cabeçalho (ver comentário acima): sem
   // isso, editar quantidade/preço de uma linha cujo item foi desativado
   // troca silenciosamente o item da linha ao salvar.
@@ -380,6 +394,13 @@ function OrcamentoItemRow({
         <Td>{item.quantidade}</Td>
         <Td>{currency(item.preco_unitario)}</Td>
         <Td>{currency(subtotal)}</Td>
+        {canManage && (
+          <Td>
+            {item.custo_unitario !== null
+              ? `${currency(item.custo_unitario)} · ${margem !== null ? margem.toFixed(1) : "—"}%`
+              : "—"}
+          </Td>
+        )}
       </tr>
     );
   }
@@ -421,6 +442,17 @@ function OrcamentoItemRow({
             required
             className="w-[90px]"
           />
+          {canManage && (
+            <Input
+              name="custo_unitario"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="custo (interno)"
+              defaultValue={item?.custo_unitario ?? ""}
+              className="w-[110px]"
+            />
+          )}
           <Button type="submit" variant="primary">
             {item ? "Salvar" : "Adicionar"}
           </Button>
