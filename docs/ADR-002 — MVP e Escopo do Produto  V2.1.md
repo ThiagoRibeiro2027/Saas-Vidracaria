@@ -532,6 +532,24 @@ e taxa/hora de mão de obra/máquina do zero — regra de negócio nova sem
 base em ADR. §45 fica adiado (não descartado) para quando Compras e/ou
 centro de custo forem decididos para uma fase futura do MVP.
 
+**Decisão do responsável do produto em 2026-09-19 (fecha §41 / Fase 7c da
+ampliação de escopo, "só rótulo, sem mexer no que T8/T9 já leem"):**
+`ordens_producao.status`/`situacao`/`status_qualidade` continuam com os
+mesmos 10 valores internos fixos — `registrar_inspecao_qualidade()` (T8)
+e `adicionar_item_expedicao()`/`criar_expedicao()` (T9) continuam
+comparando essas strings literalmente, sem nenhuma alteração. O que a
+empresa configura é só o rótulo exibido para cada valor
+(`producao_status_labels`/`definir_rotulo_status_producao()`/
+`rotulos_status_producao()`), mesmo padrão de "configurar apresentação,
+nunca a semântica que outro módulo já lê" de roteiros_produtivos/
+recursos_produtivos (Fase 5a). "Pausada" (uma das 9 referências do §41)
+fica fora: não há estado de pausa/retomada na OP (excluído do recorte
+original de T4 como "tracking de tempo, não de quantidade") — não há o
+que rotular. "Evitar excesso de status" já estava satisfeito antes desta
+fase, com os 3 campos fixos cobrindo os outros 8 estados de referência.
+Fecha o bloco combinado da Fase 7 (§40-48): 7a (22/09), 7b adiado e 7d
+fechado (19/09), 7c fechado (19/09).
+
 **4.8 Expedição / Logística**
 
 Incluído:

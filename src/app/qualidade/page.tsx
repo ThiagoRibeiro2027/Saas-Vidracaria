@@ -62,6 +62,15 @@ export default async function QualidadePage() {
     ncsPorOrdem.set(nc.ordem_producao_id, list);
   }
 
+  // TÓPICO 4 §41 (Fase 7c) — rótulo de status_qualidade configurado em
+  // /producao (producao.manage), exibido aqui só como leitura.
+  const { data: rotulosStatus } = await supabase.rpc("rotulos_status_producao");
+  const statusQualidadeLabels = new Map(
+    ((rotulosStatus as { campo: string; valor_interno: string; rotulo: string }[]) ?? [])
+      .filter((r) => r.campo === "status_qualidade")
+      .map((r) => [r.valor_interno, r.rotulo] as const),
+  );
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -82,6 +91,7 @@ export default async function QualidadePage() {
           obras={obras ?? []}
           inspecoesPorOrdem={inspecoesPorOrdem}
           ncsPorOrdem={ncsPorOrdem}
+          statusQualidadeLabels={statusQualidadeLabels}
           canManage={!!canManage}
         />
       </div>

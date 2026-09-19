@@ -2021,6 +2021,61 @@ async function main() {
     check("tenant B não consulta histórico de OP do tenant A", !!crossHistoricoError);
   }
 
+  console.log("\n26. Status configurável — só rótulo (TÓPICO 4 §41, Fase 7c)");
+  {
+    const { data: padraoAntes, error: padraoError } = await admTenant.client.rpc("rotulos_status_producao");
+    check("rotulos_status_producao() executa sem erro", !padraoError && Array.isArray(padraoAntes));
+    check("traz os 10 valores fixos (4 status + 3 situacao + 3 status_qualidade)", (padraoAntes ?? []).length === 10);
+    check(
+      "rótulo padrão de status_qualidade='bloqueado' é o mesmo já usado na UI",
+      (padraoAntes ?? []).find((r) => r.campo === "status_qualidade" && r.valor_interno === "bloqueado")?.rotulo ===
+        "Bloqueado (não conformidade)",
+    );
+
+    const { error: semPermDefinirError } = await noPermTenant.client.rpc("definir_rotulo_status_producao", {
+      p_campo: "status", p_valor_interno: "concluida", p_rotulo: "Feito",
+    });
+    check("sem producao.manage não define rótulo", !!semPermDefinirError);
+
+    const { error: valorInvalidoError } = await admTenant.client.rpc("definir_rotulo_status_producao", {
+      p_campo: "status", p_valor_interno: "pausada", p_rotulo: "Pausada",
+    });
+    check("valor_interno fora da lista fixa é rejeitado (sem inventar status novo)", !!valorInvalidoError);
+
+    const { error: rotuloVazioError } = await admTenant.client.rpc("definir_rotulo_status_producao", {
+      p_campo: "status", p_valor_interno: "concluida", p_rotulo: "   ",
+    });
+    check("rótulo vazio é rejeitado", !!rotuloVazioError);
+
+    const { error: definirError } = await admTenant.client.rpc("definir_rotulo_status_producao", {
+      p_campo: "status", p_valor_interno: "concluida", p_rotulo: "Feito",
+    });
+    check("producao.manage define rótulo customizado", !definirError);
+
+    const { data: apos1 } = await admTenant.client.rpc("rotulos_status_producao");
+    check(
+      "rótulo customizado sobrepõe o padrão só para esta empresa",
+      apos1?.find((r) => r.campo === "status" && r.valor_interno === "concluida")?.rotulo === "Feito",
+    );
+
+    const { data: outroTenantRotulos } = await otherTenant.client.rpc("rotulos_status_producao");
+    check(
+      "tenant B continua vendo o rótulo padrão (isolamento cross-tenant)",
+      outroTenantRotulos?.find((r) => r.campo === "status" && r.valor_interno === "concluida")?.rotulo === "Concluída",
+    );
+
+    const { error: reescreverError } = await admTenant.client.rpc("definir_rotulo_status_producao", {
+      p_campo: "status", p_valor_interno: "concluida", p_rotulo: "Finalizada",
+    });
+    check("redefinir o mesmo campo/valor_interno faz upsert, sem duplicar linha", !reescreverError);
+    const { data: apos2 } = await admTenant.client.rpc("rotulos_status_producao");
+    check(
+      "upsert atualiza o rótulo em vez de duplicar",
+      apos2?.filter((r) => r.campo === "status" && r.valor_interno === "concluida").length === 1 &&
+        apos2?.find((r) => r.campo === "status" && r.valor_interno === "concluida")?.rotulo === "Finalizada",
+    );
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

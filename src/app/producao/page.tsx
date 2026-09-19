@@ -13,6 +13,7 @@ import ProgramacaoSection, { type ProgramacaoRow } from "./ProgramacaoSection";
 import SequenciamentoSection, { type RecomendacaoRow } from "./SequenciamentoSection";
 import HorizontesSection, { type HorizonteProgramacao } from "./HorizontesSection";
 import ReplanejamentoSection, { type EventoReplanejamento } from "./ReplanejamentoSection";
+import RotulosStatusSection, { type RotuloStatusRow } from "./RotulosStatusSection";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -82,6 +83,12 @@ import ReplanejamentoSection, { type EventoReplanejamento } from "./Replanejamen
 // próximas sub-fases (7b-7d), cada uma com aprovação própria. Só
 // pedidos liberados entram aqui (ADR-002 §6: Liberação → Engenharia →
 // Produção).
+// Fase 7c (2026-09-19): §41 status configurável, restrito a rótulo —
+// producao_status_labels/rotulos_status_producao() nunca mudam o valor
+// interno que T8/T9 já leem, só a apresentação. §45 (custos) e §44
+// (liberação pra estoque) ficaram fechados só em ADR-002 §4.7, sem
+// código (§44 já satisfeito por T9; §45 adiado por falta de dado de
+// preço/custo em qualquer módulo do MVP).
 export default async function ProducaoPage() {
   const supabase = await createClient();
 
@@ -325,6 +332,16 @@ export default async function ProducaoPage() {
   // TÓPICO 4 §10 (Fase 6e): eventos recentes que podem exigir
   // reavaliar a programação — sinal passivo, sem recálculo automático.
   const { data: eventosReplanejamento } = await supabase.rpc("listar_eventos_replanejamento", { p_dias: 7 });
+
+  // TÓPICO 4 §41 (Fase 7c): rótulos de status/situacao/status_qualidade
+  // configurados pela empresa (ou padrão, quando não configurado).
+  const { data: rotulosStatus } = await supabase.rpc("rotulos_status_producao");
+  const statusLabels = new Map(
+    ((rotulosStatus as RotuloStatusRow[]) ?? []).filter((r) => r.campo === "status").map((r) => [r.valor_interno, r.rotulo] as const),
+  );
+  const situacaoLabels = new Map(
+    ((rotulosStatus as RotuloStatusRow[]) ?? []).filter((r) => r.campo === "situacao").map((r) => [r.valor_interno, r.rotulo] as const),
+  );
   const recursoLabelPorId = new Map((recursos ?? []).map((r) => [r.id, `${r.codigo} — ${r.nome}`] as const));
   const itemPorId = new Map((itens ?? []).map((i) => [i.id, i] as const));
   const itemLabelPorPedidoItemId = new Map(
@@ -362,6 +379,8 @@ export default async function ProducaoPage() {
           historicoPorOrdem={historicoPorOrdem}
           opLotesPorOrdem={opLotesPorOrdem}
           opOperacoesPorLote={opOperacoesPorLote}
+          statusLabels={statusLabels}
+          situacaoLabels={situacaoLabels}
           canManage={!!canManage}
         />
 
@@ -416,6 +435,8 @@ export default async function ProducaoPage() {
           recursosEmGargalo={recursosEmGargalo}
           canManage={!!canManage}
         />
+
+        <RotulosStatusSection rotulos={(rotulosStatus as RotuloStatusRow[]) ?? []} canManage={!!canManage} />
       </div>
     </main>
   );

@@ -65,6 +65,7 @@ export default function QualidadeSection({
   obras,
   inspecoesPorOrdem,
   ncsPorOrdem,
+  statusQualidadeLabels,
   canManage,
 }: {
   ordens: OrdemProducao[];
@@ -75,6 +76,9 @@ export default function QualidadeSection({
   obras: Obra[];
   inspecoesPorOrdem: Map<string, InspecaoQualidade[]>;
   ncsPorOrdem: Map<string, NaoConformidade[]>;
+  // TÓPICO 4 §41 (Fase 7c) — rótulo customizável por empresa, com o texto
+  // fixo de STATUS_QUALIDADE_LABEL como default de quem não configurou.
+  statusQualidadeLabels?: Map<string, string>;
   canManage: boolean;
 }) {
   const pedidoDe = (id: string) => pedidos.find((p) => p.id === id);
@@ -109,7 +113,7 @@ export default function QualidadeSection({
                 <span>{itemLabelDoPedidoItem(op.pedido_item_id)}</span>
                 <span style={{ color: "#6b7a75" }}>Produzida: {num(op.quantidade_produzida)}</span>
                 <span style={{ fontFamily: "monospace", color: STATUS_QUALIDADE_COLOR[op.status_qualidade] }}>
-                  {STATUS_QUALIDADE_LABEL[op.status_qualidade]}
+                  {statusQualidadeLabels?.get(op.status_qualidade) ?? STATUS_QUALIDADE_LABEL[op.status_qualidade]}
                 </span>
               </div>
 

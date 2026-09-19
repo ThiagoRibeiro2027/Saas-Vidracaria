@@ -173,6 +173,8 @@ export default function ProducaoSection({
   historicoPorOrdem,
   opLotesPorOrdem,
   opOperacoesPorLote,
+  statusLabels,
+  situacaoLabels,
   canManage,
 }: {
   pedidos: Pedido[];
@@ -188,6 +190,10 @@ export default function ProducaoSection({
   historicoPorOrdem: Map<string, HistoricoEvento[]>;
   opLotesPorOrdem: Map<string, OpLote[]>;
   opOperacoesPorLote: Map<string, OpOperacao[]>;
+  // TÓPICO 4 §41 (Fase 7c) — rótulo customizável por empresa, com o texto
+  // fixo de STATUS_LABEL/SITUACAO_LABEL como default de quem não configurou.
+  statusLabels?: Map<string, string>;
+  situacaoLabels?: Map<string, string>;
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -304,10 +310,10 @@ export default function ProducaoSection({
                                 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "baseline" }}>
                                   <strong>{op.numero}</strong>
                                   <span style={{ fontFamily: "monospace", color: STATUS_COLOR[op.status] }}>
-                                    {STATUS_LABEL[op.status]}
+                                    {statusLabels?.get(op.status) ?? STATUS_LABEL[op.status]}
                                   </span>
                                   <span style={{ fontFamily: "monospace", color: SITUACAO_COLOR[op.situacao] }}>
-                                    {SITUACAO_LABEL[op.situacao]}
+                                    {situacaoLabels?.get(op.situacao) ?? SITUACAO_LABEL[op.situacao]}
                                   </span>
                                   <span>
                                     produzida {num(op.quantidade_produzida)} / {num(op.quantidade_planejada)}

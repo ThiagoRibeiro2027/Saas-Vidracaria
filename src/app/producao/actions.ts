@@ -558,3 +558,27 @@ export async function definirPesoSequenciamentoAction(formData: FormData) {
 
   revalidatePath("/producao");
 }
+
+// TÓPICO 4 §41 (Fase 7c): rótulo customizável por empresa para os valores
+// fixos de status/situacao/status_qualidade — nunca o valor interno em si
+// (ver 20260924000000_topico4_status_configuravel.sql).
+
+export async function definirRotuloStatusProducaoAction(formData: FormData) {
+  const campo = String(formData.get("campo") ?? "");
+  const valorInterno = String(formData.get("valor_interno") ?? "");
+  const rotulo = String(formData.get("rotulo") ?? "").trim();
+  if (!["status", "situacao", "status_qualidade"].includes(campo)) throw new Error("Campo inválido.");
+  if (!valorInterno) throw new Error("Valor interno inválido.");
+  if (!rotulo) throw new Error("Rótulo não pode ser vazio.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_rotulo_status_producao", {
+    p_campo: campo,
+    p_valor_interno: valorInterno,
+    p_rotulo: rotulo,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+  revalidatePath("/qualidade");
+}
