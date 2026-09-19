@@ -1,12 +1,11 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.4\
+**Versão:** 2.3\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
-resolvida, ver nota no próprio §4.7; §4.3 revisado em 2026-09-19 —
-ampliação de escopo do TÓPICO 10)\
+resolvida, ver nota no próprio §4.7)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
 
@@ -216,70 +215,17 @@ Incluído de forma simplificada:
 
 - conversão em pedido.
 
-**Ampliação de escopo (19/09/2026 — decisão do responsável do produto via
-chat).** Passam a fazer parte do MVP, de forma simplificada, três frentes
-do Prompt TÓPICO 10 que a versão anterior desta ADR excluía:
+Não fazem parte do MVP:
 
-**Oportunidades e funil comercial (TÓPICO 10 §3-4), simplificado:**
-oportunidade com cliente/prospect, responsável, origem, descrição, valor
-potencial, probabilidade, previsão de fechamento e observações; estágio
-dentro de um funil **fixo** (Prospecção → Contato → Levantamento →
-Oportunidade qualificada → Orçamento → Negociação → Aprovação →
-Ganha/Perdida — o exemplo padrão do próprio §3), não configurável por
-empresa nesta fase; motivo de perda de uma lista fixa (§4), não
-configurável. Um orçamento pode se originar de uma oportunidade. Fica
-fora: funil configurável por empresa, atividades/follow-up (§6) e
-múltiplos contatos por cliente (§2) — isso continua sendo "CRM avançado"
-e "funil comercial avançado" excluídos abaixo.
+- CRM avançado;
 
-**Formação de custo simplificada (TÓPICO 10 §12-14):** custo unitário
-informável por item do orçamento (metodologia única: "custo informado",
-§13 — as demais metodologias dependem de histórico de compras/produção
-que o sistema ainda não tem maduro) e markup/margem para sugerir preço,
-sem travar o preço final digitado. Custo, margem e markup são
-informação interna: nunca aparecem na proposta enviada ao cliente (regra
-do §22, que já valia antes desta ampliação). Fica fora: composição de
-custo multi-fator vinda de estrutura técnica real da Engenharia/PCP
-(matéria-prima, mão de obra por operação, processos produtivos) — isso
-depende de BOM que a Engenharia (T5) ainda não tem no recorte atual.
-
-**Proposta comercial (TÓPICO 10 §23-27), simplificada:** documento
-gerado a partir do estado atual do orçamento (sem versionamento — este
-continua fora do MVP, ver nota da migration original do TÓPICO 10),
-congelando um retrato (itens, preços, condições) no momento da geração;
-validade própria; registro de envio (data/hora, responsável, canal,
-destinatário); e aceite registrado manualmente pelo Comercial (sem
-portal do cliente nem assinatura eletrônica — ambos fora de escopo).
-Sem geração de PDF com identidade visual/layout configurável nesta fase:
-a proposta é um registro estruturado dentro do sistema.
-
-Continuam fora do MVP após esta ampliação:
-
-- CRM avançado (múltiplos contatos por cliente, histórico comercial
-  completo além do que já existe);
-
-- funil comercial configurável por empresa;
-
-- atividades e follow-up (§6);
+- funil comercial avançado;
 
 - campanhas;
 
 - automações comerciais complexas;
 
-- comissionamento avançado;
-
-- matriz de aprovação multinível configurável além da alçada simples já
-  existente (`approval_thresholds`);
-
-- tabelas de preço por cliente/grupo (§17-18);
-
-- indicadores e previsão comercial (§37-39) — isso é escopo do TÓPICO 12
-  (BI), não do Comercial;
-
-- concorrência (§40);
-
-- identidade visual/layout configurável e assinatura eletrônica da
-  proposta.
+- comissionamento avançado.
 
 **4.4 Pedidos**
 
@@ -1273,19 +1219,6 @@ operacional central de uma vidraçaria desde o orçamento até a conclusão
 do pedido.**
 
 **Status final: APROVADO**
-
-**Versão consolidada: 2.4**\
-**Alteração desta versão: ampliação do escopo do TÓPICO 10 (Comercial,
-§4.3) para incluir, de forma simplificada, oportunidades/funil comercial
-(fixo, não configurável), formação de custo (metodologia única "custo
-informado") e proposta comercial (documento gerado do orçamento, sem
-versionamento nem PDF/layout configurável). Decisão do responsável do
-produto em 2026-09-19, via chat. Continuam fora do MVP: CRM avançado,
-funil configurável, atividades/follow-up, campanhas, automações
-complexas, comissionamento avançado, matriz de aprovação multinível,
-tabelas de preço por cliente, indicadores comerciais (ficam no TÓPICO
-12/BI) e concorrência. Versão anterior (2.3) arquivada em
-docs/Histórico.**
 
 **Versão consolidada: 2.3**\
 **Alteração desta versão: correção de uma contradição interna no §4.7 —
