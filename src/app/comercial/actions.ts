@@ -138,6 +138,73 @@ export async function mudarEstagioOportunidadeAction(formData: FormData) {
   revalidatePath("/comercial");
 }
 
+export async function gerarPropostaAction(formData: FormData) {
+  const orcamentoId = String(formData.get("orcamento_id") ?? "");
+  const validade = String(formData.get("validade") ?? "");
+  if (!orcamentoId || !validade) throw new Error("Orçamento e validade são obrigatórios.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("gerar_proposta", {
+    p_orcamento_id: orcamentoId,
+    p_validade: validade,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
+
+export async function marcarPropostaEnviadaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const canal = String(formData.get("canal") ?? "").trim() || null;
+  const destinatario = String(formData.get("destinatario") ?? "").trim() || null;
+  if (!id) throw new Error("Proposta inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("marcar_proposta_enviada", {
+    p_id: id,
+    p_canal: canal,
+    p_destinatario: destinatario,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
+
+export async function registrarAceitePropostaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const forcar = formData.get("forcar") === "true";
+  if (!id) throw new Error("Proposta inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("registrar_aceite_proposta", { p_id: id, p_forcar: forcar });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
+
+export async function registrarRecusaPropostaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const observacao = String(formData.get("observacao") ?? "").trim() || null;
+  if (!id) throw new Error("Proposta inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("registrar_recusa_proposta", { p_id: id, p_observacao: observacao });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
+
+export async function cancelarPropostaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Proposta inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancelar_proposta", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
+
 export async function vincularOportunidadeOrcamentoAction(formData: FormData) {
   const orcamentoId = String(formData.get("orcamento_id") ?? "");
   const oportunidadeId = String(formData.get("oportunidade_id") ?? "");

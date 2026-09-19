@@ -123,6 +123,15 @@ async function main() {
     p_incluir_mes: false,
     p_reinicio: "nunca",
   });
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "proposta",
+    p_prefixo: "PROP-",
+    p_sufixo: "",
+    p_digitos: 4,
+    p_incluir_ano: false,
+    p_incluir_mes: false,
+    p_reinicio: "nunca",
+  });
   const { data: clienteId } = await admTenant.client.rpc("upsert_pessoa", {
     p_id: null, p_tipo_documento: "CNPJ", p_documento: "11222333000181", p_nome: "JR Box Vidros",
     p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
@@ -520,6 +529,178 @@ async function main() {
       .eq("id", semCustoId)
       .single();
     check("custo_unitario fica null quando não informado", semCustoRow?.custo_unitario === null);
+  }
+
+  console.log("\n21. Proposta comercial — só a partir de orçamento aprovado, exige propostas.manage");
+  let propostaId, orcamentoAprovadoParaPropostaId;
+  {
+    const { data: rascunhoId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: null, p_validade: null,
+      p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: rascunhoId, p_item_id: itemId, p_quantidade: 3, p_preco_unitario: 200,
+      p_custo_unitario: 120,
+    });
+
+    const { error: semPermError } = await noPermTenant.client.rpc("gerar_proposta", {
+      p_orcamento_id: rascunhoId, p_validade: "2027-01-31",
+    });
+    check("sem propostas.manage não gera proposta", !!semPermError);
+
+    const { error: naoAprovadoError } = await admTenant.client.rpc("gerar_proposta", {
+      p_orcamento_id: rascunhoId, p_validade: "2027-01-31",
+    });
+    check("não gera proposta de orçamento em rascunho", !!naoAprovadoError);
+
+    await admTenant.client.rpc("decidir_orcamento", { p_id: rascunhoId, p_decisao: "aprovado" });
+    orcamentoAprovadoParaPropostaId = rascunhoId;
+
+    const { data: id, error } = await admTenant.client.rpc("gerar_proposta", {
+      p_orcamento_id: rascunhoId, p_validade: "2027-01-31",
+    });
+    check("gera proposta de orçamento aprovado", !error && !!id);
+    propostaId = id;
+
+    const { data: row } = await admin.from("propostas").select("numero, status, snapshot").eq("id", id).single();
+    check("proposta nasce em rascunho com número gerado", row?.status === "rascunho" && !!row?.numero);
+    check("snapshot traz o valor total correto (3 * 200)", Number(row?.snapshot?.valor_total) === 600);
+    check(
+      "snapshot NÃO expõe custo_unitario (§22 — informação interna)",
+      !JSON.stringify(row?.snapshot ?? {}).includes("custo"),
+    );
+  }
+
+  console.log("\n22. Envio, aceite e recusa de proposta — só nos status corretos");
+  {
+    const { error: aceitaAntesDeEnviar } = await admTenant.client.rpc("registrar_aceite_proposta", {
+      p_id: propostaId, p_forcar: false,
+    });
+    check("não aceita proposta que ainda não foi enviada", !!aceitaAntesDeEnviar);
+
+    const { error: enviaError } = await admTenant.client.rpc("marcar_proposta_enviada", {
+      p_id: propostaId, p_canal: "email", p_destinatario: "compras@jrbox.com.br",
+    });
+    check("marca proposta como enviada", !enviaError);
+
+    const { error: enviaDeNovoError } = await admTenant.client.rpc("marcar_proposta_enviada", {
+      p_id: propostaId, p_canal: "email", p_destinatario: "compras@jrbox.com.br",
+    });
+    check("proposta já enviada não pode ser enviada de novo", !!enviaDeNovoError);
+
+    const { error: aceitaError } = await admTenant.client.rpc("registrar_aceite_proposta", {
+      p_id: propostaId, p_forcar: false,
+    });
+    check("aceita proposta enviada e não vencida", !aceitaError);
+
+    const { data: row } = await admin.from("propostas").select("status").eq("id", propostaId).single();
+    check("status vira aceita", row?.status === "aceita");
+
+    const { error: recusaAposAceitaError } = await admTenant.client.rpc("registrar_recusa_proposta", {
+      p_id: propostaId, p_observacao: "mudou de ideia",
+    });
+    check("proposta aceita (terminal) não pode ser recusada depois", !!recusaAposAceitaError);
+  }
+
+  console.log("\n23. Proposta vencida exige p_forcar para aceite (§26)");
+  {
+    const { data: outroOrcId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: null, p_validade: null,
+      p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: outroOrcId, p_item_id: itemId, p_quantidade: 1, p_preco_unitario: 50,
+      p_custo_unitario: null,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: outroOrcId, p_decisao: "aprovado" });
+
+    const { data: vencidaId } = await admTenant.client.rpc("gerar_proposta", {
+      p_orcamento_id: outroOrcId, p_validade: "2020-01-01",
+    });
+    await admTenant.client.rpc("marcar_proposta_enviada", {
+      p_id: vencidaId, p_canal: "email", p_destinatario: "cliente@teste.com",
+    });
+
+    const { error: aceitaVencidaError } = await admTenant.client.rpc("registrar_aceite_proposta", {
+      p_id: vencidaId, p_forcar: false,
+    });
+    check("aceite de proposta vencida é bloqueado sem p_forcar", !!aceitaVencidaError);
+
+    const { error: aceitaForcadaError } = await admTenant.client.rpc("registrar_aceite_proposta", {
+      p_id: vencidaId, p_forcar: true,
+    });
+    check("aceite de proposta vencida com p_forcar=true é aceito", !aceitaForcadaError);
+  }
+
+  console.log("\n24. Recusa e cancelamento de proposta");
+  {
+    const { data: outroOrcId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: null, p_validade: null,
+      p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: outroOrcId, p_item_id: itemId, p_quantidade: 1, p_preco_unitario: 80,
+      p_custo_unitario: null,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: outroOrcId, p_decisao: "aprovado" });
+    const { data: recusadaId } = await admTenant.client.rpc("gerar_proposta", {
+      p_orcamento_id: outroOrcId, p_validade: "2027-06-30",
+    });
+    await admTenant.client.rpc("marcar_proposta_enviada", {
+      p_id: recusadaId, p_canal: "email", p_destinatario: "cliente@teste.com",
+    });
+    const { error: recusaError } = await admTenant.client.rpc("registrar_recusa_proposta", {
+      p_id: recusadaId, p_observacao: "preço acima do orçado",
+    });
+    check("recusa proposta enviada", !recusaError);
+
+    const { data: canceladaId } = await admTenant.client.rpc("gerar_proposta", {
+      p_orcamento_id: orcamentoAprovadoParaPropostaId, p_validade: "2027-06-30",
+    });
+    const { error: cancelaError } = await admTenant.client.rpc("cancelar_proposta", { p_id: canceladaId });
+    check("cancela proposta em rascunho", !cancelaError);
+
+    const { error: cancelaRecusadaError } = await admTenant.client.rpc("cancelar_proposta", { p_id: recusadaId });
+    check("proposta recusada (terminal) não pode ser cancelada", !!cancelaRecusadaError);
+  }
+
+  console.log("\n25. Isolamento cross-tenant de propostas");
+  {
+    const { data: crossPropostas } = await otherTenant.client
+      .from("propostas")
+      .select("id")
+      .eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga propostas do tenant A", (crossPropostas ?? []).length === 0);
+
+    const { error: crossGerarError } = await otherTenant.client.rpc("gerar_proposta", {
+      p_orcamento_id: orcamentoAprovadoParaPropostaId, p_validade: "2027-01-31",
+    });
+    check("tenant B não gera proposta de orçamento do tenant A", !!crossGerarError);
+
+    const { error: crossAceitaError } = await otherTenant.client.rpc("registrar_aceite_proposta", {
+      p_id: propostaId, p_forcar: true,
+    });
+    check("tenant B não aceita proposta do tenant A", !!crossAceitaError);
+  }
+
+  console.log("\n26. Auditoria das propostas");
+  {
+    const { data: events } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", [
+        "comercial.proposta_gerada",
+        "comercial.proposta_enviada",
+        "comercial.proposta_aceita",
+        "comercial.proposta_recusada",
+        "comercial.proposta_cancelada",
+      ]);
+    const actions = new Set((events ?? []).map((e) => e.action));
+    check("proposta_gerada registrado", actions.has("comercial.proposta_gerada"));
+    check("proposta_enviada registrado", actions.has("comercial.proposta_enviada"));
+    check("proposta_aceita registrado", actions.has("comercial.proposta_aceita"));
+    check("proposta_recusada registrado", actions.has("comercial.proposta_recusada"));
+    check("proposta_cancelada registrado", actions.has("comercial.proposta_cancelada"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import OrcamentosSection from "./OrcamentosSection";
 import OportunidadesSection from "./OportunidadesSection";
+import PropostasSection from "./PropostasSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
 // TÓPICO 10 — orçamento simples (cabeçalho + itens + decisão), recorte
@@ -16,11 +17,15 @@ export default async function ComercialPage() {
     { data: canManage },
     { data: canViewOportunidades },
     { data: canManageOportunidades },
+    { data: canViewPropostas },
+    { data: canManagePropostas },
   ] = await Promise.all([
     supabase.rpc("has_permission", { p_resource: "orcamentos", p_action: "view" }),
     supabase.rpc("has_permission", { p_resource: "orcamentos", p_action: "manage" }),
     supabase.rpc("has_permission", { p_resource: "oportunidades", p_action: "view" }),
     supabase.rpc("has_permission", { p_resource: "oportunidades", p_action: "manage" }),
+    supabase.rpc("has_permission", { p_resource: "propostas", p_action: "view" }),
+    supabase.rpc("has_permission", { p_resource: "propostas", p_action: "manage" }),
   ]);
 
   if (!canView) {
@@ -43,6 +48,7 @@ export default async function ComercialPage() {
     { data: obras },
     { data: itens },
     { data: oportunidades },
+    { data: propostas },
   ] = await Promise.all([
     supabase.from("orcamentos").select("*").order("created_at", { ascending: false }),
     supabase.from("orcamento_itens").select("*"),
@@ -52,6 +58,9 @@ export default async function ComercialPage() {
     supabase.from("itens").select("id, codigo, descricao, unidade_principal, situacao").order("codigo"),
     canViewOportunidades
       ? supabase.from("oportunidades").select("*").order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as never[] }),
+    canViewPropostas
+      ? supabase.from("propostas").select("*").order("created_at", { ascending: false })
       : Promise.resolve({ data: [] as never[] }),
   ]);
 
@@ -83,6 +92,8 @@ export default async function ComercialPage() {
     (o) => o.estagio !== "ganha" && o.estagio !== "perdida",
   );
 
+  const orcamentosAprovados = (orcamentos ?? []).filter((o) => o.status === "aprovado");
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 10 — Comercial</p>
@@ -111,6 +122,15 @@ export default async function ComercialPage() {
           oportunidades={oportunidades ?? []}
           todasPessoas={pessoas ?? []}
           canManage={!!canManageOportunidades}
+        />
+      )}
+
+      {canViewPropostas && (
+        <PropostasSection
+          propostas={propostas ?? []}
+          orcamentosAprovados={orcamentosAprovados}
+          todasPessoas={pessoas ?? []}
+          canManage={!!canManagePropostas}
         />
       )}
     </div>
