@@ -12,6 +12,42 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Tokens de cor do design system — bloco @theme SEM "inline" de propósito:
+   com "inline", o Tailwind grava o VALOR JÁ RESOLVIDO de cada token direto
+   em cada utility gerada (ex.: .bg-primary{background-color:#1f5d57}), o
+   que quebra a troca de cor por empresa — a sobrescrita de --color-primary
+   no <html> (ver src/app/layout.tsx) não teria efeito nenhum. Sem "inline",
+   o Tailwind gera .bg-primary{background-color:var(--color-primary)}, que
+   respeita a sobrescrita em cascata normalmente. */
+@theme {
+  /* Cor primária: valor abaixo é só o fallback para empresas sem
+     `companies.cor_primaria` definida (ver migration
+     20260930000000_companies_cor_primaria.sql). O layout raiz sobrescreve
+     esta variável por empresa via inline style no <html> — os tons
+     derivados abaixo usam color-mix() sobre a mesma variável, então uma
+     única sobrescrita já propaga para hover/tint/sidebar sem precisar
+     recalcular nada em JS. */
+  --color-primary: #1f5d57;
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 82%, black);
+  --color-primary-soft: color-mix(in srgb, var(--color-primary) 12%, white);
+  --color-sidebar-bg: color-mix(in srgb, var(--color-primary) 72%, black);
+  --color-sidebar-fg: #cfded9;
+  --color-sidebar-fg-active: #ffffff;
+  --color-sidebar-border: color-mix(in srgb, var(--color-primary) 60%, black);
+  --color-sidebar-active-bg: var(--color-primary);
+  --color-success: var(--color-primary);
+
+  /* Paleta fixa já usada em todo o app (inline hex hoje, viram tokens). */
+  --color-surface: #ffffff;
+  --color-page-bg: #f5f7f5;
+  --color-border: #dae2de;
+  --color-border-subtle: #eef1ef;
+  --color-text: #3e4d49;
+  --color-text-muted: #6b7a75;
+  --color-danger: #9b2c2c;
+  --color-warning: #b7791f;
+}
+
 /* Todas as telas do app (login, home, arquivos, auditoria, MFA) são cards
    claros com cores fixas no estilo inline — nenhuma delas foi desenhada
    para tema escuro. A regra de prefers-color-scheme original (sobra do

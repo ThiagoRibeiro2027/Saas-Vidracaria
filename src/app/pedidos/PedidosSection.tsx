@@ -8,7 +8,11 @@ import {
   liberarPedidoAction,
   cancelarPedidoAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -53,12 +57,12 @@ const STATUS_LABEL: Record<Pedido["status"], string> = {
   cancelado: "Cancelado",
 };
 
-const STATUS_COLOR: Record<Pedido["status"], string> = {
-  recebido: "#6b7a75",
-  em_conferencia: "#1f5d57",
-  pendente: "#b7791f",
-  liberado: "#1f5d57",
-  cancelado: "#9b2c2c",
+const STATUS_TONE: Record<Pedido["status"], "neutral" | "success" | "warning" | "danger"> = {
+  recebido: "neutral",
+  em_conferencia: "success",
+  pendente: "warning",
+  liberado: "success",
+  cancelado: "danger",
 };
 
 export default function PedidosSection({
@@ -95,38 +99,26 @@ export default function PedidosSection({
     <>
       {canManage && (
         <section>
-          <h2 style={sectionTitleStyle}>Orçamentos aprovados aguardando conversão</h2>
+          <h2 className="text-sm font-semibold text-text">Orçamentos aprovados aguardando conversão</h2>
           {orcamentosDisponiveis.length === 0 ? (
-            <p style={hintStyle}>Nenhum orçamento aprovado pendente de conversão.</p>
+            <p className="mt-1 text-xs text-text-muted">Nenhum orçamento aprovado pendente de conversão.</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <div className="mt-2 flex flex-col gap-1.5">
               {orcamentosDisponiveis.map((orc) => {
                 const orcItens = itensPorOrcamento.get(orc.id) ?? [];
                 return (
-                  <div
-                    key={orc.id}
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "10px",
-                      alignItems: "center",
-                      fontSize: "12px",
-                      border: "1px solid #dae2de",
-                      borderRadius: "6px",
-                      padding: "8px 10px",
-                    }}
-                  >
+                  <Card key={orc.id} padding="xs" className="flex flex-wrap items-center gap-2.5 text-xs">
                     <strong>{orc.numero}</strong>
                     <span>{pessoaNome(orc.pessoa_id)}</span>
-                    <span style={{ color: "#6b7a75" }}>{obraNome(orc.obra_id)}</span>
-                    <span style={{ color: "#6b7a75" }}>{orcItens.length} item(ns)</span>
-                    <form action={converterOrcamentoAction} style={{ marginLeft: "auto" }}>
+                    <span className="text-text-muted">{obraNome(orc.obra_id)}</span>
+                    <span className="text-text-muted">{orcItens.length} item(ns)</span>
+                    <form action={converterOrcamentoAction} className="ml-auto">
                       <input type="hidden" name="orcamento_id" value={orc.id} />
-                      <button type="submit" style={buttonStyle}>
+                      <Button type="submit" variant="primary">
                         Converter em pedido
-                      </button>
+                      </Button>
                     </form>
-                  </div>
+                  </Card>
                 );
               })}
             </div>
@@ -135,62 +127,56 @@ export default function PedidosSection({
       )}
 
       <section>
-        <h2 style={sectionTitleStyle}>Pedidos</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <h2 className="text-sm font-semibold text-text">Pedidos</h2>
+        <div className="mt-2 flex flex-col gap-4">
           {pedidos.map((ped) => {
             const pedItens = itensPorPedido.get(ped.id) ?? [];
             const pendenciasDoPedido = pendenciasPorPedido.get(ped.id) ?? [];
             const pendenciasAbertas = pendenciasDoPedido.filter((p) => !p.resolvida);
 
             return (
-              <div key={ped.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "baseline", fontSize: "12px" }}>
-                  <strong style={{ fontSize: "13px" }}>{ped.numero}</strong>
+              <Card key={ped.id} padding="xs">
+                <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
+                  <strong className="text-[13px] text-text">{ped.numero}</strong>
                   <span>{pessoaNome(ped.pessoa_id)}</span>
-                  <span style={{ color: "#6b7a75" }}>{obraNome(ped.obra_id)}</span>
-                  <span style={{ color: "#6b7a75" }}>{ped.data_pedido}</span>
-                  <span style={{ color: "#6b7a75" }}>
+                  <span className="text-text-muted">{obraNome(ped.obra_id)}</span>
+                  <span className="text-text-muted">{ped.data_pedido}</span>
+                  <span className="text-text-muted">
                     origem: {numeroOrcamentoPorId.get(ped.orcamento_id) ?? "(orçamento removido)"}
                   </span>
-                  <span style={{ fontFamily: "monospace", color: STATUS_COLOR[ped.status] }}>
-                    {STATUS_LABEL[ped.status]}
-                  </span>
+                  <Badge variant={STATUS_TONE[ped.status]}>{STATUS_LABEL[ped.status]}</Badge>
                   {pendenciasAbertas.length > 0 && (
-                    <span style={{ color: "#b7791f" }}>
-                      {pendenciasAbertas.length} pendência(s) aberta(s)
-                    </span>
+                    <span className="text-warning">{pendenciasAbertas.length} pendência(s) aberta(s)</span>
                   )}
                 </div>
 
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "8px" }}>
+                <Table className="mt-2">
                   <thead>
-                    <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                      <th style={thStyle}>Item</th>
-                      <th style={thStyle}>Qtd</th>
-                      <th style={thStyle}>Preço unit.</th>
+                    <tr>
+                      <Th>Item</Th>
+                      <Th>Qtd</Th>
+                      <Th>Preço unit.</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {pedItens.map((pi) => (
-                      <tr key={pi.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                        <td style={tdStyle}>{itemLabel(pi.item_id)}</td>
-                        <td style={tdStyle}>{pi.quantidade}</td>
-                        <td style={tdStyle}>
-                          {pi.preco_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </td>
+                      <tr key={pi.id}>
+                        <Td>{itemLabel(pi.item_id)}</Td>
+                        <Td>{pi.quantidade}</Td>
+                        <Td>{pi.preco_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</Td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </Table>
 
                 {pendenciasDoPedido.length > 0 && (
-                  <div style={{ marginTop: "8px" }}>
-                    <h3 style={{ fontSize: "12px", margin: "0 0 4px", color: "#3e4d49" }}>Pendências</h3>
-                    <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <div className="mt-2">
+                    <h3 className="mb-1 text-xs font-medium text-text">Pendências</h3>
+                    <ul className="m-0 flex flex-col gap-1 pl-4 text-xs">
                       {pendenciasDoPedido.map((pd) => (
                         <li key={pd.id}>
                           {pd.resolvida ? (
-                            <span style={{ color: "#6b7a75" }}>
+                            <span className="text-text-muted">
                               <s>{pd.descricao}</s> — resolvida{pd.resolucao ? `: ${pd.resolucao}` : ""}
                             </span>
                           ) : (
@@ -199,17 +185,13 @@ export default function PedidosSection({
                               {canManage && (
                                 <form
                                   action={resolverPendenciaAction}
-                                  style={{ display: "inline-flex", gap: "4px", marginLeft: "8px" }}
+                                  className="ml-2 inline-flex items-center gap-1"
                                 >
                                   <input type="hidden" name="id" value={pd.id} />
-                                  <input
-                                    name="resolucao"
-                                    placeholder="resolução (opcional)"
-                                    style={{ ...inputStyle, width: "160px" }}
-                                  />
-                                  <button type="submit" style={buttonStyle}>
+                                  <Input name="resolucao" placeholder="resolução (opcional)" className="w-40" />
+                                  <Button type="submit" variant="primary">
                                     Resolver
-                                  </button>
+                                  </Button>
                                 </form>
                               )}
                             </span>
@@ -221,57 +203,49 @@ export default function PedidosSection({
                 )}
 
                 {canManage && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "10px", alignItems: "center" }}>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     {ped.status === "recebido" && (
                       <form action={iniciarConferenciaAction}>
                         <input type="hidden" name="id" value={ped.id} />
-                        <button type="submit" style={buttonStyle}>
+                        <Button type="submit" variant="primary">
                           Iniciar conferência
-                        </button>
+                        </Button>
                       </form>
                     )}
 
                     {(ped.status === "em_conferencia" || ped.status === "pendente") && (
-                      <form
-                        action={abrirPendenciaAction}
-                        style={{ display: "flex", gap: "6px", alignItems: "center" }}
-                      >
+                      <form action={abrirPendenciaAction} className="flex items-center gap-1.5">
                         <input type="hidden" name="id" value={ped.id} />
-                        <input
-                          name="descricao"
-                          placeholder="descrever pendência"
-                          required
-                          style={{ ...inputStyle, width: "180px" }}
-                        />
-                        <button type="submit" style={buttonStyle}>
+                        <Input name="descricao" placeholder="descrever pendência" required className="w-44" />
+                        <Button type="submit" variant="secondary">
                           Abrir pendência
-                        </button>
+                        </Button>
                       </form>
                     )}
 
                     {ped.status === "em_conferencia" && (
                       <form action={liberarPedidoAction}>
                         <input type="hidden" name="id" value={ped.id} />
-                        <button type="submit" style={buttonStyle}>
+                        <Button type="submit" variant="primary">
                           Liberar
-                        </button>
+                        </Button>
                       </form>
                     )}
 
                     {(ped.status === "recebido" || ped.status === "em_conferencia" || ped.status === "pendente") && (
                       <form action={cancelarPedidoAction}>
                         <input type="hidden" name="id" value={ped.id} />
-                        <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>
+                        <Button type="submit" variant="danger">
                           Cancelar
-                        </button>
+                        </Button>
                       </form>
                     )}
                   </div>
                 )}
-              </div>
+              </Card>
             );
           })}
-          {pedidos.length === 0 && <p style={hintStyle}>Nenhum pedido ainda.</p>}
+          {pedidos.length === 0 && <p className="text-xs text-text-muted">Nenhum pedido ainda.</p>}
         </div>
       </section>
     </>

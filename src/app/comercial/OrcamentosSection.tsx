@@ -7,7 +7,12 @@ import {
   decidirOrcamentoAction,
   cancelarOrcamentoAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string; pessoa_id: string; situacao: "ativo" | "inativo" };
@@ -47,6 +52,13 @@ const STATUS_LABEL: Record<Orcamento["status"], string> = {
   cancelado: "Cancelado",
 };
 
+const STATUS_TONE: Record<Orcamento["status"], "neutral" | "success" | "danger"> = {
+  rascunho: "neutral",
+  aprovado: "success",
+  rejeitado: "danger",
+  cancelado: "danger",
+};
+
 const currency = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -76,8 +88,8 @@ export default function OrcamentosSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Orçamentos</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Orçamentos</h2>
+      <p className="mb-4 mt-1 text-xs text-text-muted">
         Recorte mínimo do M1 (TÓPICO 10 §4): orçamento simples e decisão de aprovação, sem tabela
         de preços, descontos, versionamento ou proposta formal. Orçamento aprovado fica pronto
         para o módulo de Pedidos (TÓPICO 3) converter — ainda não implementado. Um orçamento em
@@ -86,16 +98,15 @@ export default function OrcamentosSection({
       </p>
 
       {canManage && (
-        <div style={{ marginBottom: "16px" }}>
-          <h3 style={{ fontSize: "13px", margin: "0 0 6px" }}>Novo orçamento</h3>
+        <div className="mb-4">
+          <h3 className="mb-1.5 text-[13px] font-medium text-text">Novo orçamento</h3>
           {clientesElegiveis.length === 0 ? (
-            <p style={hintStyle}>Nenhuma pessoa com papel Cliente ativo — cadastre um em Cadastros antes.</p>
+            <p className="text-xs text-text-muted">
+              Nenhuma pessoa com papel Cliente ativo — cadastre um em Cadastros antes.
+            </p>
           ) : (
-            <form
-              action={upsertOrcamentoAction}
-              style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-            >
-              <select name="pessoa_id" defaultValue="" required style={inputStyle}>
+            <form action={upsertOrcamentoAction} className="flex flex-wrap items-center gap-1.5">
+              <Select name="pessoa_id" defaultValue="" required>
                 <option value="" disabled>
                   Cliente
                 </option>
@@ -104,34 +115,30 @@ export default function OrcamentosSection({
                     {p.nome}
                   </option>
                 ))}
-              </select>
-              <select name="obra_id" defaultValue="" style={inputStyle}>
+              </Select>
+              <Select name="obra_id" defaultValue="">
                 <option value="">Sem obra</option>
                 {obrasAtivas.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.nome} ({pessoaNome(o.pessoa_id)})
                   </option>
                 ))}
-              </select>
-              <label style={{ fontSize: "12px", color: "#3e4d49" }}>
+              </Select>
+              <label className="flex items-center gap-1 text-xs text-text">
                 Validade
-                <input name="validade" type="date" style={{ ...inputStyle, marginLeft: "4px" }} />
+                <Input name="validade" type="date" />
               </label>
-              <input
-                name="condicao_comercial"
-                placeholder="condição comercial"
-                style={{ ...inputStyle, width: "160px" }}
-              />
-              <input name="observacoes" placeholder="observações" style={{ ...inputStyle, width: "180px" }} />
-              <button type="submit" style={buttonStyle}>
+              <Input name="condicao_comercial" placeholder="condição comercial" className="w-40" />
+              <Input name="observacoes" placeholder="observações" className="w-44" />
+              <Button type="submit" variant="primary">
                 Criar orçamento
-              </button>
+              </Button>
             </form>
           )}
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div className="flex flex-col gap-4">
         {orcamentos.map((orc) => {
           const orcItens = itensPorOrcamento.get(orc.id) ?? [];
           const total = totais.get(orc.id) ?? 0;
@@ -152,38 +159,23 @@ export default function OrcamentosSection({
             obraAtual && !obrasAtivas.some((o) => o.id === obraAtual.id) ? [obraAtual, ...obrasAtivas] : obrasAtivas;
 
           return (
-            <div
-              key={orc.id}
-              style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}
-            >
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "baseline", fontSize: "12px" }}>
-                <strong style={{ fontSize: "13px" }}>{orc.numero}</strong>
+            <Card key={orc.id} padding="xs">
+              <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
+                <strong className="text-[13px] text-text">{orc.numero}</strong>
                 <span>{pessoaNome(orc.pessoa_id)}</span>
-                <span style={{ color: "#6b7a75" }}>{obraNome(orc.obra_id)}</span>
-                <span style={{ color: "#6b7a75" }}>{orc.data_orcamento}</span>
-                <span
-                  style={{
-                    fontFamily: "monospace",
-                    color:
-                      orc.status === "aprovado"
-                        ? "#1f5d57"
-                        : orc.status === "rejeitado" || orc.status === "cancelado"
-                          ? "#9b2c2c"
-                          : "#6b7a75",
-                  }}
-                >
-                  {STATUS_LABEL[orc.status]}
-                </span>
-                <span style={{ marginLeft: "auto", fontWeight: 600 }}>{currency(total)}</span>
+                <span className="text-text-muted">{obraNome(orc.obra_id)}</span>
+                <span className="text-text-muted">{orc.data_orcamento}</span>
+                <Badge variant={STATUS_TONE[orc.status]}>{STATUS_LABEL[orc.status]}</Badge>
+                <span className="ml-auto font-semibold text-text">{currency(total)}</span>
               </div>
 
               {editavel && (
                 <form
                   action={upsertOrcamentoAction}
-                  style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginTop: "8px" }}
+                  className="mt-2 flex flex-wrap items-center gap-1.5"
                 >
                   <input type="hidden" name="id" value={orc.id} />
-                  <select name="pessoa_id" defaultValue={orc.pessoa_id} required style={inputStyle}>
+                  <Select name="pessoa_id" defaultValue={orc.pessoa_id} required>
                     {pessoaOpcoes.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.nome}
@@ -192,8 +184,8 @@ export default function OrcamentosSection({
                           : ""}
                       </option>
                     ))}
-                  </select>
-                  <select name="obra_id" defaultValue={orc.obra_id ?? ""} style={inputStyle}>
+                  </Select>
+                  <Select name="obra_id" defaultValue={orc.obra_id ?? ""}>
                     <option value="">Sem obra</option>
                     {obraOpcoes.map((o) => (
                       <option key={o.id} value={o.id}>
@@ -201,39 +193,34 @@ export default function OrcamentosSection({
                         {obraAtual?.id === o.id && !obrasAtivas.some((a) => a.id === o.id) ? " (inativa)" : ""}
                       </option>
                     ))}
-                  </select>
-                  <input
-                    name="validade"
-                    type="date"
-                    defaultValue={orc.validade ?? ""}
-                    style={inputStyle}
-                  />
-                  <input
+                  </Select>
+                  <Input name="validade" type="date" defaultValue={orc.validade ?? ""} />
+                  <Input
                     name="condicao_comercial"
                     placeholder="condição comercial"
                     defaultValue={orc.condicao_comercial ?? ""}
-                    style={{ ...inputStyle, width: "160px" }}
+                    className="w-40"
                   />
-                  <input
+                  <Input
                     name="observacoes"
                     placeholder="observações"
                     defaultValue={orc.observacoes ?? ""}
-                    style={{ ...inputStyle, width: "180px" }}
+                    className="w-44"
                   />
-                  <button type="submit" style={buttonStyle}>
+                  <Button type="submit" variant="primary">
                     Salvar cabeçalho
-                  </button>
+                  </Button>
                 </form>
               )}
 
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "8px" }}>
+              <Table className="mt-2">
                 <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                    <th style={thStyle}>Item</th>
-                    <th style={thStyle}>Qtd</th>
-                    <th style={thStyle}>Preço unit.</th>
-                    <th style={thStyle}>Subtotal</th>
-                    {editavel && <th style={thStyle}></th>}
+                  <tr>
+                    <Th>Item</Th>
+                    <Th>Qtd</Th>
+                    <Th>Preço unit.</Th>
+                    <Th>Subtotal</Th>
+                    {editavel && <Th />}
                   </tr>
                 </thead>
                 <tbody>
@@ -257,46 +244,46 @@ export default function OrcamentosSection({
                     />
                   )}
                 </tbody>
-              </table>
+              </Table>
 
               {canManage && orc.status === "rascunho" && (
-                <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+                <div className="mt-2 flex gap-1.5">
                   <form action={decidirOrcamentoAction}>
                     <input type="hidden" name="id" value={orc.id} />
                     <input type="hidden" name="decisao" value="aprovado" />
-                    <button type="submit" style={buttonStyle}>
+                    <Button type="submit" variant="primary">
                       Aprovar
-                    </button>
+                    </Button>
                   </form>
                   <form action={decidirOrcamentoAction}>
                     <input type="hidden" name="id" value={orc.id} />
                     <input type="hidden" name="decisao" value="rejeitado" />
-                    <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>
+                    <Button type="submit" variant="danger">
                       Rejeitar
-                    </button>
+                    </Button>
                   </form>
                   <form action={cancelarOrcamentoAction}>
                     <input type="hidden" name="id" value={orc.id} />
-                    <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                    <Button type="submit" variant="danger">
                       Cancelar
-                    </button>
+                    </Button>
                   </form>
                 </div>
               )}
               {canManage && orc.status === "aprovado" && (
-                <div style={{ marginTop: "8px" }}>
+                <div className="mt-2">
                   <form action={cancelarOrcamentoAction}>
                     <input type="hidden" name="id" value={orc.id} />
-                    <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                    <Button type="submit" variant="danger">
                       Cancelar
-                    </button>
+                    </Button>
                   </form>
                 </div>
               )}
-            </div>
+            </Card>
           );
         })}
-        {orcamentos.length === 0 && <p style={hintStyle}>Nenhum orçamento ainda.</p>}
+        {orcamentos.length === 0 && <p className="text-xs text-text-muted">Nenhum orçamento ainda.</p>}
       </div>
     </section>
   );
@@ -335,30 +322,22 @@ function OrcamentoItemRow({
   if (!editavel) {
     if (!item) return null;
     return (
-      <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
-        <td style={tdStyle}>{itemLabel(itens, item.item_id)}</td>
-        <td style={tdStyle}>{item.quantidade}</td>
-        <td style={tdStyle}>{currency(item.preco_unitario)}</td>
-        <td style={tdStyle}>{currency(subtotal)}</td>
+      <tr>
+        <Td>{itemLabel(itens, item.item_id)}</Td>
+        <Td>{item.quantidade}</Td>
+        <Td>{currency(item.preco_unitario)}</Td>
+        <Td>{currency(subtotal)}</Td>
       </tr>
     );
   }
 
   return (
-    <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
-      <td style={tdStyle} colSpan={totalColumns}>
-        <form
-          action={upsertOrcamentoItemAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-        >
+    <tr>
+      <Td colSpan={totalColumns}>
+        <form action={upsertOrcamentoItemAction} className="flex flex-wrap items-center gap-1.5">
           {item && <input type="hidden" name="id" value={item.id} />}
           <input type="hidden" name="orcamento_id" value={item?.orcamento_id ?? orcamentoId} />
-          <select
-            name="item_id"
-            defaultValue={item?.item_id ?? ""}
-            required
-            style={{ ...inputStyle, minWidth: "160px" }}
-          >
+          <Select name="item_id" defaultValue={item?.item_id ?? ""} required className="min-w-40">
             <option value="" disabled>
               Item
             </option>
@@ -368,8 +347,8 @@ function OrcamentoItemRow({
                 {itemAtualFallback?.id === it.id && !itensAtivos.some((a) => a.id === it.id) ? " (inativo)" : ""}
               </option>
             ))}
-          </select>
-          <input
+          </Select>
+          <Input
             name="quantidade"
             type="number"
             step="0.001"
@@ -377,9 +356,9 @@ function OrcamentoItemRow({
             placeholder="qtd"
             defaultValue={item?.quantidade ?? ""}
             required
-            style={{ ...inputStyle, width: "70px" }}
+            className="w-[70px]"
           />
-          <input
+          <Input
             name="preco_unitario"
             type="number"
             step="0.01"
@@ -387,24 +366,22 @@ function OrcamentoItemRow({
             placeholder="preço unit."
             defaultValue={item?.preco_unitario ?? ""}
             required
-            style={{ ...inputStyle, width: "90px" }}
+            className="w-[90px]"
           />
-          <button type="submit" style={buttonStyle}>
+          <Button type="submit" variant="primary">
             {item ? "Salvar" : "Adicionar"}
-          </button>
-          {item && (
-            <span style={{ color: "#6b7a75" }}>subtotal: {currency(subtotal)}</span>
-          )}
+          </Button>
+          {item && <span className="text-text-muted">subtotal: {currency(subtotal)}</span>}
         </form>
         {item && (
-          <form action={removeOrcamentoItemAction} style={{ marginTop: "4px" }}>
+          <form action={removeOrcamentoItemAction} className="mt-1">
             <input type="hidden" name="id" value={item.id} />
-            <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>
+            <Button type="submit" variant="danger">
               Remover
-            </button>
+            </Button>
           </form>
         )}
-      </td>
+      </Td>
     </tr>
   );
 }

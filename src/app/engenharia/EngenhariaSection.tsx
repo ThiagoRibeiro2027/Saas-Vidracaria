@@ -1,7 +1,11 @@
 "use client";
 
 import { criarItemProducaoAction, registrarMedicaoAction, confirmarMedicaoAction } from "./actions";
-import { hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -51,28 +55,28 @@ export default function EngenhariaSection({
 
   return (
     <section>
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div className="flex flex-col gap-4">
         {pedidos.map((ped) => {
           const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
 
           return (
-            <div key={ped.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "baseline", fontSize: "12px" }}>
-                <strong style={{ fontSize: "13px" }}>{ped.numero}</strong>
+            <Card key={ped.id} padding="xs">
+              <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
+                <strong className="text-[13px] text-text">{ped.numero}</strong>
                 <span>{pessoaNome(ped.pessoa_id)}</span>
-                <span style={{ color: "#6b7a75" }}>{obraNome(ped.obra_id)}</span>
+                <span className="text-text-muted">{obraNome(ped.obra_id)}</span>
               </div>
 
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "8px" }}>
+              <Table className="mt-2">
                 <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                    <th style={thStyle}>Item</th>
-                    <th style={thStyle}>Qtd</th>
-                    <th style={thStyle}>Ambiente</th>
-                    <th style={thStyle}>Largura (mm)</th>
-                    <th style={thStyle}>Altura (mm)</th>
-                    <th style={thStyle}>Medida</th>
-                    {canManage && <th style={thStyle}></th>}
+                  <tr>
+                    <Th>Item</Th>
+                    <Th>Qtd</Th>
+                    <Th>Ambiente</Th>
+                    <Th>Largura (mm)</Th>
+                    <Th>Altura (mm)</Th>
+                    <Th>Medida</Th>
+                    {canManage && <Th />}
                   </tr>
                 </thead>
                 <tbody>
@@ -89,13 +93,15 @@ export default function EngenhariaSection({
                     );
                   })}
                 </tbody>
-              </table>
-              {itensDoPedido.length === 0 && <p style={hintStyle}>Pedido sem itens.</p>}
-            </div>
+              </Table>
+              {itensDoPedido.length === 0 && <p className="mt-2 text-xs text-text-muted">Pedido sem itens.</p>}
+            </Card>
           );
         })}
         {pedidos.length === 0 && (
-          <p style={hintStyle}>Nenhum pedido liberado ainda — a Engenharia só entra depois da liberação (TÓPICO 3).</p>
+          <p className="text-xs text-text-muted">
+            Nenhum pedido liberado ainda — a Engenharia só entra depois da liberação (TÓPICO 3).
+          </p>
         )}
       </div>
     </section>
@@ -115,44 +121,36 @@ function ItemProducaoRow({
 }) {
   if (!producao) {
     return (
-      <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
-        <td style={tdStyle}>{itemLabel}</td>
-        <td style={tdStyle}>{pedidoItem.quantidade}</td>
-        <td style={tdStyle} colSpan={4}>
-          <span style={{ color: "#6b7a75" }}>Engenharia ainda não iniciada</span>
-        </td>
+      <tr>
+        <Td>{itemLabel}</Td>
+        <Td>{pedidoItem.quantidade}</Td>
+        <Td colSpan={4}>
+          <span className="text-text-muted">Engenharia ainda não iniciada</span>
+        </Td>
         {canManage && (
-          <td style={tdStyle}>
+          <Td>
             <form action={criarItemProducaoAction}>
               <input type="hidden" name="pedido_item_id" value={pedidoItem.id} />
-              <button type="submit" style={buttonStyle}>
+              <Button type="submit" variant="primary">
                 Iniciar engenharia
-              </button>
+              </Button>
             </form>
-          </td>
+          </Td>
         )}
       </tr>
     );
   }
 
   return (
-    <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
-      <td style={tdStyle}>{itemLabel}</td>
-      <td style={tdStyle}>{pedidoItem.quantidade}</td>
+    <tr>
+      <Td>{itemLabel}</Td>
+      <Td>{pedidoItem.quantidade}</Td>
       {canManage ? (
-        <td style={tdStyle} colSpan={4}>
-          <form
-            action={registrarMedicaoAction}
-            style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-          >
+        <Td colSpan={4}>
+          <form action={registrarMedicaoAction} className="flex flex-wrap items-center gap-1.5">
             <input type="hidden" name="id" value={producao.id} />
-            <input
-              name="ambiente"
-              placeholder="ambiente"
-              defaultValue={producao.ambiente ?? ""}
-              style={{ ...inputStyle, width: "110px" }}
-            />
-            <input
+            <Input name="ambiente" placeholder="ambiente" defaultValue={producao.ambiente ?? ""} className="w-28" />
+            <Input
               name="largura_mm"
               type="number"
               step="0.1"
@@ -160,9 +158,9 @@ function ItemProducaoRow({
               placeholder="largura (mm)"
               defaultValue={producao.largura_mm ?? ""}
               required
-              style={{ ...inputStyle, width: "90px" }}
+              className="w-[90px]"
             />
-            <input
+            <Input
               name="altura_mm"
               type="number"
               step="0.1"
@@ -170,39 +168,34 @@ function ItemProducaoRow({
               placeholder="altura (mm)"
               defaultValue={producao.altura_mm ?? ""}
               required
-              style={{ ...inputStyle, width: "90px" }}
+              className="w-[90px]"
             />
-            <button type="submit" style={buttonStyle}>
+            <Button type="submit" variant="primary">
               {producao.largura_mm ? "Corrigir medida" : "Registrar medida"}
-            </button>
-            <span
-              style={{
-                fontFamily: "monospace",
-                color: producao.medida_confirmada ? "#1f5d57" : "#b7791f",
-              }}
-            >
+            </Button>
+            <Badge variant={producao.medida_confirmada ? "success" : "warning"}>
               {producao.medida_confirmada ? "Confirmada" : "Não confirmada"}
-            </span>
+            </Badge>
           </form>
           {!producao.medida_confirmada && producao.largura_mm != null && (
-            <form action={confirmarMedicaoAction} style={{ marginTop: "4px" }}>
+            <form action={confirmarMedicaoAction} className="mt-1">
               <input type="hidden" name="id" value={producao.id} />
-              <button type="submit" style={buttonStyle}>
+              <Button type="submit" variant="primary">
                 Confirmar medida
-              </button>
+              </Button>
             </form>
           )}
-        </td>
+        </Td>
       ) : (
         <>
-          <td style={tdStyle}>{producao.ambiente ?? "—"}</td>
-          <td style={tdStyle}>{producao.largura_mm ?? "—"}</td>
-          <td style={tdStyle}>{producao.altura_mm ?? "—"}</td>
-          <td style={tdStyle}>
-            <span style={{ color: producao.medida_confirmada ? "#1f5d57" : "#b7791f" }}>
+          <Td>{producao.ambiente ?? "—"}</Td>
+          <Td>{producao.largura_mm ?? "—"}</Td>
+          <Td>{producao.altura_mm ?? "—"}</Td>
+          <Td>
+            <Badge variant={producao.medida_confirmada ? "success" : "warning"}>
               {producao.medida_confirmada ? "Confirmada" : "Não confirmada"}
-            </span>
-          </td>
+            </Badge>
+          </Td>
         </>
       )}
     </tr>
