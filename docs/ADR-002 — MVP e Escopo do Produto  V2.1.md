@@ -565,12 +565,24 @@ apontamento que não existe — regra de negócio nova sem base em ADR,
 mesmo problema do §45; "tratar ocorrências" não é conceito de T4 (existe
 em T9/T16). `assert_tenant_write_any()` aceita a ação fina OU `manage` —
 nenhuma empresa que já tinha `producao.manage` perde acesso a nada, sem
-backfill de `role_permissions` necessário. §51 (configurabilidade
-ampla) tem só 2 itens pendentes fora do que já foi decidido nesta e nas
-fases anteriores — tolerância de perdas (também fecha §30) segue como
-próxima sub-fase (7f); turnos e regras de notificação do PCP já estavam
-fora do MVP por decisão anterior (Release 1 e módulo de Notificações
-ainda não implementado, respectivamente).
+backfill de `role_permissions` necessário.
+
+**Decisão do responsável do produto em 2026-09-19 (fecha §30 e o item
+"tolerâncias de perdas" do §51 / Fase 7f, "ok, conforme recomendado"):**
+`verificar_tolerancia_perda()` reaproveita `cutting_margin_settings`/
+`get_cutting_margin()` (T15 §31.4, já configurável por empresa) — que já
+É a margem de quebra planejada — e compara contra
+`ordens_producao.quantidade_perdida` real. Fórmula (detalhe de cálculo,
+não de escopo): perda tolerada = quantidade_planejada × percentual /
+100 — denominador é o planejado, não o produzido, mesmo espírito de
+"planejado × real". OP sem margem configurada pro material/processo
+nunca vira alerta falso (percentual/tolerada/excedida ficam `null`).
+Alerta é sinal passivo no painel, mesmo padrão já decidido pra gargalos
+na Fase 5c — sem integrar com ADR-007/Notificações, que não existe no
+schema. Turnos e regras de notificação do PCP (§51) continuam fora do
+MVP por decisão anterior (Release 1 e módulo de Notificações ainda não
+implementado, respectivamente) — com isso, §51 fica sem nenhum item
+pendente que dependa só de T4.
 
 **4.8 Expedição / Logística**
 

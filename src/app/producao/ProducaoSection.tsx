@@ -30,6 +30,13 @@ type OrdemProducao = {
   impacto_bloqueio: string | null;
   acao_necessaria: string | null;
 };
+export type ToleranciaPerdaRow = {
+  quantidade_planejada: number;
+  quantidade_perdida: number;
+  percentual_tolerancia: number | null;
+  perda_tolerada: number | null;
+  excedida: boolean | null;
+};
 export type RastreioOrdemProducao = {
   pedido?: { numero: string; pessoa_nome: string; obra_nome: string | null; previsao_entrega: string | null };
   item?: { codigo: string; descricao: string };
@@ -175,6 +182,7 @@ export default function ProducaoSection({
   opOperacoesPorLote,
   statusLabels,
   situacaoLabels,
+  toleranciaPorOrdem,
   canManage,
 }: {
   pedidos: Pedido[];
@@ -194,6 +202,8 @@ export default function ProducaoSection({
   // fixo de STATUS_LABEL/SITUACAO_LABEL como default de quem não configurou.
   statusLabels?: Map<string, string>;
   situacaoLabels?: Map<string, string>;
+  // TÓPICO 4 §30/§51 (Fase 7f) — tolerância de perda configurada × real.
+  toleranciaPorOrdem?: Map<string, ToleranciaPerdaRow>;
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -319,6 +329,21 @@ export default function ProducaoSection({
                                     produzida {num(op.quantidade_produzida)} / {num(op.quantidade_planejada)}
                                   </span>
                                   <span>perdida {num(op.quantidade_perdida)}</span>
+                                  {(() => {
+                                    const tolerancia = toleranciaPorOrdem?.get(op.id);
+                                    if (!tolerancia || tolerancia.excedida === null) return null;
+                                    return (
+                                      <span
+                                        style={{
+                                          fontFamily: "monospace",
+                                          color: tolerancia.excedida ? "#9b2c2c" : "#6b7a75",
+                                        }}
+                                      >
+                                        {tolerancia.excedida ? "⚠ perda acima da tolerância" : "dentro da tolerância"}{" "}
+                                        (tolerado {num(tolerancia.perda_tolerada ?? 0)}, {tolerancia.percentual_tolerancia}%)
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                                 {op.situacao === "bloqueada" && (
                                   <p style={{ ...hintStyle, color: "#9b2c2c", margin: "4px 0 0" }}>

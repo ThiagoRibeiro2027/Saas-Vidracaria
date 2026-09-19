@@ -1,5 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
-import ProducaoSection, { type ListaCorteRow, type RastreioOrdemProducao, type HistoricoEvento } from "./ProducaoSection";
+import ProducaoSection, {
+  type ListaCorteRow,
+  type RastreioOrdemProducao,
+  type HistoricoEvento,
+  type ToleranciaPerdaRow,
+} from "./ProducaoSection";
 import RoteirosSection from "./RoteirosSection";
 import LotesFabrisSection, { type ListaCorteLoteFabrilRow } from "./LotesFabrisSection";
 import RecursosSection, {
@@ -242,6 +247,18 @@ export default async function ProducaoPage() {
     }),
   );
 
+  // TÓPICO 4 §30/§51 (Fase 7f): tolerância de perda configurada
+  // (cutting_margin_settings, T15) × perda real da OP — mesmo padrão
+  // zero-JS-extra de lista de corte/rastreio acima.
+  const toleranciaPorOrdem = new Map<string, ToleranciaPerdaRow>();
+  await Promise.all(
+    (ordens ?? []).map(async (o) => {
+      const { data } = await supabase.rpc("verificar_tolerancia_perda", { p_ordem_producao_id: o.id });
+      const row = data?.[0];
+      if (row) toleranciaPorOrdem.set(o.id, row as ToleranciaPerdaRow);
+    }),
+  );
+
   // Lista de corte combinada por lote fabril (§14) — mesma lógica, uma
   // chamada de leitura por lote fabril existente.
   const listaCortePorLoteFabril = new Map<string, ListaCorteLoteFabrilRow[]>();
@@ -381,6 +398,7 @@ export default async function ProducaoPage() {
           opOperacoesPorLote={opOperacoesPorLote}
           statusLabels={statusLabels}
           situacaoLabels={situacaoLabels}
+          toleranciaPorOrdem={toleranciaPorOrdem}
           canManage={!!canManage}
         />
 

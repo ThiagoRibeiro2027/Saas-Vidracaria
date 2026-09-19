@@ -2167,6 +2167,70 @@ async function main() {
     check("producao.manage (ADMIN) continua configurando sem precisar de producao.configurar", !manageConfiguraError);
   }
 
+  console.log("\n28. Tolerância de perdas com alerta (TÓPICO 4 §30/§51, Fase 7f)");
+  {
+    await admTenant.client.rpc("upsert_cutting_margin", {
+      p_material_tipo: "vidro_temperado", p_processo: "", p_percentual: 10, p_ativo: true,
+    });
+
+    // quantidade_planejada 10 × 10% = perda tolerada 1.
+    const tol = await prepararPedidoLiberado(admTenant, "280", { quantidade: 10 });
+    const { data: opTolId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: tol.pedidoItemId });
+    const opTolOperacaoId = await operacaoUnica(opTolId);
+
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opTolOperacaoId, p_quantidade_produzida: 3, p_quantidade_rejeitada: 1, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    const { data: dentroRows, error: dentroError } = await admTenant.client.rpc("verificar_tolerancia_perda", { p_ordem_producao_id: opTolId });
+    const dentro = dentroRows?.[0];
+    check("verificar_tolerancia_perda() executa sem erro", !dentroError && !!dentro);
+    check("percentual_tolerancia vem de cutting_margin_settings (10)", Number(dentro?.percentual_tolerancia) === 10);
+    check("perda_tolerada = quantidade_planejada × percentual / 100 (10×10%=1)", Number(dentro?.perda_tolerada) === 1);
+    check("perda igual à tolerância não é excedida (1 <= 1)", dentro?.excedida === false);
+
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opTolOperacaoId, p_quantidade_produzida: 5, p_quantidade_rejeitada: 2, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    const { data: excedeRows } = await admTenant.client.rpc("verificar_tolerancia_perda", { p_ordem_producao_id: opTolId });
+    const excede = excedeRows?.[0];
+    check("perda acumulada 3 > tolerância 1 é sinalizada como excedida", Number(excede?.quantidade_perdida) === 3 && excede?.excedida === true);
+
+    // Item sem margem de quebra configurada (classificação distinta) —
+    // nunca vira alerta falso por falta de configuração.
+    const { data: itemSemMargemId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "VD-280-SM", p_descricao: "Item sem margem", p_tipo: "materia_prima",
+      p_classificacao: "sem_margem_configurada_280", p_unidade_principal: "UN", p_situacao: "ativo",
+    });
+    const orcSemMargem = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: tol.pessoaId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcSemMargem.data, p_item_id: itemSemMargemId, p_quantidade: 4, p_preco_unitario: 50,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcSemMargem.data, p_decisao: "aprovado" });
+    const { data: pedidoSemMargemId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcSemMargem.data });
+    await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoSemMargemId });
+    await admTenant.client.rpc("liberar_pedido", { p_id: pedidoSemMargemId });
+    const { data: pedidoItemSemMargem } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoSemMargemId).single();
+    const { data: opSemMargemId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: pedidoItemSemMargem.id });
+    const opSemMargemOperacaoId = await operacaoUnica(opSemMargemId);
+    await admTenant.client.rpc("apontar_producao", {
+      p_op_lote_operacao_id: opSemMargemOperacaoId, p_quantidade_produzida: 2, p_quantidade_rejeitada: 2, p_quantidade_retrabalho: 0, p_observacao: null,
+    });
+    const { data: semMargemRows } = await admTenant.client.rpc("verificar_tolerancia_perda", { p_ordem_producao_id: opSemMargemId });
+    const semMargem = semMargemRows?.[0];
+    check(
+      "sem margem de quebra configurada, percentual/tolerada/excedida ficam null (nunca alerta falso)",
+      semMargem?.percentual_tolerancia === null && semMargem?.perda_tolerada === null && semMargem?.excedida === null,
+    );
+
+    const { error: semPermTolError } = await noPermTenant.client.rpc("verificar_tolerancia_perda", { p_ordem_producao_id: opTolId });
+    check("sem producao.view não verifica tolerância de OP de outra empresa", !!semPermTolError);
+
+    const { error: crossTolError } = await otherTenant.client.rpc("verificar_tolerancia_perda", { p_ordem_producao_id: opTolId });
+    check("tenant B não verifica tolerância de OP do tenant A", !!crossTolError);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
