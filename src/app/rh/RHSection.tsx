@@ -58,9 +58,9 @@ export default function RHSection({
     <section>
       <h2 className="text-sm font-semibold text-text">Funcionários</h2>
       <p className="mt-1 text-xs text-text-muted">
-        Recorte mínimo do MVP: cadastro de funcionários, vínculo com usuário do sistema e
-        desligamento (que revoga o acesso do usuário vinculado). Sem folha de pagamento, escala,
-        ponto, documentos, EPI ou habilitações.
+        Cadastro de funcionários, vínculo com usuário do sistema e desligamento (que revoga o
+        acesso do usuário vinculado). Certificações, EPI, habilitações e afastamentos ficam nas
+        abas ao lado. Sem folha de pagamento, escala ou ponto.
       </p>
 
       {canManage && (
