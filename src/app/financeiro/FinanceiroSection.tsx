@@ -2,7 +2,11 @@
 
 import { useRef, useState } from "react";
 import { cancelarTituloFinanceiroAction, gerarTitulosPedidoAction, registrarRecebimentoTituloAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -11,6 +15,13 @@ const STATUS_LABEL: Record<string, string> = {
   parcial: "Parcial",
   pago: "Pago",
   cancelado: "Cancelado",
+};
+
+const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> = {
+  aberto: "neutral",
+  parcial: "warning",
+  pago: "success",
+  cancelado: "danger",
 };
 
 type Titulo = {
@@ -47,29 +58,33 @@ export default function FinanceiroSection({
 }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Títulos financeiros</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Títulos financeiros</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Recorte mínimo do MVP (ADR-002 §4.14): título a receber vinculado a pedido, gerado
         manualmente com as parcelas planejadas — a soma precisa fechar o valor do pedido. Sem
         plano de contas, contas a pagar, conciliação ou DRE.
       </p>
 
-      {canManage && pedidosSemTitulo.length > 0 && <GerarTitulosForm pedidos={pedidosSemTitulo} />}
+      {canManage && pedidosSemTitulo.length > 0 && (
+        <div className="mt-3">
+          <GerarTitulosForm pedidos={pedidosSemTitulo} />
+        </div>
+      )}
 
-      <div style={{ overflowX: "auto", marginTop: "12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-3 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Número</th>
-              <th style={thStyle}>Pedido</th>
-              <th style={thStyle}>Cliente</th>
-              <th style={thStyle}>Parcela</th>
-              <th style={thStyle}>Valor</th>
-              <th style={thStyle}>Recebido</th>
-              <th style={thStyle}>Saldo</th>
-              <th style={thStyle}>Vencimento</th>
-              <th style={thStyle}>Status</th>
-              {(canManage || canReceber) && <th style={thStyle}></th>}
+            <tr>
+              <Th>Número</Th>
+              <Th>Pedido</Th>
+              <Th>Cliente</Th>
+              <Th>Parcela</Th>
+              <Th>Valor</Th>
+              <Th>Recebido</Th>
+              <Th>Saldo</Th>
+              <Th>Vencimento</Th>
+              <Th>Status</Th>
+              {(canManage || canReceber) && <Th />}
             </tr>
           </thead>
           <tbody>
@@ -82,31 +97,35 @@ export default function FinanceiroSection({
               // título com vencimento hoje como "vencido" prematuramente.
               const vencido = t.status !== "pago" && t.status !== "cancelado" && new Date(`${t.vencimento}T00:00:00`) < new Date(new Date().toDateString());
               return (
-                <tr key={t.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{t.numero}</td>
-                  <td style={tdStyle}>{pedido?.numero ?? t.pedido_id}</td>
-                  <td style={tdStyle}>{pedido ? nomePorPessoa.get(pedido.pessoa_id) ?? "—" : "—"}</td>
-                  <td style={tdStyle}>{t.parcela_numero}/{t.parcela_total}</td>
-                  <td style={tdStyle}>{currency(t.valor)}</td>
-                  <td style={tdStyle}>{currency(t.valor_recebido)}</td>
-                  <td style={tdStyle}>{currency(t.saldo_pendente)}</td>
-                  <td style={tdStyle}>
+                <tr key={t.id}>
+                  <Td>{t.numero}</Td>
+                  <Td>{pedido?.numero ?? t.pedido_id}</Td>
+                  <Td>{pedido ? nomePorPessoa.get(pedido.pessoa_id) ?? "—" : "—"}</Td>
+                  <Td>{t.parcela_numero}/{t.parcela_total}</Td>
+                  <Td>{currency(t.valor)}</Td>
+                  <Td>{currency(t.valor_recebido)}</Td>
+                  <Td>{currency(t.saldo_pendente)}</Td>
+                  <Td>
                     {new Date(`${t.vencimento}T00:00:00`).toLocaleDateString("pt-BR")}
-                    {vencido && <span style={{ color: "#9b2c2c" }}> (vencido)</span>}
-                  </td>
-                  <td style={tdStyle}>{t.status === "cancelado" ? `${STATUS_LABEL[t.status]} — ${t.motivo_cancelamento ?? ""}` : STATUS_LABEL[t.status]}</td>
+                    {vencido && <span className="text-danger"> (vencido)</span>}
+                  </Td>
+                  <Td>
+                    <Badge variant={STATUS_TONE[t.status]}>
+                      {t.status === "cancelado" ? `${STATUS_LABEL[t.status]} — ${t.motivo_cancelamento ?? ""}` : STATUS_LABEL[t.status]}
+                    </Badge>
+                  </Td>
                   {(canManage || canReceber) && (
-                    <td style={tdStyle}>
+                    <Td>
                       {(t.status === "aberto" || t.status === "parcial") && (
                         <AcoesTitulo id={t.id} status={t.status} canManage={canManage} canReceber={canReceber} />
                       )}
-                    </td>
+                    </Td>
                   )}
                 </tr>
               );
             })}
           </tbody>
-        </table>
+        </Table>
       </div>
     </section>
   );
@@ -121,37 +140,45 @@ function GerarTitulosForm({ pedidos }: { pedidos: PedidoResumo[] }) {
   const nextKeyRef = useRef(1);
 
   return (
-    <form action={gerarTitulosPedidoAction} style={{ display: "flex", flexDirection: "column", gap: "8px", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
-      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-        <select name="pedido_id" required style={inputStyle}>
+    <form action={gerarTitulosPedidoAction} className="flex flex-col gap-2 rounded-md bg-page-bg p-3">
+      <div className="flex items-center gap-1.5">
+        <Select name="pedido_id" required>
           <option value="">pedido liberado…</option>
           {pedidos.map((p) => (
             <option key={p.id} value={p.id}>
               {p.numero}
             </option>
           ))}
-        </select>
-        <button type="button" onClick={() => setParcelas((rows) => [...rows, { key: nextKeyRef.current++ }])} style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #1f5d57" }}>
+        </Select>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setParcelas((rows) => [...rows, { key: nextKeyRef.current++ }])}
+        >
           + parcela
-        </button>
+        </Button>
       </div>
 
       {parcelas.map((row, i) => (
-        <div key={row.key} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          <input name="parcela_valor" type="number" min="0" step="0.01" placeholder="valor" required style={{ ...inputStyle, width: "100px" }} />
-          <input name="parcela_vencimento" type="date" required style={inputStyle} />
-          <input name="parcela_condicao" placeholder="condição (opcional)" style={{ ...inputStyle, width: "120px" }} />
+        <div key={row.key} className="flex items-center gap-1.5">
+          <Input name="parcela_valor" type="number" min="0" step="0.01" placeholder="valor" required className="w-24" />
+          <Input name="parcela_vencimento" type="date" required />
+          <Input name="parcela_condicao" placeholder="condição (opcional)" className="w-28" />
           {parcelas.length > 1 && (
-            <button type="button" onClick={() => setParcelas((rows) => rows.filter((_, idx) => idx !== i))} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+            <Button
+              type="button"
+              variant="outlineDanger"
+              onClick={() => setParcelas((rows) => rows.filter((_, idx) => idx !== i))}
+            >
               remover
-            </button>
+            </Button>
           )}
         </div>
       ))}
 
-      <button type="submit" style={{ ...buttonStyle, width: "fit-content" }}>
+      <Button type="submit" variant="primary" className="w-fit">
         Gerar título(s)
-      </button>
+      </Button>
     </form>
   );
 }
@@ -161,46 +188,46 @@ function AcoesTitulo({ id, status, canManage, canReceber }: { id: string; status
 
   if (modo === "receber") {
     return (
-      <form action={registrarRecebimentoTituloAction} style={{ display: "flex", gap: "4px" }} onSubmit={() => setModo("nenhum")}>
+      <form action={registrarRecebimentoTituloAction} className="flex items-center gap-1" onSubmit={() => setModo("nenhum")}>
         <input type="hidden" name="id" value={id} />
-        <input name="valor" type="number" min="0" step="0.01" placeholder="valor" required style={{ ...inputStyle, width: "80px" }} />
-        <input name="data_recebimento" type="date" style={inputStyle} />
-        <button type="submit" style={buttonStyle}>
+        <Input name="valor" type="number" min="0" step="0.01" placeholder="valor" required className="w-20" />
+        <Input name="data_recebimento" type="date" />
+        <Button type="submit" variant="primary">
           Confirmar
-        </button>
-        <button type="button" onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setModo("nenhum")}>
           Voltar
-        </button>
+        </Button>
       </form>
     );
   }
 
   if (modo === "cancelar") {
     return (
-      <form action={cancelarTituloFinanceiroAction} style={{ display: "flex", gap: "4px" }} onSubmit={() => setModo("nenhum")}>
+      <form action={cancelarTituloFinanceiroAction} className="flex items-center gap-1" onSubmit={() => setModo("nenhum")}>
         <input type="hidden" name="id" value={id} />
-        <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "120px" }} />
-        <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>
+        <Input name="motivo" placeholder="motivo (opcional)" className="w-28" />
+        <Button type="submit" variant="danger">
           Confirmar
-        </button>
-        <button type="button" onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setModo("nenhum")}>
           Voltar
-        </button>
+        </Button>
       </form>
     );
   }
 
   return (
-    <div style={{ display: "flex", gap: "4px" }}>
+    <div className="flex items-center gap-1">
       {canReceber && (
-        <button onClick={() => setModo("receber")} style={buttonStyle}>
+        <Button type="button" variant="primary" onClick={() => setModo("receber")}>
           Receber
-        </button>
+        </Button>
       )}
       {canManage && status === "aberto" && (
-        <button onClick={() => setModo("cancelar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+        <Button type="button" variant="outlineDanger" onClick={() => setModo("cancelar")}>
           Cancelar
-        </button>
+        </Button>
       )}
     </div>
   );

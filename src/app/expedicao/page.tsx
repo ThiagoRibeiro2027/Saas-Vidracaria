@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import ExpedicaoSection from "./ExpedicaoSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
 // TÓPICO 9 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // dezembro: "saída, campo e homologação"). Separação, conferência,
@@ -18,13 +19,9 @@ export default async function ExpedicaoPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar o módulo Expedição desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o módulo Expedição desta empresa." />
+      </div>
     );
   }
 
@@ -91,15 +88,15 @@ export default async function ExpedicaoPage() {
   }
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 9 — Expedição</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Separação, conferência e saída</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do M1: separação, conferência, romaneio e saída, com suporte a expedição
-          parcial. Item só pode ser expedido depois de produzido e aprovado pela qualidade.
-        </p>
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 9 — Expedição</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Separação, conferência e saída</h1>
+      <p className="mt-1 text-sm text-text">
+        Recorte mínimo do M1: separação, conferência, romaneio e saída, com suporte a expedição
+        parcial. Item só pode ser expedido depois de produzido e aprovado pela qualidade.
+      </p>
 
+      <div className="mt-6">
         <ExpedicaoSection
           pedidos={pedidos ?? []}
           pedidoItensPorPedido={pedidoItensPorPedido}
@@ -114,35 +111,6 @@ export default async function ExpedicaoPage() {
           canManage={!!canManage}
         />
       </div>
-    </main>
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

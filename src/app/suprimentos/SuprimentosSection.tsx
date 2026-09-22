@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { atenderNecessidadeCompraAction, cancelarNecessidadeCompraAction, criarNecessidadeCompraAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 const ORIGENS = [
   ["manual", "Manual"],
@@ -14,6 +18,12 @@ const STATUS_LABEL: Record<string, string> = {
   aberta: "Aberta",
   atendida: "Atendida",
   cancelada: "Cancelada",
+};
+
+const STATUS_TONE: Record<string, "neutral" | "success" | "danger"> = {
+  aberta: "neutral",
+  atendida: "success",
+  cancelada: "danger",
 };
 
 type Item = { id: string; codigo: string; descricao: string; unidade_principal: string };
@@ -42,49 +52,53 @@ export default function SuprimentosSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Necessidades de compra</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Necessidades de compra</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Recorte mínimo do MVP (ADR-002 §4.18): registrar a necessidade, o material e a quantidade,
         e acompanhar até ser atendida ou cancelada. Sem fornecedor, cotação, pedido de compra ou
         recebimento — a efetivação da compra acontece fora do sistema neste recorte.
       </p>
 
-      {canManage && <NovaNecessidadeForm itens={itens} />}
+      {canManage && (
+        <div className="mt-3">
+          <NovaNecessidadeForm itens={itens} />
+        </div>
+      )}
 
-      <div style={{ overflowX: "auto", marginTop: "12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-3 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Item</th>
-              <th style={thStyle}>Quantidade</th>
-              <th style={thStyle}>Necessária em</th>
-              <th style={thStyle}>Origem</th>
-              <th style={thStyle}>Status</th>
-              <th style={thStyle}>Observações</th>
-              {canManage && <th style={thStyle}></th>}
+            <tr>
+              <Th>Item</Th>
+              <Th>Quantidade</Th>
+              <Th>Necessária em</Th>
+              <Th>Origem</Th>
+              <Th>Status</Th>
+              <Th>Observações</Th>
+              {canManage && <Th />}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => {
               const item = itemPorId.get(row.item_id);
               return (
-                <tr key={row.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{item ? `${item.codigo} — ${item.descricao}` : row.item_id}</td>
-                  <td style={tdStyle}>
+                <tr key={row.id}>
+                  <Td>{item ? `${item.codigo} — ${item.descricao}` : row.item_id}</Td>
+                  <Td>
                     {row.quantidade} {item?.unidade_principal ?? ""}
-                  </td>
-                  <td style={tdStyle}>{row.data_necessaria ? new Date(`${row.data_necessaria}T00:00:00`).toLocaleDateString("pt-BR") : "—"}</td>
-                  <td style={tdStyle}>{ORIGENS.find(([v]) => v === row.origem)?.[1] ?? row.origem}</td>
-                  <td style={tdStyle}>{STATUS_LABEL[row.status]}</td>
-                  <td style={tdStyle}>{row.status === "cancelada" ? row.motivo_cancelamento : row.observacoes}</td>
-                  {canManage && (
-                    <td style={tdStyle}>{row.status === "aberta" && <AcoesNecessidade id={row.id} />}</td>
-                  )}
+                  </Td>
+                  <Td>{row.data_necessaria ? new Date(`${row.data_necessaria}T00:00:00`).toLocaleDateString("pt-BR") : "—"}</Td>
+                  <Td>{ORIGENS.find(([v]) => v === row.origem)?.[1] ?? row.origem}</Td>
+                  <Td>
+                    <Badge variant={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
+                  </Td>
+                  <Td>{row.status === "cancelada" ? row.motivo_cancelamento : row.observacoes}</Td>
+                  {canManage && <Td>{row.status === "aberta" && <AcoesNecessidade id={row.id} />}</Td>}
                 </tr>
               );
             })}
           </tbody>
-        </table>
+        </Table>
       </div>
     </section>
   );
@@ -92,28 +106,28 @@ export default function SuprimentosSection({
 
 function NovaNecessidadeForm({ itens }: { itens: Item[] }) {
   return (
-    <form action={criarNecessidadeCompraAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
-      <select name="item_id" required style={inputStyle}>
+    <form action={criarNecessidadeCompraAction} className="flex flex-wrap items-center gap-1.5">
+      <Select name="item_id" required>
         <option value="">item…</option>
         {itens.map((i) => (
           <option key={i.id} value={i.id}>
             {i.codigo} — {i.descricao}
           </option>
         ))}
-      </select>
-      <input name="quantidade" type="number" min="0" step="0.001" placeholder="quantidade" required style={{ ...inputStyle, width: "100px" }} />
-      <input name="data_necessaria" type="date" style={inputStyle} />
-      <select name="origem" defaultValue="manual" style={inputStyle}>
+      </Select>
+      <Input name="quantidade" type="number" min="0" step="0.001" placeholder="quantidade" required className="w-24" />
+      <Input name="data_necessaria" type="date" />
+      <Select name="origem" defaultValue="manual">
         {ORIGENS.map(([value, label]) => (
           <option key={value} value={value}>
             {label}
           </option>
         ))}
-      </select>
-      <input name="observacoes" placeholder="observações (opcional)" style={{ ...inputStyle, width: "180px" }} />
-      <button type="submit" style={buttonStyle}>
+      </Select>
+      <Input name="observacoes" placeholder="observações (opcional)" className="w-44" />
+      <Button type="submit" variant="primary">
         Registrar necessidade
-      </button>
+      </Button>
     </form>
   );
 }
@@ -123,34 +137,30 @@ function AcoesNecessidade({ id }: { id: string }) {
 
   if (cancelando) {
     return (
-      <form
-        action={cancelarNecessidadeCompraAction}
-        style={{ display: "flex", gap: "4px" }}
-        onSubmit={() => setCancelando(false)}
-      >
+      <form action={cancelarNecessidadeCompraAction} className="flex items-center gap-1" onSubmit={() => setCancelando(false)}>
         <input type="hidden" name="id" value={id} />
-        <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "120px" }} />
-        <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>
+        <Input name="motivo" placeholder="motivo (opcional)" className="w-28" />
+        <Button type="submit" variant="danger">
           Confirmar
-        </button>
-        <button type="button" onClick={() => setCancelando(false)} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setCancelando(false)}>
           Voltar
-        </button>
+        </Button>
       </form>
     );
   }
 
   return (
-    <div style={{ display: "flex", gap: "4px" }}>
+    <div className="flex items-center gap-1">
       <form action={atenderNecessidadeCompraAction}>
         <input type="hidden" name="id" value={id} />
-        <button type="submit" style={buttonStyle}>
+        <Button type="submit" variant="primary">
           Atender
-        </button>
+        </Button>
       </form>
-      <button onClick={() => setCancelando(true)} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+      <Button type="button" variant="outlineDanger" onClick={() => setCancelando(true)}>
         Cancelar
-      </button>
+      </Button>
     </div>
   );
 }

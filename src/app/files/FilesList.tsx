@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { deleteFileAction, getSignedUrlAction } from "./actions";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type FileRow = {
   id: string;
@@ -49,59 +50,52 @@ export default function FilesList({ files }: { files: FileRow[] }) {
   }
 
   if (files.length === 0) {
-    return <p style={{ fontSize: "13px", color: "#6b7a75" }}>Nenhum arquivo enviado ainda.</p>;
+    return <p className="text-sm text-text-muted">Nenhum arquivo enviado ainda.</p>;
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      {error && <p style={{ color: "#9b2c2c", fontSize: "13px", margin: 0 }}>{error}</p>}
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+    <div className="flex flex-col gap-2">
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <Table>
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-            <th style={{ padding: "6px 4px" }}>Nome</th>
-            <th style={{ padding: "6px 4px" }}>Tipo</th>
-            <th style={{ padding: "6px 4px" }}>Tamanho</th>
-            <th style={{ padding: "6px 4px" }}></th>
+          <tr>
+            <Th>Nome</Th>
+            <Th>Tipo</Th>
+            <Th>Tamanho</Th>
+            <Th />
           </tr>
         </thead>
         <tbody>
           {files.map((file) => (
-            <tr key={file.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-              <td style={{ padding: "6px 4px" }}>{file.original_name}</td>
-              <td style={{ padding: "6px 4px", fontFamily: "monospace", fontSize: "11px" }}>
+            <tr key={file.id}>
+              <Td>{file.original_name}</Td>
+              <Td className="font-mono text-xs">
                 {file.mime_type}
                 {file.width && file.height ? ` · ${file.width}×${file.height}` : ""}
-              </td>
-              <td style={{ padding: "6px 4px" }}>{formatSize(file.size_bytes)}</td>
-              <td style={{ padding: "6px 4px", display: "flex", gap: "8px" }}>
-                <button
-                  onClick={() => handleDownload(file.id)}
-                  disabled={busyId === file.id}
-                  style={linkButtonStyle}
-                >
-                  Baixar
-                </button>
-                <button
-                  onClick={() => handleDelete(file.id)}
-                  disabled={busyId === file.id}
-                  style={{ ...linkButtonStyle, color: "#9b2c2c" }}
-                >
-                  Remover
-                </button>
-              </td>
+              </Td>
+              <Td>{formatSize(file.size_bytes)}</Td>
+              <Td>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleDownload(file.id)}
+                    disabled={busyId === file.id}
+                    className="cursor-pointer text-sm text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Baixar
+                  </button>
+                  <button
+                    onClick={() => handleDelete(file.id)}
+                    disabled={busyId === file.id}
+                    className="cursor-pointer text-sm text-danger hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Remover
+                  </button>
+                </div>
+              </Td>
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   );
 }
-
-const linkButtonStyle = {
-  background: "none",
-  border: "none",
-  color: "#1f5d57",
-  cursor: "pointer",
-  fontSize: "13px",
-  padding: 0,
-} as const;

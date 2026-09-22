@@ -1,7 +1,9 @@
 "use client";
 
 import { upsertCuttingMarginAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "./styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Row = {
   id: string;
@@ -14,20 +16,20 @@ type Row = {
 export default function CuttingMarginsSection({ rows, canManage }: { rows: Row[]; canManage: boolean }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Margem de quebra</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Margem de quebra</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Quantidade técnica planejada por material (linha com processo em branco = valor padrão),
         sobreposta pela combinação específica material + processo quando houver.
       </p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-2 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Material</th>
-              <th style={thStyle}>Processo</th>
-              <th style={thStyle}>Percentual (%)</th>
-              <th style={thStyle}>Ativo</th>
-              {canManage && <th style={thStyle}></th>}
+            <tr>
+              <Th>Material</Th>
+              <Th>Processo</Th>
+              <Th>Percentual (%)</Th>
+              <Th>Ativo</Th>
+              {canManage && <Th />}
             </tr>
           </thead>
           <tbody>
@@ -36,7 +38,7 @@ export default function CuttingMarginsSection({ rows, canManage }: { rows: Row[]
             ))}
             {canManage && <RowForm row={null} canManage={canManage} />}
           </tbody>
-        </table>
+        </Table>
       </div>
     </section>
   );
@@ -44,30 +46,27 @@ export default function CuttingMarginsSection({ rows, canManage }: { rows: Row[]
 
 function RowForm({ row, canManage }: { row: Row | null; canManage: boolean }) {
   return (
-    <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-      <td style={tdStyle} colSpan={canManage ? 5 : 4}>
-        <form
-          action={upsertCuttingMarginAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-        >
-          <input
+    <tr>
+      <Td colSpan={canManage ? 5 : 4}>
+        <form action={upsertCuttingMarginAction} className="flex flex-wrap items-center gap-1.5">
+          <Input
             name="material_tipo"
             placeholder="tipo de material"
             defaultValue={row?.material_tipo ?? ""}
             readOnly={!!row}
             required
             disabled={!canManage}
-            style={{ ...inputStyle, width: "140px" }}
+            className="w-36"
           />
-          <input
+          <Input
             name="processo"
             placeholder="processo (opcional = padrão)"
             defaultValue={row?.processo ?? ""}
             readOnly={!!row}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "160px" }}
+            className="w-40"
           />
-          <input
+          <Input
             name="percentual"
             type="number"
             step="0.001"
@@ -76,20 +75,19 @@ function RowForm({ row, canManage }: { row: Row | null; canManage: boolean }) {
             defaultValue={row?.percentual ?? ""}
             required
             disabled={!canManage}
-            style={{ ...inputStyle, width: "80px" }}
+            className="w-20"
           />
-          <label style={labelStyle}>
-            <input type="checkbox" name="ativo" defaultChecked={row?.ativo ?? true} disabled={!canManage} />
+          <label className="flex items-center gap-1 text-xs text-text">
+            <input type="checkbox" name="ativo" defaultChecked={row?.ativo ?? true} disabled={!canManage} className="accent-primary" />
             Ativo
           </label>
           {canManage && (
-            <button type="submit" style={buttonStyle}>
+            <Button type="submit" variant="primary">
               {row ? "Salvar" : "Adicionar"}
-            </button>
+            </Button>
           )}
         </form>
-      </td>
+      </Td>
     </tr>
   );
 }
-

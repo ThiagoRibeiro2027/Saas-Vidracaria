@@ -6,7 +6,12 @@ import {
   removerItemLoteFabrilAction,
   encerrarLoteFabrilAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type LoteFabril = {
   id: string;
@@ -32,7 +37,7 @@ export type ListaCorteLoteFabrilRow = {
 const num = (v: number) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 
 const SITUACAO_LABEL: Record<LoteFabril["situacao"], string> = { aberto: "Aberto", encerrado: "Encerrado" };
-const SITUACAO_COLOR: Record<LoteFabril["situacao"], string> = { aberto: "#1f5d57", encerrado: "#6b7a75" };
+const SITUACAO_TONE: Record<LoteFabril["situacao"], "success" | "neutral"> = { aberto: "success", encerrado: "neutral" };
 
 export default function LotesFabrisSection({
   lotesFabris,
@@ -51,154 +56,153 @@ export default function LotesFabrisSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Lotes fabris (TÓPICO 4 §14)</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Lotes fabris (TÓPICO 4 §14)</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Agrupamento operacional e temporário de lotes de liberação (§12) de diferentes OPs, pra
         otimização (ex.: corte combinado). Não altera pedido, item, OP nem o lote de liberação
         original — um mesmo lote de liberação pode entrar em vários lotes fabris.
       </p>
 
       {canManage && (
-        <form
-          action={criarLoteFabrilAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "16px" }}
-        >
-          <input name="nome" placeholder="Nome do lote fabril" required style={{ ...inputStyle, width: "160px" }} />
-          <input name="criterio_agrupamento" placeholder="Critério (opcional)" style={{ ...inputStyle, width: "160px" }} />
-          <input name="observacoes" placeholder="Observações (opcional)" style={{ ...inputStyle, width: "160px" }} />
-          <button type="submit" style={buttonStyle}>
+        <form action={criarLoteFabrilAction} className="mt-3 flex flex-wrap items-center gap-1.5">
+          <Input name="nome" placeholder="Nome do lote fabril" required className="w-40" />
+          <Input name="criterio_agrupamento" placeholder="Critério (opcional)" className="w-40" />
+          <Input name="observacoes" placeholder="Observações (opcional)" className="w-40" />
+          <Button type="submit" variant="primary">
             Criar lote fabril
-          </button>
+          </Button>
         </form>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div className="mt-4 flex flex-col gap-4">
         {lotesFabris.map((lf) => {
           const itens = itensPorLoteFabril.get(lf.id) ?? [];
           const listaCorte = listaCortePorLoteFabril.get(lf.id) ?? [];
           return (
-            <div key={lf.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "baseline", fontSize: "12px" }}>
-                <strong style={{ fontSize: "13px" }}>{lf.nome}</strong>
-                <span style={{ fontFamily: "monospace", color: SITUACAO_COLOR[lf.situacao] }}>
-                  {SITUACAO_LABEL[lf.situacao]}
-                </span>
-                {lf.criterio_agrupamento && <span style={{ color: "#6b7a75" }}>critério: {lf.criterio_agrupamento}</span>}
+            <Card key={lf.id} padding="xs">
+              <div className="flex flex-wrap items-baseline gap-2 text-xs">
+                <strong className="text-sm text-text">{lf.nome}</strong>
+                <Badge variant={SITUACAO_TONE[lf.situacao]}>{SITUACAO_LABEL[lf.situacao]}</Badge>
+                {lf.criterio_agrupamento && (
+                  <span className="text-text-muted">critério: {lf.criterio_agrupamento}</span>
+                )}
                 {canManage && lf.situacao === "aberto" && (
                   <form action={encerrarLoteFabrilAction}>
                     <input type="hidden" name="lote_fabril_id" value={lf.id} />
-                    <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#6b7a75" }}>
+                    <Button type="submit" variant="danger" size="sm">
                       Encerrar
-                    </button>
+                    </Button>
                   </form>
                 )}
               </div>
-              {lf.observacoes && <p style={{ ...hintStyle, margin: "4px 0 0" }}>{lf.observacoes}</p>}
+              {lf.observacoes && <p className="mt-1 text-xs text-text-muted">{lf.observacoes}</p>}
 
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "8px" }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                    <th style={thStyle}>Lote de liberação</th>
-                    <th style={thStyle}>Quantidade agrupada</th>
-                    {canManage && lf.situacao === "aberto" && <th style={thStyle}></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {itens.map((it) => (
-                    <tr key={it.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                      <td style={tdStyle}>{opLoteLabel(it.op_lote_id)}</td>
-                      <td style={tdStyle}>{num(it.quantidade)}</td>
-                      {canManage && lf.situacao === "aberto" && (
-                        <td style={tdStyle}>
-                          <form action={removerItemLoteFabrilAction}>
-                            <input type="hidden" name="lote_fabril_item_id" value={it.id} />
-                            <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#9b2c2c" }}>
-                              Remover
-                            </button>
-                          </form>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                  {itens.length === 0 && (
+              <div className="mt-2 overflow-x-auto">
+                <Table>
+                  <thead>
                     <tr>
-                      <td style={tdStyle} colSpan={canManage ? 3 : 2}>
-                        <span style={{ color: "#6b7a75" }}>Nenhum lote de liberação agrupado ainda.</span>
-                      </td>
+                      <Th>Lote de liberação</Th>
+                      <Th>Quantidade agrupada</Th>
+                      {canManage && lf.situacao === "aberto" && <Th />}
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {itens.map((it) => (
+                      <tr key={it.id}>
+                        <Td>{opLoteLabel(it.op_lote_id)}</Td>
+                        <Td>{num(it.quantidade)}</Td>
+                        {canManage && lf.situacao === "aberto" && (
+                          <Td>
+                            <form action={removerItemLoteFabrilAction}>
+                              <input type="hidden" name="lote_fabril_item_id" value={it.id} />
+                              <Button type="submit" variant="danger" size="sm">
+                                Remover
+                              </Button>
+                            </form>
+                          </Td>
+                        )}
+                      </tr>
+                    ))}
+                    {itens.length === 0 && (
+                      <tr>
+                        <Td colSpan={canManage ? 3 : 2}>
+                          <span className="text-text-muted">Nenhum lote de liberação agrupado ainda.</span>
+                        </Td>
+                      </tr>
+                    )}
+                  </tbody>
+                </Table>
+              </div>
 
               {canManage && lf.situacao === "aberto" && (
                 <form
                   action={adicionarItemLoteFabrilAction}
-                  style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px", alignItems: "center" }}
+                  className="mt-2 flex flex-wrap items-center gap-1.5"
                 >
                   <input type="hidden" name="lote_fabril_id" value={lf.id} />
-                  <select name="op_lote_id" required style={{ ...inputStyle, width: "260px" }}>
+                  <Select name="op_lote_id" required className="w-64">
                     <option value="">Selecione o lote de liberação...</option>
                     {opLotesOpcoes.map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.label}
                       </option>
                     ))}
-                  </select>
-                  <input name="quantidade" type="number" step="0.001" min="0" placeholder="quantidade" style={{ ...inputStyle, width: "90px" }} />
-                  <button type="submit" style={buttonStyle}>
+                  </Select>
+                  <Input name="quantidade" type="number" step="0.001" min="0" placeholder="quantidade" className="w-24" />
+                  <Button type="submit" variant="primary">
                     Adicionar
-                  </button>
+                  </Button>
                 </form>
               )}
 
               {itens.length > 0 && (
-                <details style={{ marginTop: "8px" }}>
-                  <summary style={{ fontSize: "12px", color: "#1f5d57", cursor: "pointer" }}>Lista de corte combinada</summary>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "6px" }}>
-                    <thead>
-                      <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                        <th style={thStyle}>OP / Lote</th>
-                        <th style={thStyle}>Item</th>
-                        <th style={thStyle}>Ambiente</th>
-                        <th style={thStyle}>Largura (mm)</th>
-                        <th style={thStyle}>Altura (mm)</th>
-                        <th style={thStyle}>Qtd.</th>
-                        <th style={thStyle}>Margem de quebra</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {listaCorte.map((row, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                          <td style={tdStyle}>
-                            {row.ordem_producao_numero} / Lote {row.op_lote_numero}
-                          </td>
-                          <td style={tdStyle}>
-                            {row.item_codigo} — {row.item_descricao}
-                          </td>
-                          <td style={tdStyle}>{row.ambiente ?? "—"}</td>
-                          <td style={tdStyle}>{row.largura_mm != null ? num(row.largura_mm) : "—"}</td>
-                          <td style={tdStyle}>{row.altura_mm != null ? num(row.altura_mm) : "—"}</td>
-                          <td style={tdStyle}>{num(row.quantidade)}</td>
-                          <td style={tdStyle}>
-                            {row.margem_quebra_percentual != null ? `${num(row.margem_quebra_percentual)}%` : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                      {listaCorte.length === 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-primary">Lista de corte combinada</summary>
+                  <div className="mt-1.5 overflow-x-auto">
+                    <Table>
+                      <thead>
                         <tr>
-                          <td style={tdStyle} colSpan={7}>
-                            <span style={{ color: "#6b7a75" }}>Sem dados de medida pros itens agrupados.</span>
-                          </td>
+                          <Th>OP / Lote</Th>
+                          <Th>Item</Th>
+                          <Th>Ambiente</Th>
+                          <Th>Largura (mm)</Th>
+                          <Th>Altura (mm)</Th>
+                          <Th>Qtd.</Th>
+                          <Th>Margem de quebra</Th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {listaCorte.map((row, idx) => (
+                          <tr key={idx}>
+                            <Td>
+                              {row.ordem_producao_numero} / Lote {row.op_lote_numero}
+                            </Td>
+                            <Td>
+                              {row.item_codigo} — {row.item_descricao}
+                            </Td>
+                            <Td>{row.ambiente ?? "—"}</Td>
+                            <Td>{row.largura_mm != null ? num(row.largura_mm) : "—"}</Td>
+                            <Td>{row.altura_mm != null ? num(row.altura_mm) : "—"}</Td>
+                            <Td>{num(row.quantidade)}</Td>
+                            <Td>{row.margem_quebra_percentual != null ? `${num(row.margem_quebra_percentual)}%` : "—"}</Td>
+                          </tr>
+                        ))}
+                        {listaCorte.length === 0 && (
+                          <tr>
+                            <Td colSpan={7}>
+                              <span className="text-text-muted">Sem dados de medida pros itens agrupados.</span>
+                            </Td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </Table>
+                  </div>
                 </details>
               )}
-            </div>
+            </Card>
           );
         })}
-        {lotesFabris.length === 0 && <p style={hintStyle}>Nenhum lote fabril criado ainda.</p>}
+        {lotesFabris.length === 0 && <p className="text-xs text-text-muted">Nenhum lote fabril criado ainda.</p>}
       </div>
     </section>
   );

@@ -5,7 +5,11 @@ import {
   executarRetrabalhoAction,
   reinspecionarRetrabalhoAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -50,10 +54,10 @@ const STATUS_QUALIDADE_LABEL: Record<OrdemProducao["status_qualidade"], string> 
   bloqueado: "Bloqueado (não conformidade)",
 };
 
-const STATUS_QUALIDADE_COLOR: Record<OrdemProducao["status_qualidade"], string> = {
-  pendente: "#b7791f",
-  aprovado: "#1f5d57",
-  bloqueado: "#9b2c2c",
+const STATUS_QUALIDADE_TONE: Record<OrdemProducao["status_qualidade"], "neutral" | "success" | "warning" | "danger"> = {
+  pendente: "warning",
+  aprovado: "success",
+  bloqueado: "danger",
 };
 
 export default function QualidadeSection({
@@ -92,8 +96,8 @@ export default function QualidadeSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Ordens de produção concluídas</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <h2 className="text-sm font-semibold text-text">Ordens de produção concluídas</h2>
+      <div className="mt-2 flex flex-col gap-4">
         {ordens.map((op) => {
           const pedido = pedidoDe(op.pedido_id);
           const inspecoes = inspecoesPorOrdem.get(op.id) ?? [];
@@ -102,162 +106,137 @@ export default function QualidadeSection({
           const ncAberta = ncs.find((nc) => nc.status === "aberta");
 
           return (
-            <div key={op.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-              <div
-                style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "baseline", fontSize: "12px" }}
-              >
-                <strong style={{ fontSize: "13px" }}>{op.numero}</strong>
+            <Card key={op.id} padding="xs">
+              <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
+                <strong className="text-[13px] text-text">{op.numero}</strong>
                 <span>{pedido ? pedido.numero : "(pedido removido)"}</span>
                 <span>{pedido ? pessoaNome(pedido.pessoa_id) : "—"}</span>
-                <span style={{ color: "#6b7a75" }}>{pedido ? obraNome(pedido.obra_id) : "—"}</span>
+                <span className="text-text-muted">{pedido ? obraNome(pedido.obra_id) : "—"}</span>
                 <span>{itemLabelDoPedidoItem(op.pedido_item_id)}</span>
-                <span style={{ color: "#6b7a75" }}>Produzida: {num(op.quantidade_produzida)}</span>
-                <span style={{ fontFamily: "monospace", color: STATUS_QUALIDADE_COLOR[op.status_qualidade] }}>
+                <span className="text-text-muted">Produzida: {num(op.quantidade_produzida)}</span>
+                <Badge variant={STATUS_QUALIDADE_TONE[op.status_qualidade]}>
                   {statusQualidadeLabels?.get(op.status_qualidade) ?? STATUS_QUALIDADE_LABEL[op.status_qualidade]}
-                </span>
+                </Badge>
               </div>
 
               {canManage && !primeiraInspecao && (
-                <form
-                  action={registrarInspecaoAction}
-                  style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center", marginTop: "8px" }}
-                >
+                <form action={registrarInspecaoAction} className="mt-2 flex flex-wrap items-center gap-1.5">
                   <input type="hidden" name="ordem_producao_id" value={op.id} />
-                  <input
+                  <Input
                     name="quantidade_aprovada"
                     type="number"
                     step="0.001"
                     min="0"
                     placeholder="aprovada"
                     required
-                    style={{ ...inputStyle, width: "80px" }}
+                    className="w-20"
                   />
-                  <input
+                  <Input
                     name="quantidade_reprovada"
                     type="number"
                     step="0.001"
                     min="0"
                     placeholder="reprovada"
                     required
-                    style={{ ...inputStyle, width: "80px" }}
+                    className="w-20"
                   />
-                  <input
-                    name="observacoes"
-                    placeholder="observações (opcional)"
-                    style={{ ...inputStyle, width: "180px" }}
-                  />
-                  <button type="submit" style={buttonStyle}>
+                  <Input name="observacoes" placeholder="observações (opcional)" className="w-44" />
+                  <Button type="submit" variant="primary">
                     Registrar inspeção
-                  </button>
-                  <span style={{ fontSize: "11px", color: "#6b7a75" }}>
+                  </Button>
+                  <span className="text-[11px] text-text-muted">
                     Soma precisa ser igual à quantidade produzida ({num(op.quantidade_produzida)}).
                   </span>
                 </form>
               )}
 
               {canManage && ncAberta && !ncAberta.retrabalho_executado_em && (
-                <form
-                  action={executarRetrabalhoAction}
-                  style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center", marginTop: "8px" }}
-                >
+                <form action={executarRetrabalhoAction} className="mt-2 flex flex-wrap items-center gap-1.5">
                   <input type="hidden" name="nao_conformidade_id" value={ncAberta.id} />
-                  <span style={{ fontSize: "12px", color: "#9b2c2c" }}>
+                  <span className="text-xs text-danger">
                     Não conformidade aberta ({num(ncAberta.quantidade)} un.) — retrabalho pendente.
                   </span>
-                  <input
-                    name="observacao"
-                    placeholder="observação (opcional)"
-                    style={{ ...inputStyle, width: "180px" }}
-                  />
-                  <button type="submit" style={buttonStyle}>
+                  <Input name="observacao" placeholder="observação (opcional)" className="w-44" />
+                  <Button type="submit" variant="primary">
                     Executar retrabalho
-                  </button>
+                  </Button>
                 </form>
               )}
 
               {canManage && ncAberta && ncAberta.retrabalho_executado_em && (
-                <form
-                  action={reinspecionarRetrabalhoAction}
-                  style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center", marginTop: "8px" }}
-                >
+                <form action={reinspecionarRetrabalhoAction} className="mt-2 flex flex-wrap items-center gap-1.5">
                   <input type="hidden" name="nao_conformidade_id" value={ncAberta.id} />
-                  <input
+                  <Input
                     name="quantidade_aprovada"
                     type="number"
                     step="0.001"
                     min="0"
                     placeholder="aprovada"
                     required
-                    style={{ ...inputStyle, width: "80px" }}
+                    className="w-20"
                   />
-                  <input
+                  <Input
                     name="quantidade_reprovada"
                     type="number"
                     step="0.001"
                     min="0"
                     placeholder="reprovada"
                     required
-                    style={{ ...inputStyle, width: "80px" }}
+                    className="w-20"
                   />
-                  <input
-                    name="observacoes"
-                    placeholder="observações (opcional)"
-                    style={{ ...inputStyle, width: "180px" }}
-                  />
-                  <button type="submit" style={buttonStyle}>
+                  <Input name="observacoes" placeholder="observações (opcional)" className="w-44" />
+                  <Button type="submit" variant="primary">
                     Reinspecionar
-                  </button>
-                  <span style={{ fontSize: "11px", color: "#6b7a75" }}>
+                  </Button>
+                  <span className="text-[11px] text-text-muted">
                     Soma precisa ser igual à quantidade em retrabalho ({num(ncAberta.quantidade)}).
                   </span>
                 </form>
               )}
 
               {(inspecoes.length > 0 || ncs.length > 0) && (
-                <details style={{ marginTop: "8px" }}>
-                  <summary style={{ fontSize: "12px", color: "#1f5d57", cursor: "pointer" }}>Histórico</summary>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "6px" }}>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-primary">Histórico</summary>
+                  <Table className="mt-1.5">
                     <thead>
-                      <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                        <th style={thStyle}>Quando</th>
-                        <th style={thStyle}>Evento</th>
-                        <th style={thStyle}>Aprovada</th>
-                        <th style={thStyle}>Reprovada</th>
-                        <th style={thStyle}>Observações</th>
+                      <tr>
+                        <Th>Quando</Th>
+                        <Th>Evento</Th>
+                        <Th>Aprovada</Th>
+                        <Th>Reprovada</Th>
+                        <Th>Observações</Th>
                       </tr>
                     </thead>
                     <tbody>
                       {inspecoes.map((insp) => (
-                        <tr key={insp.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                          <td style={tdStyle}>{new Date(insp.inspecionado_em).toLocaleString("pt-BR")}</td>
-                          <td style={tdStyle}>{insp.nao_conformidade_id ? "Reinspeção" : "Inspeção inicial"}</td>
-                          <td style={tdStyle}>{num(insp.quantidade_aprovada)}</td>
-                          <td style={tdStyle}>{num(insp.quantidade_reprovada)}</td>
-                          <td style={tdStyle}>{insp.observacoes ?? "—"}</td>
+                        <tr key={insp.id}>
+                          <Td>{new Date(insp.inspecionado_em).toLocaleString("pt-BR")}</Td>
+                          <Td>{insp.nao_conformidade_id ? "Reinspeção" : "Inspeção inicial"}</Td>
+                          <Td>{num(insp.quantidade_aprovada)}</Td>
+                          <Td>{num(insp.quantidade_reprovada)}</Td>
+                          <Td>{insp.observacoes ?? "—"}</Td>
                         </tr>
                       ))}
                       {ncs.map((nc) => (
-                        <tr key={nc.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                          <td style={tdStyle}>{new Date(nc.aberta_em).toLocaleString("pt-BR")}</td>
-                          <td style={tdStyle}>
+                        <tr key={nc.id}>
+                          <Td>{new Date(nc.aberta_em).toLocaleString("pt-BR")}</Td>
+                          <Td>
                             NC {nc.status === "aberta" ? "aberta" : "encerrada"}
                             {nc.retrabalho_executado_em ? " · retrabalho executado" : ""}
-                          </td>
-                          <td style={tdStyle} colSpan={2}>
-                            {num(nc.quantidade)} un.
-                          </td>
-                          <td style={tdStyle}>{nc.descricao ?? "—"}</td>
+                          </Td>
+                          <Td colSpan={2}>{num(nc.quantidade)} un.</Td>
+                          <Td>{nc.descricao ?? "—"}</Td>
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </Table>
                 </details>
               )}
-            </div>
+            </Card>
           );
         })}
         {ordens.length === 0 && (
-          <p style={hintStyle}>
+          <p className="text-xs text-text-muted">
             Nenhuma ordem de produção concluída ainda — a inspeção só entra depois da conclusão
             (TÓPICO 4).
           </p>

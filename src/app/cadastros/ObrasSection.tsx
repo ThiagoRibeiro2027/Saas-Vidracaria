@@ -1,7 +1,10 @@
 "use client";
 
 import { upsertObraAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Obra = {
   id: string;
@@ -31,20 +34,20 @@ export default function ObrasSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Obras</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Obras</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Registro mínimo — só o suficiente para Pedidos referenciar uma obra. Agenda, equipe e
         liberação de instalação entram com o módulo de Instalação (TÓPICO 16), mais adiante.
       </p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-3 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Cliente</th>
-              <th style={thStyle}>Obra</th>
-              <th style={thStyle}>Endereço</th>
-              <th style={thStyle}>Situação</th>
-              {canManage && <th style={thStyle}></th>}
+            <tr>
+              <Th>Cliente</Th>
+              <Th>Obra</Th>
+              <Th>Endereço</Th>
+              <Th>Situação</Th>
+              {canManage && <Th />}
             </tr>
           </thead>
           <tbody>
@@ -61,10 +64,10 @@ export default function ObrasSection({
               <RowForm row={null} todasPessoas={todasPessoas} clientesElegiveis={clientesElegiveis} canManage={canManage} />
             )}
           </tbody>
-        </table>
+        </Table>
       </div>
       {canManage && clientesElegiveis.length === 0 && (
-        <p style={hintStyle}>
+        <p className="mt-2 text-xs text-text-muted">
           Nenhuma pessoa com papel Cliente ativo ainda — cadastre um cliente acima antes de criar
           uma obra.
         </p>
@@ -96,14 +99,11 @@ function RowForm({
       : clientesElegiveis;
 
   return (
-    <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-      <td style={tdStyle} colSpan={canManage ? 5 : 4}>
-        <form
-          action={upsertObraAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-        >
+    <tr>
+      <Td colSpan={canManage ? 5 : 4}>
+        <form action={upsertObraAction} className="flex flex-wrap items-center gap-1.5">
           {row && <input type="hidden" name="id" value={row.id} />}
-          <select name="pessoa_id" defaultValue={row?.pessoa_id ?? ""} required disabled={!canManage} style={inputStyle}>
+          <Select name="pessoa_id" defaultValue={row?.pessoa_id ?? ""} required disabled={!canManage}>
             <option value="" disabled>
               Cliente
             </option>
@@ -113,54 +113,54 @@ function RowForm({
                 {donoAtual?.id === p.id && !clientesElegiveis.some((c) => c.id === p.id) ? " (papel desligado)" : ""}
               </option>
             ))}
-          </select>
-          <input
+          </Select>
+          <Input
             name="nome"
             placeholder="nome da obra"
             defaultValue={row?.nome ?? ""}
             required
             disabled={!canManage}
-            style={{ ...inputStyle, width: "180px" }}
+            className="w-44"
           />
-          <input
+          <Input
             name="logradouro"
             placeholder="endereço"
             defaultValue={row?.logradouro ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "160px" }}
+            className="w-40"
           />
-          <input
+          <Input
             name="cidade"
             placeholder="cidade"
             defaultValue={row?.cidade ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "110px" }}
+            className="w-28"
           />
-          <input
+          <Input
             name="uf"
             placeholder="UF"
             defaultValue={row?.uf ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "44px" }}
+            className="w-12"
           />
-          <input
+          <Input
             name="cep"
             placeholder="CEP"
             defaultValue={row?.cep ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "90px" }}
+            className="w-24"
           />
-          <select name="situacao" defaultValue={row?.situacao ?? "ativo"} disabled={!canManage} style={inputStyle}>
+          <Select name="situacao" defaultValue={row?.situacao ?? "ativo"} disabled={!canManage}>
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
-          </select>
+          </Select>
           {canManage && (
-            <button type="submit" style={buttonStyle}>
+            <Button type="submit" variant="primary">
               {row ? "Salvar" : "Adicionar"}
-            </button>
+            </Button>
           )}
         </form>
-      </td>
+      </Td>
     </tr>
   );
 }

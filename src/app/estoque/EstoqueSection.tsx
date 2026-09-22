@@ -7,7 +7,11 @@ import {
   consumirReservaAction,
   registrarEntradaSobraAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -20,6 +24,7 @@ type Reserva = { id: string; pedido_item_id: string; item_id: string; quantidade
 const num = (v: number) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 
 export default function EstoqueSection({
+  activeTab,
   itens,
   saldoPorItem,
   pedidos,
@@ -29,6 +34,7 @@ export default function EstoqueSection({
   obras,
   canManage,
 }: {
+  activeTab: "saldo" | "reserva" | "sobra";
   itens: Item[];
   saldoPorItem: Map<string, Saldo>;
   pedidos: Pedido[];
@@ -47,17 +53,18 @@ export default function EstoqueSection({
 
   return (
     <>
+      {activeTab === "saldo" && (
       <section>
-        <h2 style={sectionTitleStyle}>Saldo por item</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+        <h2 className="text-sm font-semibold text-text">Saldo por item</h2>
+        <Table className="mt-2">
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-              <th style={thStyle}>Item</th>
-              <th style={thStyle}>Físico</th>
-              <th style={thStyle}>Reservado</th>
-              <th style={thStyle}>Disponível</th>
-              <th style={thStyle}>Unidade</th>
-              {canManage && <th style={thStyle}></th>}
+            <tr>
+              <Th>Item</Th>
+              <Th>Físico</Th>
+              <Th>Reservado</Th>
+              <Th>Disponível</Th>
+              <Th>Unidade</Th>
+              {canManage && <Th />}
             </tr>
           </thead>
           <tbody>
@@ -66,80 +73,74 @@ export default function EstoqueSection({
               const fisica = saldo?.quantidade_fisica ?? 0;
               const reservada = saldo?.quantidade_reservada ?? 0;
               return (
-                <tr key={it.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                  <td style={tdStyle}>
+                <tr key={it.id}>
+                  <Td>
                     {it.codigo} — {it.descricao}
-                  </td>
-                  <td style={tdStyle}>{num(fisica)}</td>
-                  <td style={tdStyle}>{num(reservada)}</td>
-                  <td style={tdStyle}>{num(fisica - reservada)}</td>
-                  <td style={tdStyle}>{it.unidade_principal}</td>
+                  </Td>
+                  <Td>{num(fisica)}</Td>
+                  <Td>{num(reservada)}</Td>
+                  <Td>{num(fisica - reservada)}</Td>
+                  <Td>{it.unidade_principal}</Td>
                   {canManage && (
-                    <td style={tdStyle}>
-                      <form
-                        action={ajustarSaldoAction}
-                        style={{ display: "flex", gap: "4px", alignItems: "center" }}
-                      >
+                    <Td>
+                      <form action={ajustarSaldoAction} className="flex items-center gap-1">
                         <input type="hidden" name="item_id" value={it.id} />
-                        <input
+                        <Input
                           name="quantidade_delta"
                           type="number"
                           step="0.001"
                           placeholder="+/- qtd"
                           required
-                          style={{ ...inputStyle, width: "70px" }}
+                          className="w-[70px]"
                         />
-                        <input
-                          name="motivo"
-                          placeholder="motivo"
-                          required
-                          style={{ ...inputStyle, width: "110px" }}
-                        />
-                        <button type="submit" style={buttonStyle}>
+                        <Input name="motivo" placeholder="motivo" required className="w-28" />
+                        <Button type="submit" variant="primary">
                           Ajustar
-                        </button>
+                        </Button>
                       </form>
-                    </td>
+                    </Td>
                   )}
                 </tr>
               );
             })}
             {itens.length === 0 && (
               <tr>
-                <td style={tdStyle} colSpan={canManage ? 6 : 5}>
-                  <span style={{ color: "#6b7a75" }}>Nenhum item cadastrado.</span>
-                </td>
+                <Td colSpan={canManage ? 6 : 5}>
+                  <span className="text-text-muted">Nenhum item cadastrado.</span>
+                </Td>
               </tr>
             )}
           </tbody>
-        </table>
-        <p style={hintStyle}>
+        </Table>
+        <p className="mt-2 text-xs text-text-muted">
           Sem módulo de Compras ainda (TÓPICO 18, M2) — ajuste é o único jeito de estabelecer ou
           corrigir saldo neste recorte. Disponível = físico − reservado.
         </p>
       </section>
+      )}
 
+      {activeTab === "reserva" && (
       <section>
-        <h2 style={sectionTitleStyle}>Reserva para pedidos liberados</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <h2 className="text-sm font-semibold text-text">Reserva para pedidos liberados</h2>
+        <div className="mt-2 flex flex-col gap-4">
           {pedidos.map((ped) => {
             const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
             return (
-              <div key={ped.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "baseline", fontSize: "12px" }}>
-                  <strong style={{ fontSize: "13px" }}>{ped.numero}</strong>
+              <Card key={ped.id} padding="xs">
+                <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
+                  <strong className="text-[13px] text-text">{ped.numero}</strong>
                   <span>{pessoaNome(ped.pessoa_id)}</span>
-                  <span style={{ color: "#6b7a75" }}>{obraNome(ped.obra_id)}</span>
+                  <span className="text-text-muted">{obraNome(ped.obra_id)}</span>
                 </div>
 
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "8px" }}>
+                <Table className="mt-2">
                   <thead>
-                    <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                      <th style={thStyle}>Item</th>
-                      <th style={thStyle}>Necessário</th>
-                      <th style={thStyle}>Reservado</th>
-                      <th style={thStyle}>Falta</th>
-                      {canManage && <th style={thStyle}></th>}
+                    <tr>
+                      <Th>Item</Th>
+                      <Th>Necessário</Th>
+                      <Th>Reservado</Th>
+                      <Th>Falta</Th>
+                      {canManage && <Th />}
                     </tr>
                   </thead>
                   <tbody>
@@ -148,73 +149,73 @@ export default function EstoqueSection({
                       const reservado = reserva?.quantidade ?? 0;
                       const falta = pi.quantidade - reservado;
                       return (
-                        <tr key={pi.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                          <td style={tdStyle}>{itemLabel(pi.item_id)}</td>
-                          <td style={tdStyle}>{num(pi.quantidade)}</td>
-                          <td style={tdStyle}>{num(reservado)}</td>
-                          <td style={tdStyle}>
-                            <span style={{ color: falta > 0 ? "#b7791f" : "#1f5d57" }}>{num(falta)}</span>
-                          </td>
+                        <tr key={pi.id}>
+                          <Td>{itemLabel(pi.item_id)}</Td>
+                          <Td>{num(pi.quantidade)}</Td>
+                          <Td>{num(reservado)}</Td>
+                          <Td>
+                            <span className={falta > 0 ? "text-warning" : "text-success"}>{num(falta)}</span>
+                          </Td>
                           {canManage && (
-                            <td style={tdStyle}>
+                            <Td>
                               {reserva ? (
-                                <div style={{ display: "flex", gap: "4px" }}>
+                                <div className="flex gap-1">
                                   <form action={consumirReservaAction}>
                                     <input type="hidden" name="id" value={reserva.id} />
-                                    <button type="submit" style={buttonStyle}>
+                                    <Button type="submit" variant="primary">
                                       Consumir
-                                    </button>
+                                    </Button>
                                   </form>
                                   <form action={liberarReservaAction}>
                                     <input type="hidden" name="id" value={reserva.id} />
-                                    <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                                    <Button type="submit" variant="secondary">
                                       Liberar
-                                    </button>
+                                    </Button>
                                   </form>
                                 </div>
                               ) : (
                                 <form action={reservarParaPedidoItemAction}>
                                   <input type="hidden" name="pedido_item_id" value={pi.id} />
-                                  <button type="submit" style={buttonStyle}>
+                                  <Button type="submit" variant="primary">
                                     Reservar
-                                  </button>
+                                  </Button>
                                 </form>
                               )}
-                            </td>
+                            </Td>
                           )}
                         </tr>
                       );
                     })}
                     {itensDoPedido.length === 0 && (
                       <tr>
-                        <td style={tdStyle} colSpan={canManage ? 5 : 4}>
-                          <span style={{ color: "#6b7a75" }}>Pedido sem itens.</span>
-                        </td>
+                        <Td colSpan={canManage ? 5 : 4}>
+                          <span className="text-text-muted">Pedido sem itens.</span>
+                        </Td>
                       </tr>
                     )}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              </Card>
             );
           })}
           {pedidos.length === 0 && (
-            <p style={hintStyle}>Nenhum pedido liberado ainda — a reserva só entra depois da liberação (TÓPICO 3).</p>
+            <p className="text-xs text-text-muted">
+              Nenhum pedido liberado ainda — a reserva só entra depois da liberação (TÓPICO 3).
+            </p>
           )}
         </div>
       </section>
+      )}
 
-      {canManage && (
+      {activeTab === "sobra" && canManage && (
         <section>
-          <h2 style={sectionTitleStyle}>Registrar entrada de sobra</h2>
-          <p style={hintStyle}>
+          <h2 className="text-sm font-semibold text-text">Registrar entrada de sobra</h2>
+          <p className="mt-1 text-xs text-text-muted">
             TÓPICO 6 §3 — sobra é sempre uma ação própria, separada de reservar/consumir: quem
             cortou o material registra o que sobrou.
           </p>
-          <form
-            action={registrarEntradaSobraAction}
-            style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-          >
-            <select name="item_id" defaultValue="" required style={inputStyle}>
+          <form action={registrarEntradaSobraAction} className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Select name="item_id" defaultValue="" required>
               <option value="" disabled>
                 Item
               </option>
@@ -223,20 +224,12 @@ export default function EstoqueSection({
                   {it.codigo} — {it.descricao}
                 </option>
               ))}
-            </select>
-            <input
-              name="quantidade"
-              type="number"
-              step="0.001"
-              min="0.001"
-              placeholder="quantidade"
-              required
-              style={{ ...inputStyle, width: "90px" }}
-            />
-            <input name="observacao" placeholder="observação (opcional)" style={{ ...inputStyle, width: "200px" }} />
-            <button type="submit" style={buttonStyle}>
+            </Select>
+            <Input name="quantidade" type="number" step="0.001" min="0.001" placeholder="quantidade" required className="w-[90px]" />
+            <Input name="observacao" placeholder="observação (opcional)" className="w-52" />
+            <Button type="submit" variant="primary">
               Registrar sobra
-            </button>
+            </Button>
           </form>
         </section>
       )}

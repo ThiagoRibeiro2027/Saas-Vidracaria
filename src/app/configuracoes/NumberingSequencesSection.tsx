@@ -1,7 +1,9 @@
 "use client";
 
 import { upsertNumberingSequenceAction } from "./actions";
-import { sectionTitleStyle, inputStyle, labelStyle, buttonStyle } from "./styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 
 // Lista fixa — sem UI de criar tipo de documento arbitrário. Achado do
 // code-review (16/09/2026): 'expedicao' (T9) e 'instalacao' (T16) já
@@ -41,62 +43,46 @@ export default function NumberingSequencesSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Numeração</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      <h2 className="text-sm font-semibold text-text">Numeração</h2>
+      <div className="mt-2 flex flex-col gap-2.5">
         {DOCUMENT_TYPES.map(({ key, label }) => {
           const row = byType.get(key);
           return (
-            <form
-              key={key}
-              action={upsertNumberingSequenceAction}
-              style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", fontSize: "12px" }}
-            >
+            <form key={key} action={upsertNumberingSequenceAction} className="flex flex-wrap items-center gap-2 text-xs">
               <input type="hidden" name="document_type" value={key} />
-              <span style={{ width: "140px" }}>{label}</span>
-              <input
-                name="prefixo"
-                placeholder="Prefixo"
-                defaultValue={row?.prefixo ?? ""}
-                disabled={!canManage}
-                style={{ ...inputStyle, width: "70px" }}
-              />
-              <input
-                name="sufixo"
-                placeholder="Sufixo"
-                defaultValue={row?.sufixo ?? ""}
-                disabled={!canManage}
-                style={{ ...inputStyle, width: "70px" }}
-              />
-              <label style={labelStyle}>
+              <span className="w-36">{label}</span>
+              <Input name="prefixo" placeholder="Prefixo" defaultValue={row?.prefixo ?? ""} disabled={!canManage} className="w-16" />
+              <Input name="sufixo" placeholder="Sufixo" defaultValue={row?.sufixo ?? ""} disabled={!canManage} className="w-16" />
+              <label className="flex items-center gap-1 text-text">
                 Dígitos
-                <input
+                <Input
                   name="digitos"
                   type="number"
                   min={1}
                   max={12}
                   defaultValue={row?.digitos ?? 6}
                   disabled={!canManage}
-                  style={{ ...inputStyle, width: "50px" }}
+                  className="w-12"
                 />
               </label>
-              <label style={labelStyle}>
-                <input type="checkbox" name="incluir_ano" defaultChecked={row?.incluir_ano ?? false} disabled={!canManage} />
+              <label className="flex items-center gap-1 text-text">
+                <input type="checkbox" name="incluir_ano" defaultChecked={row?.incluir_ano ?? false} disabled={!canManage} className="accent-primary" />
                 Ano
               </label>
-              <label style={labelStyle}>
-                <input type="checkbox" name="incluir_mes" defaultChecked={row?.incluir_mes ?? false} disabled={!canManage} />
+              <label className="flex items-center gap-1 text-text">
+                <input type="checkbox" name="incluir_mes" defaultChecked={row?.incluir_mes ?? false} disabled={!canManage} className="accent-primary" />
                 Mês
               </label>
-              <select name="reinicio" defaultValue={row?.reinicio ?? "nunca"} disabled={!canManage} style={inputStyle}>
+              <Select name="reinicio" defaultValue={row?.reinicio ?? "nunca"} disabled={!canManage}>
                 <option value="nunca">Sem reinício</option>
                 <option value="anual">Reinício anual</option>
                 <option value="mensal">Reinício mensal</option>
-              </select>
-              <span style={{ color: "#6b7a75" }}>Atual: {row?.current_value ?? 0}</span>
+              </Select>
+              <span className="text-text-muted">Atual: {row?.current_value ?? 0}</span>
               {canManage && (
-                <button type="submit" style={buttonStyle}>
+                <Button type="submit" variant="primary" size="sm">
                   Salvar
-                </button>
+                </Button>
               )}
             </form>
           );
@@ -105,4 +91,3 @@ export default function NumberingSequencesSection({
     </section>
   );
 }
-

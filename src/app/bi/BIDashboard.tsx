@@ -1,4 +1,4 @@
-import { sectionTitleStyle, hintStyle } from "../configuracoes/styles";
+import { Card, CardTitle } from "@/components/ui/Card";
 
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -21,13 +21,13 @@ export default function BIDashboard({ data }: { data: Dashboard }) {
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Indicadores operacionais</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Indicadores operacionais</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Recorte mínimo do MVP (ADR-002 §4.16): contagens e somas básicas por módulo, direto sobre
         os dados já registrados. Sem KPI versionado, drill-down, análise preditiva ou DRE.
       </p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "12px", marginTop: "16px" }}>
+      <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
         <Bloco titulo="Pedidos">
           <PorStatusList porStatus={data.pedidos.por_status} />
           <Metrica label="Valor liberado" valor={currency(data.pedidos.valor_liberado)} />
@@ -41,9 +41,9 @@ export default function BIDashboard({ data }: { data: Dashboard }) {
         </Bloco>
 
         <Bloco titulo="Qualidade">
-          <p style={{ fontSize: "11px", color: "#6b7a75", margin: "0 0 2px" }}>Inspeções por resultado</p>
+          <p className="mb-0.5 text-[11px] text-text-muted">Inspeções por resultado</p>
           <PorStatusList porStatus={data.qualidade.inspecoes_por_resultado} />
-          <p style={{ fontSize: "11px", color: "#6b7a75", margin: "8px 0 2px" }}>Não conformidades</p>
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Não conformidades</p>
           <PorStatusList porStatus={data.qualidade.nao_conformidades_por_status} />
         </Bloco>
 
@@ -54,7 +54,7 @@ export default function BIDashboard({ data }: { data: Dashboard }) {
 
         <Bloco titulo="Instalação">
           <PorStatusList porStatus={data.instalacao.por_status} />
-          <p style={{ fontSize: "11px", color: "#6b7a75", margin: "8px 0 2px" }}>Danos por causa</p>
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Danos por causa</p>
           <PorStatusList porStatus={data.instalacao.danos_por_causa} vazio="sem danos registrados" />
         </Bloco>
 
@@ -75,23 +75,23 @@ export default function BIDashboard({ data }: { data: Dashboard }) {
 
 function Bloco({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #eef1ef", borderRadius: "8px", padding: "14px" }}>
-      <h3 style={{ fontSize: "13px", margin: "0 0 8px", color: "#1f5d57" }}>{titulo}</h3>
+    <Card padding="sm">
+      <CardTitle className="mb-2 text-primary">{titulo}</CardTitle>
       {children}
-    </div>
+    </Card>
   );
 }
 
 function PorStatusList({ porStatus, vazio = "sem registros" }: { porStatus: PorStatus; vazio?: string }) {
   const entradas = Object.entries(porStatus);
   if (entradas.length === 0) {
-    return <p style={{ fontSize: "12px", color: "#6b7a75", margin: 0 }}>{vazio}</p>;
+    return <p className="text-xs text-text-muted">{vazio}</p>;
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+    <div className="flex flex-col gap-0.5">
       {entradas.map(([status, total]) => (
-        <div key={status} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
-          <span style={{ color: "#3e4d49" }}>{status}</span>
+        <div key={status} className="flex justify-between text-xs">
+          <span className="text-text">{status}</span>
           <strong>{total}</strong>
         </div>
       ))}
@@ -101,9 +101,9 @@ function PorStatusList({ porStatus, vazio = "sem registros" }: { porStatus: PorS
 
 function Metrica({ label, valor, destaque }: { label: string; valor: string | number; destaque?: boolean }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginTop: "6px", paddingTop: "6px", borderTop: "1px solid #eef1ef" }}>
-      <span style={{ color: "#3e4d49" }}>{label}</span>
-      <strong style={{ color: destaque ? "#9b2c2c" : undefined }}>{valor}</strong>
+    <div className="mt-1.5 flex justify-between border-t border-border-subtle pt-1.5 text-xs">
+      <span className="text-text">{label}</span>
+      <strong className={destaque ? "text-danger" : undefined}>{valor}</strong>
     </div>
   );
 }

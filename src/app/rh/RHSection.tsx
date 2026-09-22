@@ -2,12 +2,22 @@
 
 import { useState } from "react";
 import { desligarFuncionarioAction, upsertFuncionarioAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 const STATUS_LABEL: Record<string, string> = {
   ativo: "Ativo",
   afastado: "Afastado",
   desligado: "Desligado",
+};
+
+const STATUS_TONE: Record<string, "neutral" | "success" | "warning"> = {
+  ativo: "success",
+  afastado: "warning",
+  desligado: "neutral",
 };
 
 type Funcionario = {
@@ -46,49 +56,55 @@ export default function RHSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Funcionários</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Funcionários</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Recorte mínimo do MVP: cadastro de funcionários, vínculo com usuário do sistema e
         desligamento (que revoga o acesso do usuário vinculado). Sem folha de pagamento, escala,
         ponto, documentos, EPI ou habilitações.
       </p>
 
-      {canManage && <FuncionarioForm row={null} unidades={unidades} profiles={profiles.filter((p) => !profileIdsEmUso.has(p.id))} />}
+      {canManage && (
+        <div className="mt-3">
+          <FuncionarioForm row={null} unidades={unidades} profiles={profiles.filter((p) => !profileIdsEmUso.has(p.id))} />
+        </div>
+      )}
 
-      <div style={{ overflowX: "auto", marginTop: "12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-3 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Nome</th>
-              <th style={thStyle}>Cargo/Função</th>
-              <th style={thStyle}>Unidade</th>
-              <th style={thStyle}>Usuário vinculado</th>
-              <th style={thStyle}>Status</th>
-              {canManage && <th style={thStyle}></th>}
+            <tr>
+              <Th>Nome</Th>
+              <Th>Cargo/Função</Th>
+              <Th>Unidade</Th>
+              <Th>Usuário vinculado</Th>
+              <Th>Status</Th>
+              {canManage && <Th />}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                <td style={tdStyle}>{row.nome}</td>
-                <td style={tdStyle}>{[row.cargo, row.funcao].filter(Boolean).join(" — ") || "—"}</td>
-                <td style={tdStyle}>{row.unidade_id ? unidadePorId.get(row.unidade_id) ?? "—" : "—"}</td>
-                <td style={tdStyle}>{row.profile_id ? profilePorId.get(row.profile_id) ?? "—" : "—"}</td>
-                <td style={tdStyle}>
-                  {STATUS_LABEL[row.status]}
-                  {row.status === "desligado" && row.motivo_desligamento && ` — ${row.motivo_desligamento}`}
-                </td>
+              <tr key={row.id}>
+                <Td>{row.nome}</Td>
+                <Td>{[row.cargo, row.funcao].filter(Boolean).join(" — ") || "—"}</Td>
+                <Td>{row.unidade_id ? unidadePorId.get(row.unidade_id) ?? "—" : "—"}</Td>
+                <Td>{row.profile_id ? profilePorId.get(row.profile_id) ?? "—" : "—"}</Td>
+                <Td>
+                  <Badge variant={STATUS_TONE[row.status]}>
+                    {STATUS_LABEL[row.status]}
+                    {row.status === "desligado" && row.motivo_desligamento && ` — ${row.motivo_desligamento}`}
+                  </Badge>
+                </Td>
                 {canManage && (
-                  <td style={tdStyle}>
+                  <Td>
                     {row.status !== "desligado" && (
                       <AcoesFuncionario row={row} unidades={unidades} profiles={profiles.filter((p) => !profileIdsEmUso.has(p.id) || p.id === row.profile_id)} />
                     )}
-                  </td>
+                  </Td>
                 )}
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </div>
     </section>
   );
@@ -99,34 +115,34 @@ function FuncionarioForm({ row, unidades, profiles, onSubmit }: { row: Funcionar
     <form
       action={upsertFuncionarioAction}
       onSubmit={onSubmit}
-      style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", background: row ? undefined : "#f5f7f5", padding: row ? undefined : "12px", borderRadius: row ? undefined : "6px" }}
+      className={`flex flex-wrap items-center gap-1.5 ${row ? "" : "rounded-md bg-page-bg p-3"}`}
     >
       {row && <input type="hidden" name="id" value={row.id} />}
-      <input name="nome" placeholder="nome" defaultValue={row?.nome ?? ""} required style={{ ...inputStyle, width: "160px" }} />
-      <input name="cargo" placeholder="cargo" defaultValue={row?.cargo ?? ""} style={{ ...inputStyle, width: "110px" }} />
-      <input name="funcao" placeholder="função" defaultValue={row?.funcao ?? ""} style={{ ...inputStyle, width: "110px" }} />
-      <select name="unidade_id" defaultValue={row?.unidade_id ?? ""} style={inputStyle}>
+      <Input name="nome" placeholder="nome" defaultValue={row?.nome ?? ""} required className="w-40" />
+      <Input name="cargo" placeholder="cargo" defaultValue={row?.cargo ?? ""} className="w-28" />
+      <Input name="funcao" placeholder="função" defaultValue={row?.funcao ?? ""} className="w-28" />
+      <Select name="unidade_id" defaultValue={row?.unidade_id ?? ""}>
         <option value="">unidade…</option>
         {unidades.map((u) => (
           <option key={u.id} value={u.id}>{u.name}</option>
         ))}
-      </select>
-      <input name="data_admissao" type="date" defaultValue={row?.data_admissao ?? ""} style={inputStyle} />
-      <input name="telefone" placeholder="telefone" defaultValue={row?.telefone ?? ""} style={{ ...inputStyle, width: "110px" }} />
-      <select name="profile_id" defaultValue={row?.profile_id ?? ""} style={inputStyle}>
+      </Select>
+      <Input name="data_admissao" type="date" defaultValue={row?.data_admissao ?? ""} />
+      <Input name="telefone" placeholder="telefone" defaultValue={row?.telefone ?? ""} className="w-28" />
+      <Select name="profile_id" defaultValue={row?.profile_id ?? ""}>
         <option value="">sem usuário vinculado</option>
         {profiles.map((p) => (
           <option key={p.id} value={p.id}>{p.display_name} ({p.login_identifier})</option>
         ))}
-      </select>
-      <select name="status" defaultValue={row?.status ?? "ativo"} style={inputStyle}>
+      </Select>
+      <Select name="status" defaultValue={row?.status ?? "ativo"}>
         <option value="ativo">Ativo</option>
         <option value="afastado">Afastado</option>
-      </select>
-      <input name="observacoes" placeholder="observações (opcional)" defaultValue={row?.observacoes ?? ""} style={{ ...inputStyle, width: "150px" }} />
-      <button type="submit" style={buttonStyle}>
+      </Select>
+      <Input name="observacoes" placeholder="observações (opcional)" defaultValue={row?.observacoes ?? ""} className="w-36" />
+      <Button type="submit" variant="primary">
         {row ? "Salvar" : "Admitir"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -136,39 +152,39 @@ function AcoesFuncionario({ row, unidades, profiles }: { row: Funcionario; unida
 
   if (modo === "editar") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+      <div className="flex flex-col gap-1">
         <FuncionarioForm row={row} unidades={unidades} profiles={profiles} onSubmit={() => setModo("nenhum")} />
-        <button onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de", width: "fit-content" }}>
+        <Button type="button" variant="secondary" className="w-fit" onClick={() => setModo("nenhum")}>
           Fechar
-        </button>
+        </Button>
       </div>
     );
   }
 
   if (modo === "desligar") {
     return (
-      <form action={desligarFuncionarioAction} style={{ display: "flex", gap: "4px" }} onSubmit={() => setModo("nenhum")}>
+      <form action={desligarFuncionarioAction} className="flex items-center gap-1" onSubmit={() => setModo("nenhum")}>
         <input type="hidden" name="id" value={row.id} />
-        <input name="data_desligamento" type="date" style={inputStyle} />
-        <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "120px" }} />
-        <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>
+        <Input name="data_desligamento" type="date" />
+        <Input name="motivo" placeholder="motivo (opcional)" className="w-28" />
+        <Button type="submit" variant="danger">
           Confirmar
-        </button>
-        <button type="button" onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setModo("nenhum")}>
           Voltar
-        </button>
+        </Button>
       </form>
     );
   }
 
   return (
-    <div style={{ display: "flex", gap: "4px" }}>
-      <button onClick={() => setModo("editar")} style={buttonStyle}>
+    <div className="flex items-center gap-1">
+      <Button type="button" variant="primary" onClick={() => setModo("editar")}>
         Editar
-      </button>
-      <button onClick={() => setModo("desligar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+      </Button>
+      <Button type="button" variant="outlineDanger" onClick={() => setModo("desligar")}>
         Desligar
-      </button>
+      </Button>
     </div>
   );
 }

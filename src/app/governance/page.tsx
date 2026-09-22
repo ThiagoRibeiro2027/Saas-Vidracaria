@@ -11,16 +11,16 @@ export default async function GovernancePage() {
   const { data: isPlatformAdmin } = await supabase.rpc("is_platform_admin");
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>Fase 6 — Governança</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>
-          {isPlatformAdmin ? "Empresas e assinaturas" : "Meu plano e consumo"}
-        </h1>
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">Fase 6 — Governança</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">
+        {isPlatformAdmin ? "Empresas e assinaturas" : "Meu plano e consumo"}
+      </h1>
 
+      <div className="mt-6">
         {isPlatformAdmin ? <PlatformAdminView supabase={supabase} /> : <TenantView supabase={supabase} />}
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -63,7 +63,7 @@ async function PlatformAdminView({ supabase }: { supabase: Awaited<ReturnType<ty
 
   return (
     <>
-      <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
+      <p className="mb-3 text-sm text-text">
         Painel do administrador de plataforma (item 24 do Prompt Mestre). Mudar o status aqui é a
         única via de transição — não há gateway de pagamento real nesta fase (ADR-006 §3.25),
         então toda transição é uma decisão administrativa manual e fica auditada.
@@ -78,7 +78,7 @@ async function TenantView({ supabase }: { supabase: Awaited<ReturnType<typeof cr
   const row = usage?.[0];
 
   if (error || !row) {
-    return <p style={{ color: "#9b2c2c", fontSize: "13px" }}>Não foi possível carregar seu consumo.</p>;
+    return <p className="text-sm text-danger">Não foi possível carregar seu consumo.</p>;
   }
 
   const userPct = row.max_users ? Math.round((row.user_count / row.max_users) * 100) : null;
@@ -87,18 +87,18 @@ async function TenantView({ supabase }: { supabase: Awaited<ReturnType<typeof cr
     : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-      <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-text">
         Plano: <strong>{row.plan_name ?? "sem plano definido"}</strong> · Status da assinatura:{" "}
-        <strong style={{ fontFamily: "monospace" }}>{row.subscription_status ?? "—"}</strong>
+        <strong className="font-mono">{row.subscription_status ?? "—"}</strong>
       </p>
 
       <div>
-        <p style={{ fontSize: "13px", margin: "0 0 4px" }}>
+        <p className="mb-1 text-sm text-text">
           Usuários: {row.user_count}
           {row.max_users ? ` / ${row.max_users} (${userPct}%)` : " (sem limite definido)"}
         </p>
-        <p style={{ fontSize: "13px", margin: 0 }}>
+        <p className="text-sm text-text">
           Storage: {formatBytes(row.storage_bytes_used)}
           {row.max_storage_bytes
             ? ` / ${formatBytes(row.max_storage_bytes)} (${storagePct}%)`
@@ -107,7 +107,7 @@ async function TenantView({ supabase }: { supabase: Awaited<ReturnType<typeof cr
       </div>
 
       {row.subscription_status === "suspended" && (
-        <p style={{ color: "#9b2c2c", fontSize: "13px" }}>
+        <p className="text-sm text-danger">
           Sua empresa está suspensa por pendência comercial: novos envios de arquivo estão
           bloqueados. Leitura e exportação de dados continuam disponíveis.
         </p>
@@ -115,32 +115,3 @@ async function TenantView({ supabase }: { supabase: Awaited<ReturnType<typeof cr
     </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "820px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "16px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

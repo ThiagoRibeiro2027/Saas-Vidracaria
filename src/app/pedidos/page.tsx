@@ -1,13 +1,21 @@
 import { createClient } from "@/lib/supabase/server";
 import PedidosSection from "./PedidosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { Tabs } from "@/components/ui/Tabs";
+
+type TabSlug = "pedidos" | "conversao";
 
 // TÓPICO 3 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // outubro: "entrada do pedido", último item da sequência T2 → T10 → T3).
 // Único caminho de criação é converter um orçamento aprovado (TÓPICO 10) —
 // sem cadastro direto nem importação neste recorte. Status cobre só até
 // "liberado"; em andamento/concluído dependem do TÓPICO 4 (novembro).
-export default async function PedidosPage() {
+export default async function PedidosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -71,6 +79,12 @@ export default async function PedidosPage() {
     pendenciasPorPedido.set(pd.pedido_id, list);
   }
 
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "pedidos", label: "Pedidos" },
+    ...(canManage ? [{ slug: "conversao" as const, label: "Conversão de orçamentos" }] : []),
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "pedidos";
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 3 — Pedidos</p>
@@ -81,8 +95,13 @@ export default async function PedidosPage() {
         (TÓPICO 4).
       </p>
 
-      <div className="mt-6 flex flex-col gap-6">
+      <div className="mt-6">
+        <Tabs tabs={availableTabs} active={activeTab} basePath="/pedidos" />
+      </div>
+
+      <div className="mt-6">
         <PedidosSection
+          activeTab={activeTab}
           pedidos={pedidos ?? []}
           itensPorPedido={itensPorPedido}
           pendenciasPorPedido={pendenciasPorPedido}

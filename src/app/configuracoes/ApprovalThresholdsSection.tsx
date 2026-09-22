@@ -1,7 +1,10 @@
 "use client";
 
 import { upsertApprovalThresholdAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "./styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Row = {
   id: string;
@@ -24,19 +27,19 @@ export default function ApprovalThresholdsSection({
 }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Alçada de aprovação</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Alçada de aprovação</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Valor mínimo que exige aprovação e o perfil que aprova, por processo. Recorte de M1 — sem
         aprovação sequencial/paralela, delegação ou escalonamento (TÓPICO 15 §8).
       </p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-2 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Processo</th>
-              <th style={thStyle}>Valor mínimo</th>
-              <th style={thStyle}>Perfil aprovador</th>
-              <th style={thStyle}>Ativo</th>
+            <tr>
+              <Th>Processo</Th>
+              <Th>Valor mínimo</Th>
+              <Th>Perfil aprovador</Th>
+              <Th>Ativo</Th>
             </tr>
           </thead>
           <tbody>
@@ -45,7 +48,7 @@ export default function ApprovalThresholdsSection({
             ))}
             {canManage && <RowForm row={null} roles={roles} canManage={canManage} />}
           </tbody>
-        </table>
+        </Table>
       </div>
     </section>
   );
@@ -53,22 +56,19 @@ export default function ApprovalThresholdsSection({
 
 function RowForm({ row, roles, canManage }: { row: Row | null; roles: Role[]; canManage: boolean }) {
   return (
-    <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-      <td style={tdStyle} colSpan={4}>
-        <form
-          action={upsertApprovalThresholdAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-        >
-          <input
+    <tr>
+      <Td colSpan={4}>
+        <form action={upsertApprovalThresholdAction} className="flex flex-wrap items-center gap-1.5">
+          <Input
             name="processo"
             placeholder="processo (ex.: orcamento_aprovacao)"
             defaultValue={row?.processo ?? ""}
             readOnly={!!row}
             required
             disabled={!canManage}
-            style={{ ...inputStyle, width: "200px" }}
+            className="w-52"
           />
-          <input
+          <Input
             name="valor_minimo"
             type="number"
             step="0.01"
@@ -77,9 +77,9 @@ function RowForm({ row, roles, canManage }: { row: Row | null; roles: Role[]; ca
             defaultValue={row?.valor_minimo ?? ""}
             required
             disabled={!canManage}
-            style={{ ...inputStyle, width: "110px" }}
+            className="w-28"
           />
-          <select name="role_id" defaultValue={row?.role_id ?? ""} required disabled={!canManage} style={inputStyle}>
+          <Select name="role_id" defaultValue={row?.role_id ?? ""} required disabled={!canManage}>
             <option value="" disabled>
               Perfil aprovador
             </option>
@@ -88,19 +88,18 @@ function RowForm({ row, roles, canManage }: { row: Row | null; roles: Role[]; ca
                 {role.name}
               </option>
             ))}
-          </select>
-          <label style={labelStyle}>
-            <input type="checkbox" name="ativo" defaultChecked={row?.ativo ?? true} disabled={!canManage} />
+          </Select>
+          <label className="flex items-center gap-1 text-xs text-text">
+            <input type="checkbox" name="ativo" defaultChecked={row?.ativo ?? true} disabled={!canManage} className="accent-primary" />
             Ativo
           </label>
           {canManage && (
-            <button type="submit" style={buttonStyle}>
+            <Button type="submit" variant="primary">
               {row ? "Salvar" : "Adicionar"}
-            </button>
+            </Button>
           )}
         </form>
-      </td>
+      </Td>
     </tr>
   );
 }
-

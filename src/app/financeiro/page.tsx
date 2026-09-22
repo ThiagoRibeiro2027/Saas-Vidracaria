@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import FinanceiroSection from "./FinanceiroSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
 // TÓPICO 11 — Financeiro, recorte mínimo do MVP (ADR-002 §4.14, que
 // prevalece sobre a seção 34 do prompt completo do tópico — ver cabeçalho
@@ -17,13 +18,9 @@ export default async function FinanceiroPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar o módulo Financeiro desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o módulo Financeiro desta empresa." />
+      </div>
     );
   }
 
@@ -39,15 +36,15 @@ export default async function FinanceiroPage() {
   const nomePorPessoa = new Map((pessoas ?? []).map((p) => [p.id, p.nome]));
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 11 — Financeiro</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Financeiro</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do MVP: títulos a receber vinculados ao pedido, com parcelas planejadas e
-          registro de recebimento. Sem plano de contas, contas a pagar, conciliação ou DRE.
-        </p>
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 11 — Financeiro</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Financeiro</h1>
+      <p className="mt-1 text-sm text-text">
+        Recorte mínimo do MVP: títulos a receber vinculados ao pedido, com parcelas planejadas e
+        registro de recebimento. Sem plano de contas, contas a pagar, conciliação ou DRE.
+      </p>
 
+      <div className="mt-6">
         <FinanceiroSection
           titulos={titulos ?? []}
           pedidosSemTitulo={pedidosSemTitulo}
@@ -57,35 +54,6 @@ export default async function FinanceiroPage() {
           canReceber={!!canReceber}
         />
       </div>
-    </main>
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

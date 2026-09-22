@@ -1,7 +1,10 @@
 "use client";
 
 import { criarPapelAction, concederPermissaoAction, revogarPermissaoAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 export type Permission = { id: string; resource: string; action: string; description: string | null };
 type Role = { id: string; key: string; name: string; company_id: string | null };
@@ -22,99 +25,98 @@ export default function PapeisSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Papéis e permissões (TÓPICO 14 §4-5)</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Papéis e permissões</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Papéis-modelo do sistema (abaixo) não podem ter permissão alterada aqui — servem só de
         referência de nomenclatura. Crie um papel próprio da empresa para conceder/revogar
         permissão de fato.
       </p>
 
       {canManage && (
-        <form action={criarPapelAction} style={{ display: "flex", gap: "6px", marginBottom: "16px" }}>
-          <input name="key" placeholder="chave (ex.: SUPERVISOR_PRODUCAO)" required style={{ ...inputStyle, width: "220px" }} />
-          <input name="name" placeholder="nome de exibição" required style={{ ...inputStyle, width: "180px" }} />
-          <button type="submit" style={buttonStyle}>
+        <form action={criarPapelAction} className="mt-3 flex gap-1.5">
+          <Input name="key" placeholder="chave (ex.: SUPERVISOR_PRODUCAO)" required className="w-56" />
+          <Input name="name" placeholder="nome de exibição" required className="w-44" />
+          <Button type="submit" variant="primary">
             Criar papel
-          </button>
+          </Button>
         </form>
       )}
 
-      <p style={{ ...hintStyle, marginTop: 0 }}>Papéis da empresa:</p>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: "16px" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-            <th style={thStyle}>Papel</th>
-            <th style={thStyle}>Permissões concedidas</th>
-            {canManage && <th style={thStyle}>Conceder</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {papeisDaEmpresa.map((r) => {
-            const concedidas = permissoesPorPapel.get(r.id) ?? new Set<string>();
-            return (
-              <tr key={r.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                <td style={tdStyle}>{r.name}</td>
-                <td style={tdStyle}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                    {permissions
-                      .filter((p) => concedidas.has(p.id))
-                      .map((p) => (
-                        <span
-                          key={p.id}
-                          style={{ display: "flex", alignItems: "center", gap: "3px", background: "#f4f6f5", borderRadius: "3px", padding: "1px 5px" }}
-                        >
-                          {p.resource}.{p.action}
-                          {canManage && (
-                            <form action={revogarPermissaoAction}>
-                              <input type="hidden" name="role_id" value={r.id} />
-                              <input type="hidden" name="permission_id" value={p.id} />
-                              <button type="submit" style={{ border: "none", background: "none", color: "#9b2c2c", cursor: "pointer", fontSize: "11px" }}>
-                                ×
-                              </button>
-                            </form>
-                          )}
-                        </span>
-                      ))}
-                    {concedidas.size === 0 && <span style={{ color: "#6b7a75" }}>nenhuma</span>}
-                  </div>
-                </td>
-                {canManage && (
-                  <td style={tdStyle}>
-                    <form action={concederPermissaoAction} style={{ display: "flex", gap: "4px" }}>
-                      <input type="hidden" name="role_id" value={r.id} />
-                      <select name="permission_id" required style={{ ...inputStyle, width: "180px" }} defaultValue="">
-                        <option value="" disabled>
-                          selecionar...
-                        </option>
-                        {permissions
-                          .filter((p) => !concedidas.has(p.id))
-                          .map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.resource}.{p.action}
-                            </option>
-                          ))}
-                      </select>
-                      <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
-                        +
-                      </button>
-                    </form>
-                  </td>
-                )}
-              </tr>
-            );
-          })}
-          {papeisDaEmpresa.length === 0 && (
+      <p className="mt-3 text-xs text-text-muted">Papéis da empresa:</p>
+      <div className="overflow-x-auto">
+        <Table>
+          <thead>
             <tr>
-              <td style={tdStyle} colSpan={canManage ? 3 : 2}>
-                <span style={{ color: "#6b7a75" }}>Nenhum papel próprio criado ainda.</span>
-              </td>
+              <Th>Papel</Th>
+              <Th>Permissões concedidas</Th>
+              {canManage && <Th>Conceder</Th>}
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {papeisDaEmpresa.map((r) => {
+              const concedidas = permissoesPorPapel.get(r.id) ?? new Set<string>();
+              return (
+                <tr key={r.id}>
+                  <Td>{r.name}</Td>
+                  <Td>
+                    <div className="flex flex-wrap gap-1">
+                      {permissions
+                        .filter((p) => concedidas.has(p.id))
+                        .map((p) => (
+                          <span key={p.id} className="flex items-center gap-1 rounded bg-page-bg px-1.5 py-0.5">
+                            {p.resource}.{p.action}
+                            {canManage && (
+                              <form action={revogarPermissaoAction}>
+                                <input type="hidden" name="role_id" value={r.id} />
+                                <input type="hidden" name="permission_id" value={p.id} />
+                                <button type="submit" className="cursor-pointer text-[11px] text-danger">
+                                  ×
+                                </button>
+                              </form>
+                            )}
+                          </span>
+                        ))}
+                      {concedidas.size === 0 && <span className="text-text-muted">nenhuma</span>}
+                    </div>
+                  </Td>
+                  {canManage && (
+                    <Td>
+                      <form action={concederPermissaoAction} className="flex gap-1">
+                        <input type="hidden" name="role_id" value={r.id} />
+                        <Select name="permission_id" required defaultValue="" className="w-44">
+                          <option value="" disabled>
+                            selecionar...
+                          </option>
+                          {permissions
+                            .filter((p) => !concedidas.has(p.id))
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.resource}.{p.action}
+                              </option>
+                            ))}
+                        </Select>
+                        <Button type="submit" variant="primary" size="sm">
+                          +
+                        </Button>
+                      </form>
+                    </Td>
+                  )}
+                </tr>
+              );
+            })}
+            {papeisDaEmpresa.length === 0 && (
+              <tr>
+                <Td colSpan={canManage ? 3 : 2}>
+                  <span className="text-text-muted">Nenhum papel próprio criado ainda.</span>
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </div>
 
-      <p style={{ ...hintStyle, marginTop: 0 }}>Papéis-modelo do sistema (referência, sem permissão própria por padrão):</p>
-      <ul style={{ fontSize: "12px", color: "#3e4d49" }}>
+      <p className="mt-3 text-xs text-text-muted">Papéis-modelo do sistema (referência, sem permissão própria por padrão):</p>
+      <ul className="text-xs text-text">
         {papeisModelo.map((r) => (
           <li key={r.id}>
             {r.name} ({r.key})

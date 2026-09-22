@@ -3,13 +3,29 @@ import OrcamentosSection from "./OrcamentosSection";
 import OportunidadesSection from "./OportunidadesSection";
 import PropostasSection from "./PropostasSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { Tabs } from "@/components/ui/Tabs";
+
+type TabSlug = "orcamentos" | "oportunidades" | "propostas";
 
 // TÓPICO 10 — orçamento simples (cabeçalho + itens + decisão), recorte
 // mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0). Oportunidades e
 // funil comercial fixo são ampliação de escopo aprovada em ADR-002 v2.4
 // (19/09/2026) — ainda sem versionamento de orçamento, proposta formal ou
 // formação de custo. A conversão real em Pedido é do TÓPICO 3.
-export default async function ComercialPage() {
+//
+// As três seções viraram abas (?tab=) em vez de empilhadas na mesma tela —
+// são destinos independentes (o usuário abre um de cada vez), ao contrário
+// de Estoque/Pedidos/Instalação, onde as seções formam uma sequência e
+// continuam empilhadas de propósito. Todo o fetch abaixo continua
+// acontecendo sempre (não só da aba ativa): Orçamentos depende de
+// `oportunidadesAbertas` pro próprio formulário, então não dá pra pular a
+// consulta de oportunidades sem quebrar a aba de Orçamentos.
+export default async function ComercialPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
   const [
@@ -94,30 +110,39 @@ export default async function ComercialPage() {
 
   const orcamentosAprovados = (orcamentos ?? []).filter((o) => o.status === "aprovado");
 
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "orcamentos", label: "Orçamentos" },
+    ...(canViewOportunidades ? [{ slug: "oportunidades" as const, label: "Oportunidades" }] : []),
+    ...(canViewPropostas ? [{ slug: "propostas" as const, label: "Propostas" }] : []),
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "orcamentos";
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 10 — Comercial</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Orçamentos</h1>
-      <p className="mt-1 text-sm text-text">
-        Recorte mínimo do M1: orçamento simples com itens e decisão de aprovação, sem tabela de
-        preços, descontos ou versionamento.
-      </p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Comercial</h1>
 
       <div className="mt-6">
-        <OrcamentosSection
-          orcamentos={orcamentos ?? []}
-          itensPorOrcamento={itensPorOrcamento as Map<string, NonNullable<typeof orcamentoItens>>}
-          totais={totais}
-          clientesElegiveis={clientesElegiveis}
-          todasPessoas={pessoas ?? []}
-          obras={obras ?? []}
-          itens={itens ?? []}
-          oportunidadesAbertas={oportunidadesAbertas}
-          canManage={!!canManage}
-        />
+        <Tabs tabs={availableTabs} active={activeTab} basePath="/comercial" />
       </div>
 
-      {canViewOportunidades && (
+      {activeTab === "orcamentos" && (
+        <div className="mt-6">
+          <OrcamentosSection
+            orcamentos={orcamentos ?? []}
+            itensPorOrcamento={itensPorOrcamento as Map<string, NonNullable<typeof orcamentoItens>>}
+            totais={totais}
+            clientesElegiveis={clientesElegiveis}
+            todasPessoas={pessoas ?? []}
+            obras={obras ?? []}
+            itens={itens ?? []}
+            oportunidadesAbertas={oportunidadesAbertas}
+            canManage={!!canManage}
+          />
+        </div>
+      )}
+
+      {activeTab === "oportunidades" && canViewOportunidades && (
         <OportunidadesSection
           oportunidades={oportunidades ?? []}
           todasPessoas={pessoas ?? []}
@@ -125,7 +150,7 @@ export default async function ComercialPage() {
         />
       )}
 
-      {canViewPropostas && (
+      {activeTab === "propostas" && canViewPropostas && (
         <PropostasSection
           propostas={propostas ?? []}
           orcamentosAprovados={orcamentosAprovados}

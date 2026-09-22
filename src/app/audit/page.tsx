@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 const LOG_LIMIT = 100;
 
@@ -44,85 +46,55 @@ export default async function AuditPage() {
   const companyNameById = new Map((companies ?? []).map((c) => [c.id, c.name]));
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>Fase 4 — Auditoria</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Central de auditoria</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Últimos {LOG_LIMIT} eventos registrados. Os logs são somente-leitura: nenhum usuário
-          (nem administrador de empresa) pode alterá-los ou apagá-los.
-        </p>
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">Fase 4 — Auditoria</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Central de auditoria</h1>
+      <p className="mt-1 text-sm text-text">
+        Últimos {LOG_LIMIT} eventos registrados. Os logs são somente-leitura: nenhum usuário
+        (nem administrador de empresa) pode alterá-los ou apagá-los.
+      </p>
 
-        {error && <p style={{ color: "#9b2c2c", fontSize: "13px" }}>Sem permissão para ver os logs.</p>}
+      {error && (
+        <div className="mt-4">
+          <PermissionDenied message="Sem permissão para ver os logs." />
+        </div>
+      )}
 
-        {!error && (logs ?? []).length === 0 && (
-          <p style={{ fontSize: "13px", color: "#6b7a75" }}>Nenhum evento registrado ainda.</p>
-        )}
+      {!error && (logs ?? []).length === 0 && (
+        <p className="mt-4 text-sm text-text-muted">Nenhum evento registrado ainda.</p>
+      )}
 
-        {!error && (logs ?? []).length > 0 && (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-                  <th style={thStyle}>Data/hora</th>
-                  <th style={thStyle}>Ação</th>
-                  <th style={thStyle}>Empresa</th>
-                  <th style={thStyle}>Usuário</th>
-                  <th style={thStyle}>Entidade</th>
-                  <th style={thStyle}>IP</th>
+      {!error && (logs ?? []).length > 0 && (
+        <div className="mt-4 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Data/hora</Th>
+                <Th>Ação</Th>
+                <Th>Empresa</Th>
+                <Th>Usuário</Th>
+                <Th>Entidade</Th>
+                <Th>IP</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs!.map((log) => (
+                <tr key={log.id}>
+                  <Td>{new Date(log.created_at).toLocaleString("pt-BR")}</Td>
+                  <Td className="font-mono">{log.action}</Td>
+                  <Td>{log.company_id ? (companyNameById.get(log.company_id) ?? "—") : "—"}</Td>
+                  <Td>{log.user_id ? (profileNameById.get(log.user_id) ?? "—") : "—"}</Td>
+                  <Td>
+                    {log.entity_type}
+                    {log.description ? ` — ${log.description}` : ""}
+                  </Td>
+                  <Td className="font-mono">{log.ip_address ?? "—"}</Td>
                 </tr>
-              </thead>
-              <tbody>
-                {logs!.map((log) => (
-                  <tr key={log.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                    <td style={tdStyle}>{new Date(log.created_at).toLocaleString("pt-BR")}</td>
-                    <td style={{ ...tdStyle, fontFamily: "monospace" }}>{log.action}</td>
-                    <td style={tdStyle}>{log.company_id ? (companyNameById.get(log.company_id) ?? "—") : "—"}</td>
-                    <td style={tdStyle}>{log.user_id ? (profileNameById.get(log.user_id) ?? "—") : "—"}</td>
-                    <td style={tdStyle}>
-                      {log.entity_type}
-                      {log.description ? ` — ${log.description}` : ""}
-                    </td>
-                    <td style={{ ...tdStyle, fontFamily: "monospace" }}>{log.ip_address ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </main>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+      )}
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "820px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "16px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;
-
-const thStyle = { padding: "6px 8px" } as const;
-const tdStyle = { padding: "6px 8px" } as const;

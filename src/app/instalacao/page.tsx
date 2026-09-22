@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import InstalacaoSection from "./InstalacaoSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { Tabs } from "@/components/ui/Tabs";
+
+type TabSlug = "equipes" | "agenda" | "danos";
 
 // TÓPICO 16 — lado ESCRITÓRIO do recorte mínimo do M1. A execução em campo
 // (iniciar/registrar execução, concluir, dano, ocorrência, aceite) já tem
@@ -11,7 +15,12 @@ import InstalacaoSection from "./InstalacaoSection";
 // cancelamento e a decisão (aprovar/rejeitar) sobre solicitação de nova
 // fabricação por dano em obra (TÓPICO 16 §8) — permissão própria
 // (instalacao.decidir_dano), separada de quem executa ou agenda.
-export default async function InstalacaoPage() {
+export default async function InstalacaoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }, { data: canDecidirDano }] = await Promise.all([
@@ -22,13 +31,9 @@ export default async function InstalacaoPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar o módulo Instalação desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o módulo Instalação desta empresa." />
+      </div>
     );
   }
 
@@ -132,22 +137,34 @@ export default async function InstalacaoPage() {
     (solicitacoes ?? []).filter((s) => s.status === "pendente").map((s) => [s.dano_id, s] as const),
   );
 
-  return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 16 — Instalação (escritório)</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Equipes, agenda e nova fabricação</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do M1: equipes, agendamento e montagem dos itens de instalação, e a
-          decisão sobre solicitação de nova fabricação por dano. A execução em campo (início,
-          apontamento, conclusão, ocorrência, dano, aceite) fica na PWA de{" "}
-          <Link href="/campo" style={{ color: "#1f5d57" }}>
-            Instalação — Campo
-          </Link>
-          .
-        </p>
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "equipes", label: "Equipes" },
+    { slug: "agenda", label: "Agenda de instalação" },
+    { slug: "danos", label: "Danos em obra" },
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "equipes";
 
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 16 — Instalação (escritório)</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Equipes, agenda e nova fabricação</h1>
+      <p className="mt-1 text-sm text-text">
+        Recorte mínimo do M1: equipes, agendamento e montagem dos itens de instalação, e a
+        decisão sobre solicitação de nova fabricação por dano. A execução em campo (início,
+        apontamento, conclusão, ocorrência, dano, aceite) fica na PWA de{" "}
+        <Link href="/campo" className="text-primary">
+          Instalação — Campo
+        </Link>
+        .
+      </p>
+
+      <div className="mt-6">
+        <Tabs tabs={availableTabs} active={activeTab} basePath="/instalacao" />
+      </div>
+
+      <div className="mt-6">
         <InstalacaoSection
+          activeTab={activeTab}
           pedidos={pedidos ?? []}
           pedidoItensPorPedido={pedidoItensPorPedido}
           itens={itens ?? []}
@@ -167,35 +184,6 @@ export default async function InstalacaoPage() {
           canDecidirDano={!!canDecidirDano}
         />
       </div>
-    </main>
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

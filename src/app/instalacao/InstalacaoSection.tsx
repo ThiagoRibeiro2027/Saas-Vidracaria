@@ -12,7 +12,12 @@ import {
   registrarOcorrenciaInstalacaoAction,
   decidirNovaFabricacaoAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -62,15 +67,16 @@ const STATUS_LABEL: Record<Instalacao["status"], string> = {
   cancelada: "Cancelada",
 };
 
-const STATUS_COLOR: Record<Instalacao["status"], string> = {
-  agendada: "#6b7a75",
-  em_execucao: "#b7791f",
-  concluida: "#1f5d57",
-  aceita: "#1f5d57",
-  cancelada: "#9b2c2c",
+const STATUS_TONE: Record<Instalacao["status"], "neutral" | "success" | "warning" | "danger"> = {
+  agendada: "neutral",
+  em_execucao: "warning",
+  concluida: "success",
+  aceita: "success",
+  cancelada: "danger",
 };
 
 export default function InstalacaoSection({
+  activeTab,
   pedidos,
   pedidoItensPorPedido,
   itens,
@@ -89,6 +95,7 @@ export default function InstalacaoSection({
   canManage,
   canDecidirDano,
 }: {
+  activeTab: "equipes" | "agenda" | "danos";
   pedidos: Pedido[];
   pedidoItensPorPedido: Map<string, PedidoItem[]>;
   itens: Item[];
@@ -136,51 +143,49 @@ export default function InstalacaoSection({
 
   return (
     <>
+      {activeTab === "equipes" && (
       <section>
-        <h2 style={sectionTitleStyle}>Equipes de instalação</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <h2 className="text-sm font-semibold text-text">Equipes de instalação</h2>
+        <div className="mt-2 flex flex-col gap-2.5">
           {equipes.map((eq) => {
             const membros = equipeMembrosPorEquipe.get(eq.id) ?? [];
             const membrosIds = new Set(membros.map((m) => m.profile_id));
             const disponiveis = profiles.filter((p) => !membrosIds.has(p.id));
             return (
-              <div key={eq.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "8px 10px" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "baseline", fontSize: "12px" }}>
-                  <strong style={{ fontSize: "13px" }}>{eq.nome}</strong>
-                  <span style={{ color: eq.ativo ? "#1f5d57" : "#9b2c2c" }}>{eq.ativo ? "Ativa" : "Inativa"}</span>
+              <Card key={eq.id} padding="xs">
+                <div className="flex flex-wrap items-baseline gap-2 text-xs">
+                  <strong className="text-[13px] text-text">{eq.nome}</strong>
+                  <Badge variant={eq.ativo ? "success" : "danger"}>{eq.ativo ? "Ativa" : "Inativa"}</Badge>
                   {canManage && (
                     <form action={definirAtivoEquipeAction}>
                       <input type="hidden" name="equipe_id" value={eq.id} />
                       <input type="hidden" name="ativo" value={(!eq.ativo).toString()} />
-                      <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                      <Button type="submit" variant="secondary">
                         {eq.ativo ? "Desativar" : "Ativar"}
-                      </button>
+                      </Button>
                     </form>
                   )}
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px", alignItems: "center" }}>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   {membros.map((m) => (
-                    <span
-                      key={m.id}
-                      style={{ fontSize: "12px", background: "#f4f6f5", borderRadius: "4px", padding: "2px 6px", display: "flex", gap: "4px", alignItems: "center" }}
-                    >
+                    <span key={m.id} className="flex items-center gap-1 rounded bg-page-bg px-1.5 py-0.5 text-xs">
                       {profileNome(m.profile_id)}
                       {canManage && (
                         <form action={removerMembroEquipeAction}>
                           <input type="hidden" name="id" value={m.id} />
-                          <button type="submit" style={{ border: "none", background: "none", color: "#9b2c2c", cursor: "pointer", fontSize: "12px" }}>
+                          <button type="submit" className="cursor-pointer text-xs text-danger">
                             ×
                           </button>
                         </form>
                       )}
                     </span>
                   ))}
-                  {membros.length === 0 && <span style={{ fontSize: "12px", color: "#6b7a75" }}>Sem membros.</span>}
+                  {membros.length === 0 && <span className="text-xs text-text-muted">Sem membros.</span>}
                 </div>
                 {canManage && disponiveis.length > 0 && (
-                  <form action={adicionarMembroEquipeAction} style={{ display: "flex", gap: "4px", marginTop: "6px" }}>
+                  <form action={adicionarMembroEquipeAction} className="mt-1.5 flex gap-1">
                     <input type="hidden" name="equipe_id" value={eq.id} />
-                    <select name="profile_id" defaultValue="" required style={inputStyle}>
+                    <Select name="profile_id" defaultValue="" required>
                       <option value="" disabled>
                         Adicionar membro
                       </option>
@@ -189,30 +194,32 @@ export default function InstalacaoSection({
                           {p.display_name}
                         </option>
                       ))}
-                    </select>
-                    <button type="submit" style={buttonStyle}>
+                    </Select>
+                    <Button type="submit" variant="primary">
                       Adicionar
-                    </button>
+                    </Button>
                   </form>
                 )}
-              </div>
+              </Card>
             );
           })}
-          {equipes.length === 0 && <p style={hintStyle}>Nenhuma equipe cadastrada ainda.</p>}
+          {equipes.length === 0 && <p className="text-xs text-text-muted">Nenhuma equipe cadastrada ainda.</p>}
           {canManage && (
-            <form action={criarEquipeAction} style={{ display: "flex", gap: "4px" }}>
-              <input name="nome" placeholder="nome da nova equipe" required style={{ ...inputStyle, flex: 1 }} />
-              <button type="submit" style={buttonStyle}>
+            <form action={criarEquipeAction} className="flex gap-1">
+              <Input name="nome" placeholder="nome da nova equipe" required className="flex-1" />
+              <Button type="submit" variant="primary">
                 Criar equipe
-              </button>
+              </Button>
             </form>
           )}
         </div>
       </section>
+      )}
 
+      {activeTab === "agenda" && (
       <section>
-        <h2 style={sectionTitleStyle}>Pedidos liberados — agenda de instalação</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <h2 className="text-sm font-semibold text-text">Pedidos liberados — agenda de instalação</h2>
+        <div className="mt-2 flex flex-col gap-4">
           {pedidos.map((ped) => {
             const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
             const instalacoes = instalacoesPorPedido.get(ped.id) ?? [];
@@ -220,24 +227,23 @@ export default function InstalacaoSection({
             const equipesAtivas = equipes.filter((e) => e.ativo);
 
             return (
-              <div key={ped.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "baseline", fontSize: "12px" }}>
-                  <strong style={{ fontSize: "13px" }}>{ped.numero}</strong>
+              <Card key={ped.id} padding="xs">
+                <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
+                  <strong className="text-[13px] text-text">{ped.numero}</strong>
                   <span>{pessoaNome(ped.pessoa_id)}</span>
-                  <span style={{ color: "#6b7a75" }}>{obra ?? "sem obra associada"}</span>
+                  <span className="text-text-muted">{obra ?? "sem obra associada"}</span>
                 </div>
 
                 {!obra && (
-                  <p style={hintStyle}>Pedido sem obra associada — instalação exige obra definida (TÓPICO 3/2).</p>
+                  <p className="mt-1.5 text-xs text-text-muted">
+                    Pedido sem obra associada — instalação exige obra definida (TÓPICO 3/2).
+                  </p>
                 )}
 
                 {obra && canManage && (
-                  <form
-                    action={criarInstalacaoAction}
-                    style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center", marginTop: "6px" }}
-                  >
+                  <form action={criarInstalacaoAction} className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <input type="hidden" name="pedido_id" value={ped.id} />
-                    <select name="equipe_id" defaultValue="" required style={inputStyle}>
+                    <Select name="equipe_id" defaultValue="" required>
                       <option value="" disabled>
                         Equipe
                       </option>
@@ -246,19 +252,19 @@ export default function InstalacaoSection({
                           {e.nome}
                         </option>
                       ))}
-                    </select>
-                    <input name="data_agendada" type="date" required style={inputStyle} />
-                    <input name="observacoes" placeholder="observações (opcional)" style={{ ...inputStyle, width: "180px" }} />
-                    <button type="submit" style={buttonStyle}>
+                    </Select>
+                    <Input name="data_agendada" type="date" required />
+                    <Input name="observacoes" placeholder="observações (opcional)" className="w-44" />
+                    <Button type="submit" variant="primary">
                       Nova instalação
-                    </button>
+                    </Button>
                     {equipesAtivas.length === 0 && (
-                      <span style={{ fontSize: "11px", color: "#b7791f" }}>Cadastre uma equipe ativa primeiro.</span>
+                      <span className="text-[11px] text-warning">Cadastre uma equipe ativa primeiro.</span>
                     )}
                   </form>
                 )}
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "8px" }}>
+                <div className="mt-2 flex flex-col gap-2.5">
                   {instalacoes.map((inst) => {
                     const instItens = itensPorInstalacao.get(inst.id) ?? [];
                     const ocorrencias = ocorrenciasPorInstalacao.get(inst.id) ?? [];
@@ -272,213 +278,205 @@ export default function InstalacaoSection({
                       .filter((x) => x.disponivel > 0);
 
                     return (
-                      <div key={inst.id} style={{ border: "1px solid #eef1ef", borderRadius: "6px", padding: "8px 10px" }}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "baseline", fontSize: "12px" }}>
+                      <div key={inst.id} className="rounded-md border border-border-subtle p-2">
+                        <div className="flex flex-wrap items-baseline gap-2 text-xs">
                           <strong>{inst.numero}</strong>
-                          <span style={{ fontFamily: "monospace", color: STATUS_COLOR[inst.status] }}>
-                            {STATUS_LABEL[inst.status]}
-                          </span>
-                          <span style={{ color: "#6b7a75" }}>{equipeNome(inst.equipe_id)}</span>
-                          <span style={{ color: "#6b7a75" }}>
+                          <Badge variant={STATUS_TONE[inst.status]}>{STATUS_LABEL[inst.status]}</Badge>
+                          <span className="text-text-muted">{equipeNome(inst.equipe_id)}</span>
+                          <span className="text-text-muted">
                             {new Date(`${inst.data_agendada}T00:00:00`).toLocaleDateString("pt-BR")}
                           </span>
                           {inst.status === "cancelada" && inst.motivo_cancelamento && (
-                            <span style={{ color: "#6b7a75" }}>Motivo: {inst.motivo_cancelamento}</span>
+                            <span className="text-text-muted">Motivo: {inst.motivo_cancelamento}</span>
                           )}
                           {inst.status === "aceita" && inst.aceite_nome_cliente && (
-                            <span style={{ color: "#6b7a75" }}>Aceito por: {inst.aceite_nome_cliente}</span>
+                            <span className="text-text-muted">Aceito por: {inst.aceite_nome_cliente}</span>
                           )}
                         </div>
 
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "6px" }}>
+                        <Table className="mt-1.5">
                           <thead>
-                            <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                              <th style={thStyle}>Item</th>
-                              <th style={thStyle}>Qtd.</th>
-                              <th style={thStyle}>Instalada</th>
-                              <th style={thStyle}>Pendente</th>
-                              {canManage && inst.status === "agendada" && <th style={thStyle}></th>}
+                            <tr>
+                              <Th>Item</Th>
+                              <Th>Qtd.</Th>
+                              <Th>Instalada</Th>
+                              <Th>Pendente</Th>
+                              {canManage && inst.status === "agendada" && <Th />}
                             </tr>
                           </thead>
                           <tbody>
                             {instItens.map((ii) => {
                               const pi = itensDoPedido.find((p) => p.id === ii.pedido_item_id);
                               return (
-                                <tr key={ii.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                                  <td style={tdStyle}>{pi ? itemLabel(pi.item_id) : "(item removido)"}</td>
-                                  <td style={tdStyle}>{num(ii.quantidade)}</td>
-                                  <td style={tdStyle}>{num(ii.quantidade_instalada)}</td>
-                                  <td style={tdStyle}>{num(ii.quantidade_pendente)}</td>
+                                <tr key={ii.id}>
+                                  <Td>{pi ? itemLabel(pi.item_id) : "(item removido)"}</Td>
+                                  <Td>{num(ii.quantidade)}</Td>
+                                  <Td>{num(ii.quantidade_instalada)}</Td>
+                                  <Td>{num(ii.quantidade_pendente)}</Td>
                                   {canManage && inst.status === "agendada" && (
-                                    <td style={tdStyle}>
+                                    <Td>
                                       <form action={removerItemInstalacaoAction}>
                                         <input type="hidden" name="id" value={ii.id} />
-                                        <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                                        <Button type="submit" variant="danger">
                                           Remover
-                                        </button>
+                                        </Button>
                                       </form>
-                                    </td>
+                                    </Td>
                                   )}
                                 </tr>
                               );
                             })}
                             {instItens.length === 0 && (
                               <tr>
-                                <td style={tdStyle} colSpan={canManage && inst.status === "agendada" ? 5 : 4}>
-                                  <span style={{ color: "#6b7a75" }}>Sem itens montados ainda.</span>
-                                </td>
+                                <Td colSpan={canManage && inst.status === "agendada" ? 5 : 4}>
+                                  <span className="text-text-muted">Sem itens montados ainda.</span>
+                                </Td>
                               </tr>
                             )}
                           </tbody>
-                        </table>
+                        </Table>
 
-                        {canManage && inst.status === "agendada" && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
-                            {itensElegiveis.length > 0 && (
-                              <form
-                                action={adicionarItemInstalacaoAction}
-                                style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}
-                              >
-                                <input type="hidden" name="instalacao_id" value={inst.id} />
-                                <select name="pedido_item_id" defaultValue="" required style={inputStyle}>
-                                  <option value="" disabled>
-                                    Item disponível
-                                  </option>
-                                  {itensElegiveis.map(({ pedidoItem, disponivel }) => (
-                                    <option key={pedidoItem.id} value={pedidoItem.id}>
-                                      {itemLabel(pedidoItem.item_id)} (disponível: {num(disponivel)})
-                                    </option>
-                                  ))}
-                                </select>
-                                <input
-                                  name="quantidade"
-                                  type="number"
-                                  step="0.001"
-                                  min="0.001"
-                                  placeholder="quantidade"
-                                  required
-                                  style={{ ...inputStyle, width: "80px" }}
-                                />
-                                <button type="submit" style={buttonStyle}>
-                                  Adicionar item
-                                </button>
-                              </form>
-                            )}
-                          </div>
-                        )}
-
-                        {canManage && (inst.status === "agendada" || inst.status === "em_execucao") && (
-                          <form
-                            action={cancelarInstalacaoAction}
-                            style={{ display: "flex", gap: "4px", alignItems: "center", marginTop: "8px" }}
-                          >
+                        {canManage && inst.status === "agendada" && itensElegiveis.length > 0 && (
+                          <form action={adicionarItemInstalacaoAction} className="mt-2 flex flex-wrap items-center gap-1.5">
                             <input type="hidden" name="instalacao_id" value={inst.id} />
-                            <input name="motivo" placeholder="motivo do cancelamento (opcional)" style={{ ...inputStyle, width: "200px" }} />
-                            <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
-                              Cancelar
-                            </button>
+                            <Select name="pedido_item_id" defaultValue="" required className="min-w-48">
+                              <option value="" disabled>
+                                Item disponível
+                              </option>
+                              {itensElegiveis.map(({ pedidoItem, disponivel }) => (
+                                <option key={pedidoItem.id} value={pedidoItem.id}>
+                                  {itemLabel(pedidoItem.item_id)} (disponível: {num(disponivel)})
+                                </option>
+                              ))}
+                            </Select>
+                            <Input
+                              name="quantidade"
+                              type="number"
+                              step="0.001"
+                              min="0.001"
+                              placeholder="quantidade"
+                              required
+                              className="w-20"
+                            />
+                            <Button type="submit" variant="primary">
+                              Adicionar item
+                            </Button>
                           </form>
                         )}
 
-                        <div style={{ marginTop: "8px" }}>
-                          <p style={{ ...hintStyle, margin: "0 0 4px" }}>Ocorrências</p>
+                        {canManage && (inst.status === "agendada" || inst.status === "em_execucao") && (
+                          <form action={cancelarInstalacaoAction} className="mt-2 flex items-center gap-1.5">
+                            <input type="hidden" name="instalacao_id" value={inst.id} />
+                            <Input name="motivo" placeholder="motivo do cancelamento (opcional)" className="w-52" />
+                            <Button type="submit" variant="danger">
+                              Cancelar
+                            </Button>
+                          </form>
+                        )}
+
+                        <div className="mt-2">
+                          <p className="mb-1 text-xs text-text-muted">Ocorrências</p>
                           {ocorrencias.map((oc) => (
-                            <p key={oc.id} style={{ fontSize: "12px", margin: "0 0 2px" }}>
-                              <span style={{ color: "#6b7a75" }}>
+                            <p key={oc.id} className="mb-0.5 text-xs">
+                              <span className="text-text-muted">
                                 {new Date(oc.registrado_em).toLocaleString("pt-BR")} —{" "}
                               </span>
                               {oc.descricao}
                             </p>
                           ))}
-                          {ocorrencias.length === 0 && <p style={{ ...hintStyle, margin: 0 }}>Nenhuma registrada.</p>}
+                          {ocorrencias.length === 0 && <p className="text-xs text-text-muted">Nenhuma registrada.</p>}
                           {canManage && inst.status !== "cancelada" && (
-                            <form
-                              action={registrarOcorrenciaInstalacaoAction}
-                              style={{ display: "flex", gap: "4px", marginTop: "4px" }}
-                            >
+                            <form action={registrarOcorrenciaInstalacaoAction} className="mt-1 flex gap-1">
                               <input type="hidden" name="instalacao_id" value={inst.id} />
-                              <input name="descricao" placeholder="descrever ocorrência" required style={{ ...inputStyle, flex: 1 }} />
-                              <button type="submit" style={buttonStyle}>
+                              <Input name="descricao" placeholder="descrever ocorrência" required className="flex-1" />
+                              <Button type="submit" variant="primary">
                                 Registrar ocorrência
-                              </button>
+                              </Button>
                             </form>
                           )}
                         </div>
                       </div>
                     );
                   })}
-                  {instalacoes.length === 0 && <p style={hintStyle}>Nenhuma instalação agendada ainda para este pedido.</p>}
+                  {instalacoes.length === 0 && (
+                    <p className="text-xs text-text-muted">Nenhuma instalação agendada ainda para este pedido.</p>
+                  )}
                 </div>
-              </div>
+              </Card>
             );
           })}
           {pedidos.length === 0 && (
-            <p style={hintStyle}>Nenhum pedido liberado ainda — a instalação só entra depois da liberação (TÓPICO 3).</p>
+            <p className="text-xs text-text-muted">
+              Nenhum pedido liberado ainda — a instalação só entra depois da liberação (TÓPICO 3).
+            </p>
           )}
         </div>
       </section>
+      )}
 
+      {activeTab === "danos" && (
       <section>
-        <h2 style={sectionTitleStyle}>Danos em obra — solicitações de nova fabricação pendentes</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+        <h2 className="text-sm font-semibold text-text">Danos em obra — solicitações de nova fabricação pendentes</h2>
+        <Table className="mt-2">
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-              <th style={thStyle}>Instalação</th>
-              <th style={thStyle}>Item</th>
-              <th style={thStyle}>Qtd.</th>
-              <th style={thStyle}>Causa</th>
-              <th style={thStyle}>Descrição</th>
-              {canDecidirDano && <th style={thStyle}></th>}
+            <tr>
+              <Th>Instalação</Th>
+              <Th>Item</Th>
+              <Th>Qtd.</Th>
+              <Th>Causa</Th>
+              <Th>Descrição</Th>
+              {canDecidirDano && <Th />}
             </tr>
           </thead>
           <tbody>
             {todosDanos.map((d) => {
               const solicitacao = solicitacoesPendentesPorDano.get(d.id)!;
               return (
-                <tr key={d.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                  <td style={tdStyle}>{d.instalacaoNumero}</td>
-                  <td style={tdStyle}>
+                <tr key={d.id}>
+                  <Td>{d.instalacaoNumero}</Td>
+                  <Td>
                     {(() => {
                       const pi = pedidoItemById.get(d.pedidoItemId);
                       return pi ? itemLabel(pi.item_id) : "(item removido)";
                     })()}
-                  </td>
-                  <td style={tdStyle}>{num(d.quantidade)}</td>
-                  <td style={tdStyle}>{d.causa}</td>
-                  <td style={tdStyle}>{d.descricao ?? "—"}</td>
+                  </Td>
+                  <Td>{num(d.quantidade)}</Td>
+                  <Td>{d.causa}</Td>
+                  <Td>{d.descricao ?? "—"}</Td>
                   {canDecidirDano && (
-                    <td style={tdStyle}>
-                      <div style={{ display: "flex", gap: "4px" }}>
+                    <Td>
+                      <div className="flex gap-1">
                         <form action={decidirNovaFabricacaoAction}>
                           <input type="hidden" name="solicitacao_id" value={solicitacao.id} />
                           <input type="hidden" name="decisao" value="aprovada" />
-                          <button type="submit" style={buttonStyle}>
+                          <Button type="submit" variant="primary">
                             Aprovar
-                          </button>
+                          </Button>
                         </form>
                         <form action={decidirNovaFabricacaoAction}>
                           <input type="hidden" name="solicitacao_id" value={solicitacao.id} />
                           <input type="hidden" name="decisao" value="rejeitada" />
-                          <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                          <Button type="submit" variant="danger">
                             Rejeitar
-                          </button>
+                          </Button>
                         </form>
                       </div>
-                    </td>
+                    </Td>
                   )}
                 </tr>
               );
             })}
             {todosDanos.length === 0 && (
               <tr>
-                <td style={tdStyle} colSpan={canDecidirDano ? 6 : 5}>
-                  <span style={{ color: "#6b7a75" }}>Nenhuma solicitação pendente.</span>
-                </td>
+                <Td colSpan={canDecidirDano ? 6 : 5}>
+                  <span className="text-text-muted">Nenhuma solicitação pendente.</span>
+                </Td>
               </tr>
             )}
           </tbody>
-        </table>
+        </Table>
       </section>
+      )}
     </>
   );
 }

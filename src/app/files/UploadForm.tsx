@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
 import { uploadFileAction } from "./actions";
+import { Button } from "@/components/ui/Button";
 
 export default function UploadForm() {
   const [pending, setPending] = useState(false);
@@ -62,8 +63,8 @@ export default function UploadForm() {
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-      <label style={{ fontSize: "13px" }}>
+    <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-2.5">
+      <label className="text-sm text-text">
         Arquivos (JPEG, PNG, WEBP ou PDF — até 20 MiB cada, no máximo {MAX_FILES_PER_UPLOAD} por vez)
         <input
           ref={inputRef}
@@ -72,35 +73,18 @@ export default function UploadForm() {
           multiple
           required
           accept="image/jpeg,image/png,image/webp,application/pdf"
-          style={{ display: "block", marginTop: "4px" }}
+          className="mt-1 block text-sm text-text"
         />
       </label>
 
-      {errors.length > 0 && (
-        <p style={{ color: "#9b2c2c", fontSize: "13px", margin: 0 }}>{errors.join(" | ")}</p>
-      )}
+      {errors.length > 0 && <p className="text-sm text-danger">{errors.join(" | ")}</p>}
       {!pending && successCount > 0 && (
-        <p style={{ color: "#1f5d57", fontSize: "13px", margin: 0 }}>
-          {successCount} arquivo(s) enviado(s) com sucesso.
-        </p>
+        <p className="text-sm text-primary">{successCount} arquivo(s) enviado(s) com sucesso.</p>
       )}
 
-      <button
-        type="submit"
-        disabled={pending}
-        style={{
-          background: "#1f5d57",
-          color: "#fff",
-          border: "none",
-          borderRadius: "6px",
-          padding: "10px",
-          fontSize: "14px",
-          cursor: "pointer",
-          width: "fit-content",
-        }}
-      >
+      <Button type="submit" variant="primary" disabled={pending} className="w-fit">
         {pending ? "Enviando..." : "Enviar"}
-      </button>
+      </Button>
     </form>
   );
 }

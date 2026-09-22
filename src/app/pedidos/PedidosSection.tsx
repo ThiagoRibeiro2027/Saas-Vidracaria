@@ -66,6 +66,7 @@ const STATUS_TONE: Record<Pedido["status"], "neutral" | "success" | "warning" | 
 };
 
 export default function PedidosSection({
+  activeTab,
   pedidos,
   itensPorPedido,
   pendenciasPorPedido,
@@ -77,6 +78,7 @@ export default function PedidosSection({
   itens,
   canManage,
 }: {
+  activeTab: "pedidos" | "conversao";
   pedidos: Pedido[];
   itensPorPedido: Map<string, PedidoItem[]>;
   pendenciasPorPedido: Map<string, Pendencia[]>;
@@ -97,7 +99,7 @@ export default function PedidosSection({
 
   return (
     <>
-      {canManage && (
+      {activeTab === "conversao" && canManage && (
         <section>
           <h2 className="text-sm font-semibold text-text">Orçamentos aprovados aguardando conversão</h2>
           {orcamentosDisponiveis.length === 0 ? (
@@ -126,6 +128,7 @@ export default function PedidosSection({
         </section>
       )}
 
+      {activeTab === "pedidos" && (
       <section>
         <h2 className="text-sm font-semibold text-text">Pedidos</h2>
         <div className="mt-2 flex flex-col gap-4">
@@ -248,6 +251,7 @@ export default function PedidosSection({
           {pedidos.length === 0 && <p className="text-xs text-text-muted">Nenhum pedido ainda.</p>}
         </div>
       </section>
+      )}
     </>
   );
 }

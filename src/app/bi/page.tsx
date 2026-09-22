@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import BIDashboard from "./BIDashboard";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
 // TÓPICO 12 — BI, recorte mínimo do MVP (ADR-002 §4.16): só indicadores
 // operacionais básicos, sem KPI versionado, drill-down, DRE ou assistente
@@ -13,61 +14,28 @@ export default async function BIPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar os indicadores desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar os indicadores desta empresa." />
+      </div>
     );
   }
 
   const { data, error } = await supabase.rpc("dashboard_operacional");
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 12 — BI</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Indicadores</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do MVP: indicadores operacionais básicos de acompanhamento do fluxo.
-        </p>
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 12 — BI</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Indicadores</h1>
+      <p className="mt-1 text-sm text-text">
+        Recorte mínimo do MVP: indicadores operacionais básicos de acompanhamento do fluxo.
+      </p>
 
-        {error && (
-          <p style={{ fontSize: "13px", color: "#9b2c2c" }}>Não foi possível carregar os indicadores: {error.message}</p>
-        )}
-        {!error && data && <BIDashboard data={data} />}
-      </div>
-    </main>
+      {error && <p className="mt-3 text-sm text-danger">Não foi possível carregar os indicadores: {error.message}</p>}
+      {!error && data && (
+        <div className="mt-6">
+          <BIDashboard data={data} />
+        </div>
+      )}
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

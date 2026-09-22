@@ -1,6 +1,9 @@
 "use client";
 
 import { transitionSubscriptionAction } from "./actions";
+import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 const STATUSES = ["trial", "active", "past_due", "suspended", "canceled", "expired"] as const;
 
@@ -22,63 +25,51 @@ function formatBytes(bytes: number) {
 
 export default function AdminSubscriptionsTable({ rows }: { rows: Row[] }) {
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+    <div className="overflow-x-auto">
+      <Table>
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-            <th style={thStyle}>Empresa</th>
-            <th style={thStyle}>Plano</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Usuários</th>
-            <th style={thStyle}>Storage</th>
-            <th style={thStyle}>Alterar status</th>
+          <tr>
+            <Th>Empresa</Th>
+            <Th>Plano</Th>
+            <Th>Status</Th>
+            <Th>Usuários</Th>
+            <Th>Storage</Th>
+            <Th>Alterar status</Th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.companyId} style={{ borderBottom: "1px solid #eef1ef" }}>
-              <td style={tdStyle}>{row.companyName}</td>
-              <td style={tdStyle}>{row.planName ?? "— sem plano —"}</td>
-              <td style={{ ...tdStyle, fontFamily: "monospace" }}>{row.status}</td>
-              <td style={tdStyle}>
+            <tr key={row.companyId}>
+              <Td>{row.companyName}</Td>
+              <Td>{row.planName ?? "— sem plano —"}</Td>
+              <Td className="font-mono">{row.status}</Td>
+              <Td>
                 {row.userCount}
                 {row.maxUsers ? ` / ${row.maxUsers}` : ""}
-              </td>
-              <td style={tdStyle}>
+              </Td>
+              <Td>
                 {formatBytes(row.storageBytesUsed)}
                 {row.maxStorageBytes ? ` / ${formatBytes(row.maxStorageBytes)}` : ""}
-              </td>
-              <td style={tdStyle}>
-                <form action={transitionSubscriptionAction} style={{ display: "flex", gap: "6px" }}>
+              </Td>
+              <Td>
+                <form action={transitionSubscriptionAction} className="flex gap-1.5">
                   <input type="hidden" name="company_id" value={row.companyId} />
-                  <select name="status" defaultValue={row.status} style={{ fontSize: "12px" }}>
+                  <Select name="status" defaultValue={row.status}>
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>
                         {s}
                       </option>
                     ))}
-                  </select>
-                  <button type="submit" style={buttonStyle}>
+                  </Select>
+                  <Button type="submit" variant="primary" size="sm">
                     Aplicar
-                  </button>
+                  </Button>
                 </form>
-              </td>
+              </Td>
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   );
 }
-
-const thStyle = { padding: "6px 8px" } as const;
-const tdStyle = { padding: "6px 8px" } as const;
-const buttonStyle = {
-  background: "#1f5d57",
-  color: "#fff",
-  border: "none",
-  borderRadius: "4px",
-  padding: "3px 8px",
-  fontSize: "12px",
-  cursor: "pointer",
-} as const;

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { exportCompanyDataAction } from "./actions";
+import { Button } from "@/components/ui/Button";
 
 export default function ExportButton() {
   const [pending, setPending] = useState(false);
@@ -28,23 +29,11 @@ export default function ExportButton() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-start" }}>
-      <button
-        onClick={handleExport}
-        disabled={pending}
-        style={{
-          background: "#1f5d57",
-          color: "#fff",
-          border: "none",
-          borderRadius: "6px",
-          padding: "10px 14px",
-          fontSize: "14px",
-          cursor: "pointer",
-        }}
-      >
+    <div className="flex flex-col items-start gap-2">
+      <Button onClick={handleExport} variant="primary" disabled={pending}>
         {pending ? "Gerando..." : "Exportar dados da empresa (JSON)"}
-      </button>
-      {error && <p style={{ color: "#9b2c2c", fontSize: "13px", margin: 0 }}>{error}</p>}
+      </Button>
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
 }
