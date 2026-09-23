@@ -61,7 +61,9 @@ insert into public.permissions (resource, action, description) values
   ('fiscal', 'view', 'Visualizar documentos fiscais registrados da empresa (ADR-004 §9.2)'),
   ('fiscal', 'manage', 'Registrar, vincular e cancelar (correção interna) documentos fiscais (ADR-004 §9.2)'),
   ('integracoes', 'view', 'Visualizar a Central de Integrações, catálogo, fonte oficial e operações da empresa (TÓPICO 13, ADR-002 v2.5)'),
-  ('integracoes', 'manage', 'Configurar, ativar/desativar integrações, definir fonte oficial e gerenciar operações da fila (TÓPICO 13, ADR-002 v2.5)')
+  ('integracoes', 'manage', 'Configurar, ativar/desativar integrações, definir fonte oficial e gerenciar operações da fila (TÓPICO 13, ADR-002 v2.5)'),
+  ('contratos', 'view', 'Visualizar contratos com clientes, fornecedores e funcionários/prestadores da empresa — mistura dado sensível de RH (TÓPICO 18)'),
+  ('contratos', 'manage', 'Criar/editar contrato em rascunho, ativar e encerrar contratos da empresa (TÓPICO 18)')
 on conflict (resource, action) do nothing;
 
 -- Catálogo global de integrações (TÓPICO 13 §3) — Fase 1 só semeia os

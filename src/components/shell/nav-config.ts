@@ -22,6 +22,7 @@ import {
   FileStack,
   Download,
   Plug,
+  FileSignature,
   type LucideIcon,
 } from "lucide-react";
 
@@ -66,6 +67,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Financeiro", href: "/financeiro", icon: Wallet },
       { label: "Fiscal", href: "/fiscal", icon: Receipt },
       { label: "RH", href: "/rh", icon: Users },
+      { label: "Contratos", href: "/contratos", icon: FileSignature },
       { label: "BI (Indicadores)", href: "/bi", icon: BarChart3 },
     ],
   },
