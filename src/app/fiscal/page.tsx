@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import FiscalSection from "./FiscalSection";
 
-// ADR-004 — Estratégia Fiscal, recorte mínimo do MVP (§9.2): estrutura de
-// registro/rastreabilidade de documento fiscal, sem emissão, cancelamento
-// fiscal real, inutilização ou transmissão (§9.3 — fora do piloto da JR
-// Box, §9.1: o faturamento permanece no sistema atual da empresa).
+// ADR-004 — Estratégia Fiscal, completo: estrutura de registro/
+// rastreabilidade do documento (§9.2) mais conferência/aprovação/
+// rejeição/pendência no nível do documento (§6, migration
+// 20261007000000). Sem emissão, cancelamento fiscal real, inutilização
+// ou transmissão (§9.3 — fora do piloto da JR Box, §9.1: o faturamento
+// permanece no sistema atual da empresa).
 export default async function FiscalPage() {
   const supabase = await createClient();
 
@@ -33,8 +35,8 @@ export default async function FiscalPage() {
         <p style={eyebrowStyle}>ADR-004 — Fiscal</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Fiscal</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do MVP: registro e rastreabilidade de documentos fiscais. Sem emissão
-          real neste piloto.
+          Registro, rastreabilidade e avaliação (conferência/aprovação/rejeição/pendência) de
+          documentos fiscais. Sem emissão real neste piloto.
         </p>
 
         <FiscalSection rows={documentos ?? []} canManage={!!canManage} />
