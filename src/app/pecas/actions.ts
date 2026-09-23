@@ -90,3 +90,44 @@ export async function removerMaterialPecaAction(formData: FormData) {
 
   revalidatePath("/pecas");
 }
+
+export async function definirCaracteristicaPecaAction(formData: FormData) {
+  const pecaId = String(formData.get("peca_id") ?? "");
+  const nome = String(formData.get("nome") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "");
+  const unidade = String(formData.get("unidade") ?? "").trim() || null;
+  const opcoesRaw = String(formData.get("opcoes") ?? "").trim();
+  const obrigatoria = formData.get("obrigatoria") === "on";
+  if (!pecaId) throw new Error("Peça inválida.");
+  if (!nome) throw new Error("Nome da característica é obrigatório.");
+  if (!["numero", "texto", "opcao"].includes(tipo)) throw new Error("Tipo de característica inválido.");
+
+  const opcoes = tipo === "opcao" ? opcoesRaw.split(",").map((v) => v.trim()).filter(Boolean) : null;
+  if (tipo === "opcao" && (!opcoes || opcoes.length === 0)) {
+    throw new Error("Característica do tipo opção precisa de pelo menos um valor permitido.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_caracteristica_peca", {
+    p_peca_id: pecaId,
+    p_nome: nome,
+    p_tipo: tipo,
+    p_unidade: unidade,
+    p_opcoes: opcoes,
+    p_obrigatoria: obrigatoria,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
+
+export async function removerCaracteristicaPecaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Característica inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remover_caracteristica_peca", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}

@@ -45,3 +45,28 @@ export async function confirmarMedicaoAction(formData: FormData) {
 
   revalidatePath("/engenharia");
 }
+
+export async function definirValorCaracteristicaAction(formData: FormData) {
+  const pedidoItemId = String(formData.get("pedido_item_id") ?? "");
+  const pecaCaracteristicaId = String(formData.get("peca_caracteristica_id") ?? "");
+  const tipo = String(formData.get("tipo") ?? "");
+  const valorRaw = String(formData.get("valor") ?? "").trim();
+  if (!pedidoItemId || !pecaCaracteristicaId || !valorRaw) {
+    throw new Error("Característica e valor são obrigatórios.");
+  }
+
+  const valorNumero = tipo === "numero" ? Number(valorRaw) : null;
+  if (tipo === "numero" && !Number.isFinite(valorNumero)) throw new Error("Valor numérico inválido.");
+  const valorTexto = tipo === "numero" ? null : valorRaw;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_valor_caracteristica_pedido_item", {
+    p_pedido_item_id: pedidoItemId,
+    p_peca_caracteristica_id: pecaCaracteristicaId,
+    p_valor_numero: valorNumero,
+    p_valor_texto: valorTexto,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/engenharia");
+}

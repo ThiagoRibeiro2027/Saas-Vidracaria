@@ -30,6 +30,7 @@ export default async function EngenhariaPage() {
     { data: pessoas },
     { data: obras },
     { data: itens },
+    { data: pecas },
   ] = await Promise.all([
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
@@ -37,6 +38,7 @@ export default async function EngenhariaPage() {
     supabase.from("pessoas").select("id, nome"),
     supabase.from("obras").select("id, nome"),
     supabase.from("itens").select("id, codigo, descricao, tipo"),
+    supabase.from("pecas").select("id, item_id"),
   ]);
 
   const pedidoItensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
@@ -48,6 +50,24 @@ export default async function EngenhariaPage() {
 
   const itemProducaoPorPedidoItem = new Map(
     (itensProducao ?? []).map((ip) => [ip.pedido_item_id, ip] as const),
+  );
+
+  // Fase F (Peças/Configurador) — pedido_item cujo item é uma peça
+  // configurável ganha a lista de características + valor já informado
+  // (se houver). N chamadas sobre os pedido_itens já buscados, mesmo
+  // padrão de Promise.all já usado em producao/page.tsx.
+  const pecaIdPorItemId = new Map((pecas ?? []).map((p) => [p.item_id, p.id]));
+  const caracteristicasPorPedidoItem = new Map<
+    string,
+    { peca_caracteristica_id: string; nome: string; tipo: string; unidade: string | null; obrigatoria: boolean; valor_numero: number | null; valor_texto: string | null }[]
+  >();
+  await Promise.all(
+    (pedidoItens ?? [])
+      .filter((pi) => pecaIdPorItemId.has(pi.item_id))
+      .map(async (pi) => {
+        const { data } = await supabase.rpc("listar_valores_caracteristicas_pedido_item", { p_pedido_item_id: pi.id });
+        if (data && data.length > 0) caracteristicasPorPedidoItem.set(pi.id, data);
+      }),
   );
 
   return (
@@ -67,6 +87,7 @@ export default async function EngenhariaPage() {
           pessoas={pessoas ?? []}
           obras={obras ?? []}
           itens={itens ?? []}
+          caracteristicasPorPedidoItem={caracteristicasPorPedidoItem}
           canManage={!!canManage}
         />
       </div>

@@ -375,6 +375,162 @@ async function main() {
     check("necessidade recursiva soma a árvore inteira (5x2x3=30)", (data ?? []).length === 1 && Number(data[0].quantidade_gerada) === 30);
   }
 
+  // =========================================================================
+  // Fase F do plano de 23/09/2026 — Configurador (características de
+  // peça). Dentro do que o ADR-002 §4.5 já autoriza ("características
+  // técnicas" explícito na lista) — não precisa de emenda. Definir a
+  // característica é pecas.manage; informar o valor por pedido_item é
+  // engenharia.manage (ADR-002 §4.5, "medidas... características
+  // técnicas" é Engenharia transformando pedido em informação
+  // executável).
+  // =========================================================================
+
+  console.log("\n26. Massa de dados — peça com características numero/opcao");
+  const { data: itemPecaCfgId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "JAN-PC-CFG", p_descricao: "Janela Cfg", p_tipo: "produto_acabado",
+    p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+  });
+  const { data: pecaCfgId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaCfgId, p_descricao_tecnica: null });
+
+  console.log("\n27. definir_caracteristica_peca() numero e opcao");
+  const { data: caractLarguraId } = await admTenant.client.rpc("definir_caracteristica_peca", {
+    p_peca_id: pecaCfgId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true,
+  });
+  check("característica numérica criada", !!caractLarguraId);
+  const { data: caractVidroId } = await admTenant.client.rpc("definir_caracteristica_peca", {
+    p_peca_id: pecaCfgId, p_nome: "vidro", p_tipo: "opcao", p_unidade: null,
+    p_opcoes: ["temperado_6mm", "temperado_8mm", "laminado"], p_obrigatoria: true,
+  });
+  check("característica de opção criada", !!caractVidroId);
+
+  console.log("\n28. definir_caracteristica_peca() rejeita opção sem lista e não-opção com lista");
+  {
+    const { error: semListaErr } = await admTenant.client.rpc("definir_caracteristica_peca", {
+      p_peca_id: pecaCfgId, p_nome: "acabamento", p_tipo: "opcao", p_unidade: null, p_opcoes: null, p_obrigatoria: true,
+    });
+    check("tipo opcao sem lista é rejeitado", !!semListaErr);
+
+    const { error: comListaErr } = await admTenant.client.rpc("definir_caracteristica_peca", {
+      p_peca_id: pecaCfgId, p_nome: "altura", p_tipo: "numero", p_unidade: "mm", p_opcoes: ["x"], p_obrigatoria: true,
+    });
+    check("tipo numero com lista é rejeitado", !!comListaErr);
+  }
+
+  console.log("\n29. definir_caracteristica_peca() exige pecas.manage");
+  {
+    const { error } = await noPermTenant.client.rpc("definir_caracteristica_peca", {
+      p_peca_id: pecaCfgId, p_nome: "outra", p_tipo: "texto", p_unidade: null, p_opcoes: null, p_obrigatoria: false,
+    });
+    check("sem pecas.manage não define característica", !!error);
+  }
+
+  console.log("\n30. Pedido com item configurável — captura de valores");
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "orcamento", p_prefixo: "ORCPCF-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "pedido", p_prefixo: "PEDPCF-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  const { data: clienteCfgId } = await admTenant.client.rpc("upsert_pessoa", {
+    p_id: null, p_tipo_documento: "CPF", p_documento: "77777777777", p_nome: "Cliente Cfg Teste",
+    p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+    p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+  });
+  await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: clienteCfgId, p_papel: "CLIENTE", p_ativo: true });
+  const { data: orcamentoCfgId } = await admTenant.client.rpc("upsert_orcamento", {
+    p_id: null, p_pessoa_id: clienteCfgId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+  });
+  await admTenant.client.rpc("upsert_orcamento_item", {
+    p_id: null, p_orcamento_id: orcamentoCfgId, p_item_id: itemPecaCfgId, p_quantidade: 1, p_preco_unitario: 1000,
+  });
+  await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoCfgId, p_decisao: "aprovado" });
+  const { data: pedidoCfgId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoCfgId });
+  const { data: pedidoItemCfg } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoCfgId).single();
+  const pedidoItemCfgId = pedidoItemCfg.id;
+
+  console.log("\n31. definir_valor_caracteristica_pedido_item() sucesso e validações de tipo");
+  {
+    const { error: okErr } = await admTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+      p_pedido_item_id: pedidoItemCfgId, p_peca_caracteristica_id: caractLarguraId, p_valor_numero: 1800, p_valor_texto: null,
+    });
+    check("valor numérico aceito", !okErr);
+
+    const { error: tipoErradoErr } = await admTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+      p_pedido_item_id: pedidoItemCfgId, p_peca_caracteristica_id: caractLarguraId, p_valor_numero: 1800, p_valor_texto: "errado",
+    });
+    check("numérico com valor_texto junto é rejeitado", !!tipoErradoErr);
+
+    const { error: opcaoInvalidaErr } = await admTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+      p_pedido_item_id: pedidoItemCfgId, p_peca_caracteristica_id: caractVidroId, p_valor_numero: null, p_valor_texto: "nao_existe",
+    });
+    check("opção fora da lista é rejeitada", !!opcaoInvalidaErr);
+
+    const { error: opcaoOkErr } = await admTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+      p_pedido_item_id: pedidoItemCfgId, p_peca_caracteristica_id: caractVidroId, p_valor_numero: null, p_valor_texto: "temperado_8mm",
+    });
+    check("opção válida aceita", !opcaoOkErr);
+  }
+
+  console.log("\n32. definir_valor_caracteristica_pedido_item() reexecutado atualiza (upsert)");
+  {
+    await admTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+      p_pedido_item_id: pedidoItemCfgId, p_peca_caracteristica_id: caractLarguraId, p_valor_numero: 2000, p_valor_texto: null,
+    });
+    const { data } = await admin
+      .from("pedido_item_caracteristicas")
+      .select("valor_numero")
+      .eq("pedido_item_id", pedidoItemCfgId)
+      .eq("peca_caracteristica_id", caractLarguraId)
+      .single();
+    check("valor atualizado em vez de duplicar linha", Number(data?.valor_numero) === 2000);
+  }
+
+  console.log("\n33. definir_valor_caracteristica_pedido_item() exige engenharia.manage");
+  {
+    const { error } = await noPermTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+      p_pedido_item_id: pedidoItemCfgId, p_peca_caracteristica_id: caractLarguraId, p_valor_numero: 1, p_valor_texto: null,
+    });
+    check("sem engenharia.manage não informa valor", !!error);
+  }
+
+  console.log("\n34. listar_valores_caracteristicas_pedido_item() traz as 2 características");
+  {
+    const { data } = await admTenant.client.rpc("listar_valores_caracteristicas_pedido_item", { p_pedido_item_id: pedidoItemCfgId });
+    check("traz as 2 características da peça, com valor", (data ?? []).length === 2 && data.every((c) => c.valor_numero !== null || c.valor_texto !== null));
+  }
+
+  console.log("\n35. remover_caracteristica_peca() rejeita quando já há valor informado");
+  {
+    const { error } = await admTenant.client.rpc("remover_caracteristica_peca", { p_id: caractLarguraId });
+    check("não remove característica com valor já informado", !!error);
+  }
+
+  console.log("\n36. Isolamento entre tenants (configurador)");
+  {
+    const { error: err1 } = await otherTenant.client.rpc("definir_caracteristica_peca", {
+      p_peca_id: pecaCfgId, p_nome: "outra", p_tipo: "texto", p_unidade: null, p_opcoes: null, p_obrigatoria: false,
+    });
+    check("tenant B não define característica em peça do tenant A", !!err1);
+
+    const { error: err2 } = await otherTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+      p_pedido_item_id: pedidoItemCfgId, p_peca_caracteristica_id: caractLarguraId, p_valor_numero: 1, p_valor_texto: null,
+    });
+    check("tenant B não informa valor em pedido do tenant A", !!err2);
+  }
+
+  console.log("\n37. Auditoria do configurador");
+  {
+    const { data: events } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", ["pecas.caracteristica_definida", "engenharia.caracteristica_valor_definido"]);
+    const actions = new Set((events ?? []).map((e) => e.action));
+    check("pecas.caracteristica_definida registrado", actions.has("pecas.caracteristica_definida"));
+    check("engenharia.caracteristica_valor_definido registrado", actions.has("engenharia.caracteristica_valor_definido"));
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

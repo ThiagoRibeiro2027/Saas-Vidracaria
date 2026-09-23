@@ -49,6 +49,18 @@ export default async function PecasPage() {
     }),
   );
 
+  // TÓPICO 5 Fase F — características configuráveis por peça.
+  const caracteristicasPorPeca = new Map<
+    string,
+    { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean }[]
+  >();
+  await Promise.all(
+    (pecas ?? []).map(async (p) => {
+      const { data } = await supabase.rpc("listar_caracteristicas_peca", { p_peca_id: p.id });
+      caracteristicasPorPeca.set(p.id, data ?? []);
+    }),
+  );
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -66,6 +78,7 @@ export default async function PecasPage() {
           composicao={composicao ?? []}
           itens={itens ?? []}
           revisoesPorPeca={revisoesPorPeca}
+          caracteristicasPorPeca={caracteristicasPorPeca}
           canManage={!!canManage}
         />
       </div>
