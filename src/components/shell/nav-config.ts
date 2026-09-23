@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   ShoppingCart,
   ClipboardList,
+  ListOrdered,
   Ruler,
   Factory,
   BadgeCheck,
@@ -53,6 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Operação",
     items: [
       { label: "Produção", href: "/producao", icon: Factory },
+      { label: "Fila de Produção", href: "/fila-producao", icon: ListOrdered },
       { label: "Qualidade", href: "/qualidade", icon: BadgeCheck },
       { label: "Estoque", href: "/estoque", icon: Boxes },
       { label: "Expedição", href: "/expedicao", icon: Truck },
