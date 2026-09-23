@@ -63,7 +63,9 @@ insert into public.permissions (resource, action, description) values
   ('integracoes', 'view', 'Visualizar a Central de Integrações, catálogo, fonte oficial e operações da empresa (TÓPICO 13, ADR-002 v2.5)'),
   ('integracoes', 'manage', 'Configurar, ativar/desativar integrações, definir fonte oficial e gerenciar operações da fila (TÓPICO 13, ADR-002 v2.5)'),
   ('contratos', 'view', 'Visualizar contratos com clientes, fornecedores e funcionários/prestadores da empresa — mistura dado sensível de RH (TÓPICO 18)'),
-  ('contratos', 'manage', 'Criar/editar contrato em rascunho, ativar e encerrar contratos da empresa (TÓPICO 18)')
+  ('contratos', 'manage', 'Criar/editar contrato em rascunho, ativar e encerrar contratos da empresa (TÓPICO 18)'),
+  ('pecas', 'view', 'Visualizar peças fabricadas e sua composição de materiais da empresa (Fase A, plano de 23/09/2026)'),
+  ('pecas', 'manage', 'Criar/inativar peça e gerir a composição de materiais (Fase A, plano de 23/09/2026)')
 on conflict (resource, action) do nothing;
 
 -- Catálogo global de integrações (TÓPICO 13 §3) — Fase 1 só semeia os
