@@ -1,16 +1,14 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.7\
+**Versão:** 2.6\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
 resolvida, ver nota no próprio §4.7; §4.3 revisado em 2026-09-19 —
 ampliação de escopo do TÓPICO 10; §4.17 revisado em 2026-09-23 —
 recorte mínimo do TÓPICO 13, Fase 1; §4.16 revisado em 2026-09-23 —
-Fase 2, ainda básica, do TÓPICO 12; §4.18 revisado em 2026-09-23 —
-recebimento leve de material, Fase D do plano de fila de
-produção/peças/suprimentos)\
+Fase 2, ainda básica, do TÓPICO 12)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
 
@@ -987,36 +985,6 @@ MVP, o sistema deverá:
 - permitir acompanhamento da necessidade.
 
 A efetivação da compra poderá ocorrer fora do SaaS durante o MVP.
-
-**Ampliação de escopo — recebimento leve, Fase D (23/09/2026 — decisão
-do responsável do produto via chat).** O módulo completo de Compras
-continua integralmente fora do MVP, sem nenhuma exceção: continuam fora
-cadastro de fornecedor com dados/condições de compra, cotação e
-comparação de preço, negociação, pedido de compra formal com termos
-comerciais, aprovação por alçada de compra, compra recorrente/contrato,
-orçado×comprometido×realizado, mapa de compras futuras, avaliação de
-fornecedor e o próprio conceito de Pedido de Compra como documento —
-nada disso é aprovado agora.
-
-O que passa a fazer parte do MVP, de forma simplificada, é só fechar o
-ciclo que o parágrafo acima já abre ("permitir acompanhamento da
-necessidade") com um passo a mais depois de "atendida": registrar que o
-material referente a uma necessidade de compra foi efetivamente
-recebido, com a quantidade recebida, e dar entrada física no estoque a
-partir disso — reaproveitando o mecanismo de ajuste de saldo que já
-existe (TÓPICO 6, `ajustar_saldo()`), sem criar um mecanismo de entrada
-de estoque novo.
-
-Continua fora desta ampliação, ficando para uma fase futura do próprio
-TÓPICO 7 mediante nova aprovação: nota fiscal de entrada vinculada
-automaticamente ao recebimento (isso é TÓPICO 13, captura/conferência
-fiscal, ADR-004), conferência de qualidade do material recebido,
-recebimento parcial em múltiplas remessas com rastreamento individual
-por remessa, divergência entre pedido/nota/recebido, devolução ao
-fornecedor, controle de lote/série no recebimento, e quarentena. O
-recebimento aqui é só "a necessidade virou material disponível em
-estoque" — um estado a mais no ciclo de vida da necessidade, não um
-processo de recebimento com conferência.
 
 **5. Funcionalidades explicitamente fora do MVP**
 
