@@ -21,6 +21,7 @@ import {
   History,
   FileStack,
   Download,
+  Plug,
   type LucideIcon,
 } from "lucide-react";
 
@@ -73,6 +74,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Usuários e Permissões", href: "/usuarios", icon: UserCog },
       { label: "Cadastros", href: "/cadastros", icon: BookUser },
+      { label: "Integrações", href: "/integracoes", icon: Plug },
       { label: "Governança", href: "/governance", icon: ShieldCheck },
       { label: "Configurações", href: "/configuracoes", icon: Settings },
     ],

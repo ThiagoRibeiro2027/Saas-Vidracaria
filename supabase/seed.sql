@@ -59,8 +59,17 @@ insert into public.permissions (resource, action, description) values
   ('rh', 'manage', 'Admitir, editar e desligar funcionários, incluindo revogar o acesso do usuário vinculado (TÓPICO 17)'),
   ('bi', 'view', 'Consultar o dashboard de indicadores operacionais básicos da empresa (TÓPICO 12)'),
   ('fiscal', 'view', 'Visualizar documentos fiscais registrados da empresa (ADR-004 §9.2)'),
-  ('fiscal', 'manage', 'Registrar, vincular e cancelar (correção interna) documentos fiscais (ADR-004 §9.2)')
+  ('fiscal', 'manage', 'Registrar, vincular e cancelar (correção interna) documentos fiscais (ADR-004 §9.2)'),
+  ('integracoes', 'view', 'Visualizar a Central de Integrações, catálogo, fonte oficial e operações da empresa (TÓPICO 13, ADR-002 v2.5)'),
+  ('integracoes', 'manage', 'Configurar, ativar/desativar integrações, definir fonte oficial e gerenciar operações da fila (TÓPICO 13, ADR-002 v2.5)')
 on conflict (resource, action) do nothing;
+
+-- Catálogo global de integrações (TÓPICO 13 §3) — Fase 1 só semeia os
+-- "ganchos vazios" aprovados (ADR-002 v2.5 §4.17): nenhum conector real.
+insert into public.integracoes_catalogo (key, nome, categoria, finalidade, disponivel) values
+  ('erp_generico', 'ERP genérico', 'erp', 'Sincronização de clientes, fornecedores, produtos, estoque, pedidos e financeiro com um ERP externo (TÓPICO 13 §8) — estrutura preparada, nenhum provedor real integrado nesta fase.', false),
+  ('nfe_provedor', 'Provedor de NF-e', 'fiscal', 'Captura e processamento de Notas Fiscais Eletrônicas de fornecedores (TÓPICO 13 §5) — estrutura preparada; o registro do documento em si já existe em documentos_fiscais (ADR-004 §9.2), este catálogo só referencia o gancho de integração externa.', false)
+on conflict (key) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
 -- Nomenclatura alinhada ao Prompt Mestre de Segurança, mas SUPER_ADMIN fica
