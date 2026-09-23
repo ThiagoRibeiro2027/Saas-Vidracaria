@@ -12,11 +12,14 @@ import { inputStyle, buttonStyle } from "../configuracoes/styles";
 export default async function BIPage({
   searchParams,
 }: {
-  searchParams: Promise<{ data_inicio?: string; data_fim?: string }>;
+  searchParams: Promise<{ data_inicio?: string | string[]; data_fim?: string | string[] }>;
 }) {
   const params = await searchParams;
-  const dataInicio = params.data_inicio?.trim() || null;
-  const dataFim = params.data_fim?.trim() || null;
+  // Next.js entrega string[] quando a chave se repete na querystring
+  // (ex.: ?data_inicio=a&data_inicio=b) — usa o primeiro valor.
+  const primeiro = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const dataInicio = primeiro(params.data_inicio)?.trim() || null;
+  const dataFim = primeiro(params.data_fim)?.trim() || null;
 
   const supabase = await createClient();
 

@@ -16,6 +16,7 @@ export async function upsertContratoAction(formData: FormData) {
   const renovacao = String(formData.get("renovacao") ?? "manual");
   const valorRaw = String(formData.get("valor") ?? "").trim();
   const valor = valorRaw ? Number(valorRaw) : null;
+  if (valor !== null && !Number.isFinite(valor)) throw new Error("Valor inválido.");
   const formaPagamento = String(formData.get("forma_pagamento") ?? "").trim() || null;
   const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
 
