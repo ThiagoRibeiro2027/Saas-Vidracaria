@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { atenderNecessidadeCompraAction, cancelarNecessidadeCompraAction, criarNecessidadeCompraAction } from "./actions";
+import {
+  atenderNecessidadeCompraAction,
+  cancelarNecessidadeCompraAction,
+  criarNecessidadeCompraAction,
+  gerarNecessidadesDePedidoAction,
+  gerarNecessidadesDeOrdemProducaoAction,
+} from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 
 const ORIGENS = [
@@ -29,16 +35,24 @@ type Necessidade = {
   created_at: string;
 };
 
+type Pedido = { id: string; numero: string };
+type OrdemProducao = { id: string; numero: string; pedido_id: string };
+
 export default function SuprimentosSection({
   rows,
   itens,
+  pedidos,
+  ordensProducao,
   canManage,
 }: {
   rows: Necessidade[];
   itens: Item[];
+  pedidos: Pedido[];
+  ordensProducao: OrdemProducao[];
   canManage: boolean;
 }) {
   const itemPorId = new Map(itens.map((i) => [i.id, i]));
+  const pedidoPorId = new Map(pedidos.map((p) => [p.id, p]));
 
   return (
     <section>
@@ -49,6 +63,7 @@ export default function SuprimentosSection({
         recebimento — a efetivação da compra acontece fora do sistema neste recorte.
       </p>
 
+      {canManage && <GerarNecessidadesForm pedidos={pedidos} ordensProducao={ordensProducao} pedidoPorId={pedidoPorId} />}
       {canManage && <NovaNecessidadeForm itens={itens} />}
 
       <div style={{ overflowX: "auto", marginTop: "12px" }}>
@@ -87,6 +102,59 @@ export default function SuprimentosSection({
         </table>
       </div>
     </section>
+  );
+}
+
+function GerarNecessidadesForm({
+  pedidos,
+  ordensProducao,
+  pedidoPorId,
+}: {
+  pedidos: Pedido[];
+  ordensProducao: OrdemProducao[];
+  pedidoPorId: Map<string, Pedido>;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "16px",
+        alignItems: "center",
+        marginBottom: "12px",
+        padding: "8px 10px",
+        background: "#f5f7f5",
+        borderRadius: "6px",
+      }}
+    >
+      <form action={gerarNecessidadesDePedidoAction} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        <select name="pedido_id" required style={{ ...inputStyle, width: "160px" }}>
+          <option value="">Gerar do pedido…</option>
+          {pedidos.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.numero}
+            </option>
+          ))}
+        </select>
+        <button type="submit" style={buttonStyle}>
+          Gerar necessidades
+        </button>
+      </form>
+
+      <form action={gerarNecessidadesDeOrdemProducaoAction} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        <select name="ordem_producao_id" required style={{ ...inputStyle, width: "220px" }}>
+          <option value="">Gerar da ordem de produção…</option>
+          {ordensProducao.map((op) => (
+            <option key={op.id} value={op.id}>
+              {op.numero} ({pedidoPorId.get(op.pedido_id)?.numero ?? op.pedido_id})
+            </option>
+          ))}
+        </select>
+        <button type="submit" style={buttonStyle}>
+          Gerar necessidades
+        </button>
+      </form>
+    </div>
   );
 }
 

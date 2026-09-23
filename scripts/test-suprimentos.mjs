@@ -216,6 +216,175 @@ async function main() {
     }
   }
 
+  // =========================================================================
+  // Fase C do plano de 23/09/2026 — necessidades automáticas geradas a
+  // partir de pedido/ordem de produção com peça (BOM leve, TÓPICO/Fase A)
+  // associada. Reaproveita admTenant/noPermTenant/otherTenant já criados
+  // acima; monta seu próprio cliente/pedidos pra não interferir nos blocos
+  // 1-14 (que já usaram o item "VD-SUP-1" e a necessidade original).
+  // =========================================================================
+
+  console.log("\n15. Massa de dados — cliente e peça/composição pra necessidades automáticas");
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "orcamento", p_prefixo: "ORCSA-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "pedido", p_prefixo: "PEDSA-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "ordem_producao", p_prefixo: "OPSA-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  const { data: clienteSaId } = await admTenant.client.rpc("upsert_pessoa", {
+    p_id: null, p_tipo_documento: "CPF", p_documento: "33333333333", p_nome: "Cliente Supr Auto",
+    p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+    p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+  });
+  await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: clienteSaId, p_papel: "CLIENTE", p_ativo: true });
+
+  async function prepararPedidoComPeca(sufixo, { quantidadePedido, quantidadePorUnidade, comPeca = true }) {
+    const { data: itemPecaId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: `PC-SA-${sufixo}`, p_descricao: `Peça ${sufixo}`, p_tipo: "produto_acabado",
+      p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+    });
+    let materialItemId = null;
+    let pecaId = null;
+    if (comPeca) {
+      const { data: matId } = await admTenant.client.rpc("upsert_item", {
+        p_id: null, p_codigo: `MT-SA-${sufixo}`, p_descricao: `Material ${sufixo}`, p_tipo: "materia_prima",
+        p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo",
+      });
+      materialItemId = matId;
+      const { data: pId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaId, p_descricao_tecnica: null });
+      pecaId = pId;
+      await admTenant.client.rpc("adicionar_material_peca", {
+        p_peca_id: pecaId, p_material_item_id: materialItemId, p_quantidade_por_unidade: quantidadePorUnidade, p_observacao: null,
+      });
+    }
+
+    const { data: orcamentoId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteSaId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: itemPecaId, p_quantidade: quantidadePedido, p_preco_unitario: 100,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoId, p_decisao: "aprovado" });
+    const { data: pedidoId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoId });
+    const { data: pedidoItem } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoId).single();
+
+    return { itemPecaId, materialItemId, pecaId, pedidoId, pedidoItemId: pedidoItem.id };
+  }
+
+  console.log("\n16. gerar_necessidades_de_pedido() rejeita pedido não liberado");
+  const cenarioA = await prepararPedidoComPeca("A", { quantidadePedido: 5, quantidadePorUnidade: 2 });
+  {
+    const { error } = await admTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: cenarioA.pedidoId });
+    check("pedido ainda não liberado é rejeitado", !!error);
+  }
+  await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: cenarioA.pedidoId });
+  await admTenant.client.rpc("liberar_pedido", { p_id: cenarioA.pedidoId });
+
+  console.log("\n17. gerar_necessidades_de_pedido() sucesso — sem estoque, 5 peças x 2 = falta 10");
+  {
+    const { data, error } = await admTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: cenarioA.pedidoId });
+    check("gera necessidade sem erro", !error);
+    check("falta calculada corretamente (10)", (data ?? []).length === 1 && Number(data[0].quantidade_gerada) === 10);
+
+    const { data: nc } = await admin.from("necessidades_compra").select("*").eq("item_id", cenarioA.materialItemId);
+    check("necessidade nasce 'aberta' com origem 'pedido'", nc?.length === 1 && nc[0].status === "aberta" && nc[0].origem === "pedido" && Number(nc[0].quantidade) === 10);
+  }
+
+  console.log("\n18. gerar_necessidades_de_pedido() reexecutado — idempotente, 0 linhas novas");
+  {
+    const { data } = await admTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: cenarioA.pedidoId });
+    check("reexecução não gera linha nova", (data ?? []).length === 0);
+    const { data: nc } = await admin.from("necessidades_compra").select("id").eq("item_id", cenarioA.materialItemId).eq("status", "aberta");
+    check("continua só 1 necessidade aberta", (nc ?? []).length === 1);
+  }
+
+  console.log("\n19. gerar_necessidades_de_pedido() com estoque parcial — necessário 6, disponível 2, falta 4");
+  const cenarioB = await prepararPedidoComPeca("B", { quantidadePedido: 2, quantidadePorUnidade: 3 });
+  await admTenant.client.rpc("ajustar_saldo", { p_item_id: cenarioB.materialItemId, p_quantidade_delta: 2, p_motivo: "estoque inicial teste" });
+  await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: cenarioB.pedidoId });
+  await admTenant.client.rpc("liberar_pedido", { p_id: cenarioB.pedidoId });
+  {
+    const { data, error } = await admTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: cenarioB.pedidoId });
+    check("gera necessidade sem erro", !error);
+    check("falta descontando estoque disponível (4)", (data ?? []).length === 1 && Number(data[0].quantidade_gerada) === 4);
+  }
+
+  console.log("\n20. Segundo pedido do mesmo material — já sinalizado + estoque cobrem a nova demanda, 0 linhas novas");
+  {
+    const { data: orcamentoId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteSaId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: cenarioB.itemPecaId, p_quantidade: 1, p_preco_unitario: 100,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoId, p_decisao: "aprovado" });
+    const { data: pedidoB2Id } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoId });
+    await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoB2Id });
+    await admTenant.client.rpc("liberar_pedido", { p_id: pedidoB2Id });
+
+    const { data } = await admTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: pedidoB2Id });
+    check("demanda já coberta por necessidade aberta + estoque não gera linha nova", (data ?? []).length === 0);
+  }
+
+  console.log("\n21. Item de pedido sem peça associada é ignorado, sem erro");
+  const cenarioC = await prepararPedidoComPeca("C", { quantidadePedido: 5, quantidadePorUnidade: 0, comPeca: false });
+  await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: cenarioC.pedidoId });
+  await admTenant.client.rpc("liberar_pedido", { p_id: cenarioC.pedidoId });
+  {
+    const { data, error } = await admTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: cenarioC.pedidoId });
+    check("item sem peça associada não gera erro nem necessidade", !error && (data ?? []).length === 0);
+  }
+
+  console.log("\n22. gerar_necessidades_de_ordem_producao() sucesso — necessário 4x2=8, falta 8");
+  const cenarioD = await prepararPedidoComPeca("D", { quantidadePedido: 3, quantidadePorUnidade: 4 });
+  await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: cenarioD.pedidoId });
+  await admTenant.client.rpc("liberar_pedido", { p_id: cenarioD.pedidoId });
+  const { data: opDId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: cenarioD.pedidoItemId, p_quantidade: 2 });
+  {
+    const { data, error } = await admTenant.client.rpc("gerar_necessidades_de_ordem_producao", { p_ordem_producao_id: opDId });
+    check("gera necessidade a partir da OP sem erro", !error);
+    check("falta calculada pela quantidade_planejada da OP (8)", (data ?? []).length === 1 && Number(data[0].quantidade_gerada) === 8);
+  }
+
+  console.log("\n23. gerar_necessidades_de_ordem_producao() reexecutado — idempotente");
+  {
+    const { data } = await admTenant.client.rpc("gerar_necessidades_de_ordem_producao", { p_ordem_producao_id: opDId });
+    check("reexecução não gera linha nova", (data ?? []).length === 0);
+  }
+
+  console.log("\n24. gerar_necessidades_de_pedido()/gerar_necessidades_de_ordem_producao() exigem suprimentos.manage");
+  {
+    const { error: err1 } = await noPermTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: cenarioA.pedidoId });
+    check("sem suprimentos.manage não gera necessidade de pedido", !!err1);
+    const { error: err2 } = await noPermTenant.client.rpc("gerar_necessidades_de_ordem_producao", { p_ordem_producao_id: opDId });
+    check("sem suprimentos.manage não gera necessidade de OP", !!err2);
+  }
+
+  console.log("\n25. Isolamento — tenant B não gera necessidade de pedido/OP do tenant A");
+  {
+    const { error: err1 } = await otherTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: cenarioA.pedidoId });
+    check("tenant B não gera necessidade do pedido do tenant A", !!err1);
+    const { error: err2 } = await otherTenant.client.rpc("gerar_necessidades_de_ordem_producao", { p_ordem_producao_id: opDId });
+    check("tenant B não gera necessidade da OP do tenant A", !!err2);
+  }
+
+  console.log("\n26. Auditoria das gerações automáticas");
+  {
+    const { data: events } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", ["suprimentos.necessidades_geradas_de_pedido", "suprimentos.necessidades_geradas_de_producao"]);
+    const actions = new Set((events ?? []).map((e) => e.action));
+    check("suprimentos.necessidades_geradas_de_pedido registrado", actions.has("suprimentos.necessidades_geradas_de_pedido"));
+    check("suprimentos.necessidades_geradas_de_producao registrado", actions.has("suprimentos.necessidades_geradas_de_producao"));
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
