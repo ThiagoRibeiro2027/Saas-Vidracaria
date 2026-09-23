@@ -12,6 +12,7 @@ import {
   removerCaracteristicaPecaAction,
 } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import RegrasPeca from "./RegrasPeca";
 
 type Item = { id: string; codigo: string; descricao: string; tipo: string; unidade_principal: string };
 type Peca = { id: string; item_id: string; descricao_tecnica: string | null; situacao: "ativo" | "inativo"; revisao_atual: number };
@@ -24,6 +25,23 @@ type PecaComposicao = {
 };
 type Revisao = { revisao: number; motivo: string | null; created_at: string };
 type Caracteristica = { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean };
+type Regra = {
+  id: string;
+  versao: number;
+  substitui_regra_id: string | null;
+  caracteristica_id: string;
+  caracteristica_nome: string;
+  operador: string;
+  valor_comparacao_numero: number | null;
+  valor_comparacao_texto: string | null;
+  acao: string;
+  acao_material_item_id: string;
+  acao_material_codigo: string;
+  acao_quantidade: number | null;
+  ativo: boolean;
+  motivo: string | null;
+  created_at: string;
+};
 
 const CARACTERISTICA_TIPOS = [
   ["numero", "Número"],
@@ -42,6 +60,7 @@ export default function PecasSection({
   itens,
   revisoesPorPeca,
   caracteristicasPorPeca,
+  regrasPorPeca,
   canManage,
 }: {
   pecas: Peca[];
@@ -49,6 +68,7 @@ export default function PecasSection({
   itens: Item[];
   revisoesPorPeca: Map<string, Revisao[]>;
   caracteristicasPorPeca: Map<string, Caracteristica[]>;
+  regrasPorPeca: Map<string, Regra[]>;
   canManage: boolean;
 }) {
   const itemLabel = (id: string) => {
@@ -234,6 +254,18 @@ export default function PecasSection({
               )}
 
               <CaracteristicasPeca pecaId={p.id} caracteristicas={caracteristicasPorPeca.get(p.id) ?? []} canManage={canManage && p.situacao === "ativo"} />
+
+              {canManage && p.situacao === "ativo" && (
+                <RegrasPeca
+                  pecaId={p.id}
+                  caracteristicas={caracteristicasPorPeca.get(p.id) ?? []}
+                  regras={regrasPorPeca.get(p.id) ?? []}
+                  materiais={[
+                    ...itensMateriais.map((it) => ({ id: it.id, label: itemLabel(it.id) })),
+                    ...pecasComoSubconjunto.map((sp) => ({ id: sp.item_id, label: itemLabel(sp.item_id) })),
+                  ]}
+                />
+              )}
 
               <HistoricoRevisoes revisoes={revisoesPorPeca.get(p.id) ?? []} />
             </div>

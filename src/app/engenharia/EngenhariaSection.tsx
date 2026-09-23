@@ -17,6 +17,14 @@ type Caracteristica = {
   valor_texto: string | null;
 };
 
+type SimulacaoLinha = {
+  material_item_id: string;
+  material_codigo: string;
+  quantidade_base: number | null;
+  quantidade_sugerida: number;
+  origem: string;
+};
+
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
 type Item = { id: string; codigo: string; descricao: string; tipo: string };
@@ -47,6 +55,7 @@ export default function EngenhariaSection({
   obras,
   itens,
   caracteristicasPorPedidoItem,
+  simulacaoPorPedidoItem,
   canManage,
 }: {
   pedidos: Pedido[];
@@ -56,6 +65,7 @@ export default function EngenhariaSection({
   obras: Obra[];
   itens: Item[];
   caracteristicasPorPedidoItem: Map<string, Caracteristica[]>;
+  simulacaoPorPedidoItem: Map<string, SimulacaoLinha[]>;
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -101,6 +111,7 @@ export default function EngenhariaSection({
                         producao={producao}
                         itemLabel={itemLabel(pi.item_id)}
                         caracteristicas={caracteristicasPorPedidoItem.get(pi.id) ?? []}
+                        simulacao={simulacaoPorPedidoItem.get(pi.id) ?? []}
                         canManage={canManage}
                       />
                     );
@@ -126,12 +137,14 @@ function ItemProducaoRow({
   producao,
   itemLabel,
   caracteristicas,
+  simulacao,
   canManage,
 }: {
   pedidoItem: PedidoItem;
   producao: ItemProducao | undefined;
   itemLabel: string;
   caracteristicas: Caracteristica[];
+  simulacao: SimulacaoLinha[];
   canManage: boolean;
 }) {
   if (!producao) {
@@ -223,6 +236,23 @@ function ItemProducaoRow({
               {caracteristicas.map((c) => (
                 <CaracteristicaValor key={c.peca_caracteristica_id} pedidoItemId={pedidoItem.id} caracteristica={c} canManage={canManage} />
               ))}
+            </div>
+          </Td>
+        </tr>
+      )}
+      {simulacao.length > 0 && (
+        <tr>
+          <Td colSpan={canManage ? 7 : 6}>
+            <div className="text-xs">
+              <span className="font-medium text-text">BOM sugerida pelas regras (motor básico — nada foi gravado):</span>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                {simulacao.map((s) => (
+                  <span key={s.material_item_id} className={s.origem === "regra" ? "text-primary" : "text-text-muted"}>
+                    {s.material_codigo}: {s.quantidade_base ?? "—"} → {s.quantidade_sugerida}
+                    {s.origem === "regra" && <Badge variant="warning">regra</Badge>}
+                  </span>
+                ))}
+              </div>
             </div>
           </Td>
         </tr>

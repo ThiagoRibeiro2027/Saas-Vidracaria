@@ -70,6 +70,21 @@ export default async function EngenhariaPage() {
       }),
   );
 
+  // Fase G (motor de regras) — simulação da BOM sugerida por pedido_item,
+  // comparada com a composição base. Leitura pura, nada é gravado.
+  const simulacaoPorPedidoItem = new Map<
+    string,
+    { material_item_id: string; material_codigo: string; quantidade_base: number | null; quantidade_sugerida: number; origem: string }[]
+  >();
+  await Promise.all(
+    (pedidoItens ?? [])
+      .filter((pi) => pecaIdPorItemId.has(pi.item_id))
+      .map(async (pi) => {
+        const { data } = await supabase.rpc("simular_bom_sugerida", { p_pedido_item_id: pi.id });
+        if (data && data.some((d: { origem: string }) => d.origem === "regra")) simulacaoPorPedidoItem.set(pi.id, data);
+      }),
+  );
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 5 — Engenharia</p>
@@ -88,6 +103,7 @@ export default async function EngenhariaPage() {
           obras={obras ?? []}
           itens={itens ?? []}
           caracteristicasPorPedidoItem={caracteristicasPorPedidoItem}
+          simulacaoPorPedidoItem={simulacaoPorPedidoItem}
           canManage={!!canManage}
         />
       </div>

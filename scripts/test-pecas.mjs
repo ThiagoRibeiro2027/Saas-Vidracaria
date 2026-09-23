@@ -531,6 +531,188 @@ async function main() {
     check("engenharia.caracteristica_valor_definido registrado", actions.has("engenharia.caracteristica_valor_definido"));
   }
 
+  // =========================================================================
+  // Fase G do plano de 23/09/2026 — motor de regras básico, liberado pela
+  // emenda ao ADR-002 §4.5 v2.8. Regra imutável (versionada via
+  // substitui_regra_id) e simular_bom_sugerida() só leitura — nada escreve
+  // na composição real.
+  // =========================================================================
+
+  console.log("\n38. Massa de dados — peça com composição base + 2 características");
+  const { data: itemPecaMrId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "JAN-PC-MR", p_descricao: "Janela MR", p_tipo: "produto_acabado",
+    p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+  });
+  const { data: itemPerfilMrId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "PRF-PC-MR", p_descricao: "Perfil base", p_tipo: "materia_prima",
+    p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo",
+  });
+  const { data: itemReforcoMrId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "REF-PC-MR", p_descricao: "Reforço estrutural", p_tipo: "materia_prima",
+    p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo",
+  });
+  const { data: itemVidroMrId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "VID-PC-MR", p_descricao: "Vidro", p_tipo: "materia_prima",
+    p_classificacao: "vidro", p_unidade_principal: "M2", p_situacao: "ativo",
+  });
+  const { data: pecaMrId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaMrId, p_descricao_tecnica: null });
+  await admTenant.client.rpc("adicionar_material_peca", { p_peca_id: pecaMrId, p_material_item_id: itemPerfilMrId, p_quantidade_por_unidade: 2, p_observacao: null });
+  await admTenant.client.rpc("adicionar_material_peca", { p_peca_id: pecaMrId, p_material_item_id: itemVidroMrId, p_quantidade_por_unidade: 1, p_observacao: null });
+  const { data: caractLarguraMrId } = await admTenant.client.rpc("definir_caracteristica_peca", {
+    p_peca_id: pecaMrId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true,
+  });
+  const { data: caractVidroTipoId } = await admTenant.client.rpc("definir_caracteristica_peca", {
+    p_peca_id: pecaMrId, p_nome: "vidro_tipo", p_tipo: "opcao", p_unidade: null, p_opcoes: ["comum", "temperado"], p_obrigatoria: true,
+  });
+
+  console.log("\n39. criar_regra_peca() rejeita ajustar_quantidade se material não está na composição base");
+  {
+    const { error } = await admTenant.client.rpc("criar_regra_peca", {
+      p_peca_id: pecaMrId, p_caracteristica_id: caractLarguraMrId, p_operador: ">", p_valor_comparacao_numero: 1500, p_valor_comparacao_texto: null,
+      p_acao: "ajustar_quantidade", p_acao_material_item_id: itemReforcoMrId, p_acao_quantidade: 1, p_motivo: null, p_substitui_regra_id: null,
+    });
+    check("ajustar_quantidade de material fora da composição é rejeitado", !!error);
+  }
+
+  console.log("\n40. criar_regra_peca() adicionar_material — largura > 1500 adiciona reforço");
+  const { data: regraReforcoId } = await admTenant.client.rpc("criar_regra_peca", {
+    p_peca_id: pecaMrId, p_caracteristica_id: caractLarguraMrId, p_operador: ">", p_valor_comparacao_numero: 1500, p_valor_comparacao_texto: null,
+    p_acao: "adicionar_material", p_acao_material_item_id: itemReforcoMrId, p_acao_quantidade: 1, p_motivo: "reforço em vãos largos", p_substitui_regra_id: null,
+  });
+  check("regra de adicionar material criada", !!regraReforcoId);
+
+  console.log("\n41. criar_regra_peca() rejeita adicionar_material já presente na composição base");
+  {
+    const { error } = await admTenant.client.rpc("criar_regra_peca", {
+      p_peca_id: pecaMrId, p_caracteristica_id: caractLarguraMrId, p_operador: ">", p_valor_comparacao_numero: 1500, p_valor_comparacao_texto: null,
+      p_acao: "adicionar_material", p_acao_material_item_id: itemPerfilMrId, p_acao_quantidade: 3, p_motivo: null, p_substitui_regra_id: null,
+    });
+    check("adicionar material já presente na composição é rejeitado", !!error);
+  }
+
+  console.log("\n42. criar_regra_peca() rejeita operador incompatível com tipo opcao");
+  {
+    const { error } = await admTenant.client.rpc("criar_regra_peca", {
+      p_peca_id: pecaMrId, p_caracteristica_id: caractVidroTipoId, p_operador: ">", p_valor_comparacao_numero: null, p_valor_comparacao_texto: "temperado",
+      p_acao: "ajustar_quantidade", p_acao_material_item_id: itemVidroMrId, p_acao_quantidade: 1, p_motivo: null, p_substitui_regra_id: null,
+    });
+    check("operador > em característica de opção é rejeitado", !!error);
+  }
+
+  console.log("\n43. criar_regra_peca() vidro_tipo=temperado ajusta quantidade do vidro");
+  const { data: regraVidroId } = await admTenant.client.rpc("criar_regra_peca", {
+    p_peca_id: pecaMrId, p_caracteristica_id: caractVidroTipoId, p_operador: "=", p_valor_comparacao_numero: null, p_valor_comparacao_texto: "temperado",
+    p_acao: "ajustar_quantidade", p_acao_material_item_id: itemVidroMrId, p_acao_quantidade: 1.2, p_motivo: null, p_substitui_regra_id: null,
+  });
+  check("regra de ajuste de quantidade criada", !!regraVidroId);
+
+  console.log("\n44. \"Editar\" regra via substitui_regra_id — versão incrementa, anterior desativa");
+  const { data: regraReforcoV2Id } = await admTenant.client.rpc("criar_regra_peca", {
+    p_peca_id: pecaMrId, p_caracteristica_id: caractLarguraMrId, p_operador: ">", p_valor_comparacao_numero: 1600, p_valor_comparacao_texto: null,
+    p_acao: "adicionar_material", p_acao_material_item_id: itemReforcoMrId, p_acao_quantidade: 1, p_motivo: "limiar ajustado", p_substitui_regra_id: regraReforcoId,
+  });
+  {
+    const { data: antiga } = await admin.from("peca_regras").select("ativo").eq("id", regraReforcoId).single();
+    check("regra antiga desativada ao ser substituída", antiga?.ativo === false);
+    const { data: nova } = await admin.from("peca_regras").select("versao, ativo").eq("id", regraReforcoV2Id).single();
+    check("regra nova nasce com versão incrementada e ativa", nova?.versao === 2 && nova?.ativo === true);
+  }
+
+  console.log("\n45. Pedido com item configurável, sem valores capturados — simulação = composição base");
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "orcamento", p_prefixo: "ORCMRT-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "pedido", p_prefixo: "PEDMRT-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  const { data: clienteMrId } = await admTenant.client.rpc("upsert_pessoa", {
+    p_id: null, p_tipo_documento: "CPF", p_documento: "99999999999", p_nome: "Cliente Motor Regras",
+    p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+    p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+  });
+  await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: clienteMrId, p_papel: "CLIENTE", p_ativo: true });
+  const { data: orcamentoMrId } = await admTenant.client.rpc("upsert_orcamento", {
+    p_id: null, p_pessoa_id: clienteMrId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+  });
+  await admTenant.client.rpc("upsert_orcamento_item", {
+    p_id: null, p_orcamento_id: orcamentoMrId, p_item_id: itemPecaMrId, p_quantidade: 1, p_preco_unitario: 1000,
+  });
+  await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoMrId, p_decisao: "aprovado" });
+  const { data: pedidoMrId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoMrId });
+  const { data: pedidoItemMr } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoMrId).single();
+  const pedidoItemMrId = pedidoItemMr.id;
+
+  {
+    const { data } = await admTenant.client.rpc("simular_bom_sugerida", { p_pedido_item_id: pedidoItemMrId });
+    check("sem valores capturados, simulação = 2 materiais base", (data ?? []).length === 2 && data.every((d) => d.origem === "base"));
+  }
+
+  console.log("\n46. Captura largura=1800 (>1600) e vidro_tipo=temperado — simulação aplica as 2 regras");
+  await admTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+    p_pedido_item_id: pedidoItemMrId, p_peca_caracteristica_id: caractLarguraMrId, p_valor_numero: 1800, p_valor_texto: null,
+  });
+  await admTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+    p_pedido_item_id: pedidoItemMrId, p_peca_caracteristica_id: caractVidroTipoId, p_valor_numero: null, p_valor_texto: "temperado",
+  });
+  {
+    const { data } = await admTenant.client.rpc("simular_bom_sugerida", { p_pedido_item_id: pedidoItemMrId });
+    const reforco = data?.find((d) => d.material_codigo === "REF-PC-MR");
+    const vidro = data?.find((d) => d.material_codigo === "VID-PC-MR");
+    check("simulação adiciona reforço (regra, sem base)", reforco?.origem === "regra" && reforco?.quantidade_base === null && Number(reforco?.quantidade_sugerida) === 1);
+    check("simulação ajusta vidro de 1.0 para 1.2 (regra)", vidro?.origem === "regra" && Number(vidro?.quantidade_base) === 1 && Number(vidro?.quantidade_sugerida) === 1.2);
+  }
+
+  console.log("\n47. simular_bom_sugerida() não escreve nada na composição real");
+  {
+    const { data } = await admin.from("peca_composicao").select("material_item_id, quantidade_por_unidade").eq("peca_id", pecaMrId);
+    check("composição real continua só com os 2 materiais base", (data ?? []).length === 2);
+  }
+
+  console.log("\n48. desativar_regra_peca()");
+  {
+    const { error } = await admTenant.client.rpc("desativar_regra_peca", { p_id: regraVidroId });
+    check("ADMIN desativa regra ativa", !error);
+    const { data } = await admin.from("peca_regras").select("ativo").eq("id", regraVidroId).single();
+    check("regra marcada como inativa", data?.ativo === false);
+  }
+
+  console.log("\n49. criar_regra_peca()/simular_bom_sugerida() exigem permissão");
+  {
+    const { error: err1 } = await noPermTenant.client.rpc("criar_regra_peca", {
+      p_peca_id: pecaMrId, p_caracteristica_id: caractLarguraMrId, p_operador: ">", p_valor_comparacao_numero: 1, p_valor_comparacao_texto: null,
+      p_acao: "ajustar_quantidade", p_acao_material_item_id: itemPerfilMrId, p_acao_quantidade: 1, p_motivo: null, p_substitui_regra_id: null,
+    });
+    check("sem pecas.manage não cria regra", !!err1);
+
+    const { error: err2 } = await noPermTenant.client.rpc("simular_bom_sugerida", { p_pedido_item_id: pedidoItemMrId });
+    check("sem engenharia.view não simula BOM sugerida", !!err2);
+  }
+
+  console.log("\n50. Isolamento entre tenants (motor de regras)");
+  {
+    const { error: err1 } = await otherTenant.client.rpc("criar_regra_peca", {
+      p_peca_id: pecaMrId, p_caracteristica_id: caractLarguraMrId, p_operador: ">", p_valor_comparacao_numero: 1, p_valor_comparacao_texto: null,
+      p_acao: "ajustar_quantidade", p_acao_material_item_id: itemPerfilMrId, p_acao_quantidade: 1, p_motivo: null, p_substitui_regra_id: null,
+    });
+    check("tenant B não cria regra em peça do tenant A", !!err1);
+
+    const { error: err2 } = await otherTenant.client.rpc("simular_bom_sugerida", { p_pedido_item_id: pedidoItemMrId });
+    check("tenant B não simula BOM de pedido do tenant A", !!err2);
+  }
+
+  console.log("\n51. Auditoria do motor de regras");
+  {
+    const { data: events } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", ["pecas.regra_criada", "pecas.regra_desativada"]);
+    const actions = new Set((events ?? []).map((e) => e.action));
+    check("pecas.regra_criada registrado", actions.has("pecas.regra_criada"));
+    check("pecas.regra_desativada registrado", actions.has("pecas.regra_desativada"));
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

@@ -61,6 +61,24 @@ export default async function PecasPage() {
     }),
   );
 
+  // TÓPICO 5 Fase G — regras (condição→ação) do motor básico por peça.
+  const regrasPorPeca = new Map<
+    string,
+    {
+      id: string; versao: number; substitui_regra_id: string | null;
+      caracteristica_id: string; caracteristica_nome: string; operador: string;
+      valor_comparacao_numero: number | null; valor_comparacao_texto: string | null;
+      acao: string; acao_material_item_id: string; acao_material_codigo: string; acao_quantidade: number | null;
+      ativo: boolean; motivo: string | null; created_at: string;
+    }[]
+  >();
+  await Promise.all(
+    (pecas ?? []).map(async (p) => {
+      const { data } = await supabase.rpc("listar_regras_peca", { p_peca_id: p.id, p_somente_ativas: false });
+      regrasPorPeca.set(p.id, data ?? []);
+    }),
+  );
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -79,6 +97,7 @@ export default async function PecasPage() {
           itens={itens ?? []}
           revisoesPorPeca={revisoesPorPeca}
           caracteristicasPorPeca={caracteristicasPorPeca}
+          regrasPorPeca={regrasPorPeca}
           canManage={!!canManage}
         />
       </div>
