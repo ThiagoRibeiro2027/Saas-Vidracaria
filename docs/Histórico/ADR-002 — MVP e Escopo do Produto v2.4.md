@@ -1,13 +1,12 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.5\
+**Versão:** 2.4\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
 resolvida, ver nota no próprio §4.7; §4.3 revisado em 2026-09-19 —
-ampliação de escopo do TÓPICO 10; §4.17 revisado em 2026-09-23 —
-recorte mínimo do TÓPICO 13, Fase 1)\
+ampliação de escopo do TÓPICO 10)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
 
@@ -876,52 +875,6 @@ Somente integrações indispensáveis ao funcionamento do MVP serão
 incluídas.
 
 Integrações não essenciais ficam para fases posteriores.
-
-**Recorte mínimo — Fase 1 (23/09/2026 — decisão do responsável do
-produto via chat).** O TÓPICO 13 tem 40 seções e nenhum recorte de MVP
-próprio como o TÓPICO 18 tem em seu §12; esta é a primeira fase
-aprovada, cobrindo só a espinha dorsal técnica de integrações, sem
-nenhum conector externo real ligado:
-
-- **Central de Integrações (TÓPICO 13 §2):** registro de integrações
-  por empresa, catálogo interno (nome, categoria, status
-  ativo/inativo, ambiente), ativar/desativar sem apagar dados ou
-  histórico existente; acesso via `has_permission()`.
-
-- **Catálogo de integrações (§3):** categorias do próprio doc
-  (ERP, bancos, fiscal, pagamentos, transportadoras, logística, BI,
-  e-commerce, marketplaces, APIs, outros), mas sem nenhum conector
-  implementado — constar no catálogo não ativa nada para a empresa.
-
-- **Eventos internos entre módulos (§4),** apenas nível **Informativo**
-  (§15): detectar → registrar → informar. Sem execução automática de
-  efeitos operacionais/financeiros nesta fase — isso é nível
-  Automático, fora de escopo.
-
-- **Infraestrutura técnica genérica:** fila assíncrona simples (§16),
-  idempotência (§18), retry com backoff para falha temporária e "erro
-  permanente → intervenção necessária" (§17), logs com identificador
-  de correlação (§19), auditoria diferenciando ação automática de
-  decisão do operador (§20).
-
-- **Fonte oficial configurável por tipo de informação/processo (§9):**
-  só o registro da configuração por empresa; reconciliação automática
-  entre sistemas (§11) fica fora.
-
-- **Estrutura vazia (tabelas/hooks preparatórios, sem processar nada
-  de verdade)** para documentos fiscais (NF-e, §5) e ERP externo (§8):
-  prepara o "gancho" sem nenhum conector real ligado, sem captura
-  automática de XML, sem sincronização de fato — mesmo padrão já usado
-  para o gancho do otimizador de corte externo (§40).
-
-Fica fora desta fase, entrando depois dentro do próprio TÓPICO 13
-mediante nova aprovação: processamento real de NF-e/fiscal (captura,
-conferência, status por item — §5.1 a §5.7), bancos/PIX/boletos (§6),
-cartões e meios de pagamento (§7), APIs de terceiros com autenticação
-real (§13), Webhooks recebidos/enviados (§14), certificados digitais
-(§22), reconciliação automática entre sistemas (§11), importação/
-exportação genérica (§29-30, além do que já existe em §4.2.1), e o
-gancho do otimizador de corte externo (§40).
 
 **4.18 Abastecimento / Compras**
 
