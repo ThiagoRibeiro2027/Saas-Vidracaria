@@ -15,6 +15,14 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// PNG 1x1 válido — mesma fixture de test-storage-rls.mjs, pra testar o
+// gate de rh.manage/rh.view em cima de anexo de arquivo (entity_type=
+// 'funcionario_documento').
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -82,6 +90,7 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 }
 
 async function main() {
+  const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de rh, outro tenant)...");
   const admTenant = await createTenant("rh-test-admin", "RH Admin Teste", "17r01", "ADMIN");
   // QUALIDADE administra Qualidade, não RH — prova a autoridade separada
@@ -228,6 +237,8 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", ["rh.funcionario_admitido", "rh.funcionario_atualizado", "rh.funcionario_desligado"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     for (const action of ["rh.funcionario_admitido", "rh.funcionario_atualizado", "rh.funcionario_desligado"]) {
@@ -378,6 +389,24 @@ async function main() {
 
     const { error } = await otherTenant.client.rpc("cancelar_afastamento", { p_id: afastamentoId });
     check("tenant B não consegue cancelar afastamento do tenant A", !!error);
+
+    const { error: e2 } = await otherTenant.client.rpc("cancelar_documento_funcionario", { p_id: documentoId });
+    check("tenant B não consegue cancelar documento do tenant A", !!e2);
+
+    const { error: e3 } = await otherTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-04-01" });
+    check("tenant B não consegue encerrar afastamento do tenant A", !!e3);
+
+    // Injeção de referência cross-tenant: tenant B tenta registrar
+    // documento/afastamento apontando pra um funcionário do tenant A.
+    const { error: e4 } = await otherTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "hack",
+    });
+    check("tenant B não consegue registrar documento pro funcionário do tenant A", !!e4);
+
+    const { error: e5 } = await otherTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "afastamento", p_data_inicio: "2027-04-01",
+    });
+    check("tenant B não consegue registrar afastamento pro funcionário do tenant A", !!e5);
   }
 
   console.log("\n25. Cada ação de documentos/afastamentos grava a própria linha de auditoria");
@@ -385,6 +414,8 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", [
         "rh.documento_registrado", "rh.documento_cancelado",
         "rh.afastamento_registrado", "rh.afastamento_encerrado", "rh.afastamento_cancelado",
@@ -396,6 +427,55 @@ async function main() {
     ]) {
       check(`${action} registrado`, actions.has(action));
     }
+  }
+
+  console.log("\n26. register_file()/files_select — anexo de RH exige rh.manage/rh.view, não só a permissão genérica de Arquivos");
+  {
+    // Papel com files.upload/files.read mas SEM nenhuma permissão de rh —
+    // prova que a permissão genérica de Arquivos não basta mais pra
+    // entity_type='funcionario_documento' (achado do code review: antes
+    // disso, qualquer papel com files.upload/files.read conseguia anexar/
+    // ler documento de RH de qualquer funcionário da empresa).
+    const filesOnlyRole = await admin.from("roles").insert({ company_id: admTenant.company.id, key: "RH_FILES_SO", name: "Só Arquivos" }).select().single();
+    const { data: uploadPerm } = await admin.from("permissions").select("id").eq("resource", "files").eq("action", "upload").single();
+    const { data: readPerm } = await admin.from("permissions").select("id").eq("resource", "files").eq("action", "read").single();
+    await admin.from("role_permissions").insert([
+      { role_id: filesOnlyRole.data.id, permission_id: uploadPerm.id },
+      { role_id: filesOnlyRole.data.id, permission_id: readPerm.id },
+    ]);
+
+    const email = "17r05.rh-test-admin@users.internal";
+    const { data: created } = await admin.auth.admin.createUser({ email, password: "senha-de-teste-123456", email_confirm: true });
+    let userId = created?.user?.id;
+    if (!userId) {
+      const { data: list } = await admin.auth.admin.listUsers();
+      userId = list.users.find((u) => u.email === email)?.id;
+    }
+    await admin.from("profiles").upsert({ id: userId, company_id: admTenant.company.id, login_identifier: "17r05", display_name: "Só Arquivos" }, { onConflict: "id" });
+    await admin.from("user_roles").insert({ profile_id: userId, role_id: filesOnlyRole.data.id });
+    const filesOnlyClient = createClient(url, anonKey);
+    await filesOnlyClient.auth.signInWithPassword({ email, password: "senha-de-teste-123456" });
+
+    const path = `${admTenant.company.id}/funcionario_documento/${funcionarioAtivoId}/atestado.png`;
+    await admin.storage.from("company-files").upload(path, PNG_1X1, { contentType: "image/png", upsert: true });
+
+    const { error: eUpload } = await filesOnlyClient.rpc("register_file", {
+      p_entity_type: "funcionario_documento", p_entity_id: funcionarioAtivoId, p_storage_path: path,
+      p_original_name: "atestado.png", p_mime_type: "image/png", p_size_bytes: PNG_1X1.byteLength,
+    });
+    check("papel só com files.upload (sem rh.manage) não anexa documento de RH", !!eUpload);
+
+    const { data: fileId, error: eUploadAdmin } = await admTenant.client.rpc("register_file", {
+      p_entity_type: "funcionario_documento", p_entity_id: funcionarioAtivoId, p_storage_path: path,
+      p_original_name: "atestado.png", p_mime_type: "image/png", p_size_bytes: PNG_1X1.byteLength,
+    });
+    check("ADMIN (com rh.manage) anexa documento de RH", !eUploadAdmin && !!fileId);
+
+    const { data: readSemRh, error: eReadNoRh } = await filesOnlyClient.from("files").select("id").eq("id", fileId);
+    check("papel só com files.read (sem rh.view) não lê metadado do arquivo de RH", !eReadNoRh && (readSemRh ?? []).length === 0);
+
+    const { data: readAdm } = await admTenant.client.from("files").select("id").eq("id", fileId);
+    check("ADMIN (com rh.view) lê metadado do arquivo de RH", (readAdm ?? []).length === 1);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

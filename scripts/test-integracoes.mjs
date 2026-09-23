@@ -83,6 +83,7 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 }
 
 async function main() {
+  const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de integrações, outro tenant)...");
   const admTenant = await createTenant("integracoes-test-admin", "Integrações Admin Teste", "13i01", "ADMIN");
   // QUALIDADE administra Qualidade, não Integrações — prova a autoridade separada.
@@ -294,11 +295,39 @@ async function main() {
     const { data: crossOps } = await otherTenant.client.from("integracao_operacoes").select("id").eq("company_id", admTenant.company.id);
     check("tenant B não enxerga operações do tenant A", (crossOps ?? []).length === 0);
 
+    const { data: crossFonte } = await otherTenant.client.from("integracao_fonte_oficial").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga fonte oficial do tenant A", (crossFonte ?? []).length === 0);
+
     const { error } = await otherTenant.client.rpc("ativar_integracao", { p_id: integracaoId });
     check("tenant B não consegue ativar integração do tenant A", !!error);
 
     const { error: e2 } = await otherTenant.client.rpc("enfileirar_operacao", { p_integracao_id: integracaoId, p_tipo: "cross" });
     check("tenant B não consegue enfileirar operação na integração do tenant A", !!e2);
+
+    const { error: e3 } = await otherTenant.client.rpc("configurar_integracao", { p_id: integracaoId, p_catalogo_key: "erp_generico", p_apelido: "hack", p_ambiente: "producao", p_config: null });
+    check("tenant B não consegue reconfigurar integração do tenant A", !!e3);
+
+    const { error: e4 } = await otherTenant.client.rpc("definir_fonte_oficial", { p_tipo_informacao: "clientes", p_sistema_fonte: "hack" });
+    check("tenant B define fonte oficial na própria empresa, sem afetar/ler a do tenant A (RPC não tem alvo cross-tenant)", !e4);
+
+    // Operação fresca do tenant A pra testar os RPCs de ciclo de vida cross-tenant.
+    const { data: opCross } = await admTenant.client.rpc("enfileirar_operacao", { p_integracao_id: integracaoId, p_tipo: "cross-lifecycle" });
+    const { error: e5 } = await otherTenant.client.rpc("iniciar_processamento_operacao", { p_id: opCross });
+    check("tenant B não consegue iniciar processamento de operação do tenant A", !!e5);
+
+    await admTenant.client.rpc("iniciar_processamento_operacao", { p_id: opCross });
+    const { error: e6 } = await otherTenant.client.rpc("concluir_operacao", { p_id: opCross, p_resultado: null });
+    check("tenant B não consegue concluir operação do tenant A", !!e6);
+
+    const { error: e7 } = await otherTenant.client.rpc("falhar_operacao", { p_id: opCross, p_erro: "hack" });
+    check("tenant B não consegue marcar falha em operação do tenant A", !!e7);
+
+    const { error: e8 } = await otherTenant.client.rpc("cancelar_operacao", { p_id: opCross });
+    check("tenant B não consegue cancelar operação do tenant A", !!e8);
+
+    await admTenant.client.rpc("falhar_operacao", { p_id: opCross, p_erro: "pra testar reprocessar" });
+    const { error: e9 } = await otherTenant.client.rpc("reprocessar_operacao", { p_id: opCross });
+    check("tenant B não consegue reprocessar operação do tenant A", !!e9);
   }
 
   console.log("\n17. Catálogo global não aceita escrita de autenticado (só leitura)");
@@ -312,6 +341,8 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", [
         "integracoes.configurada", "integracoes.reconfigurada", "integracoes.ativada", "integracoes.desativada",
         "integracoes.operacao_enfileirada", "integracoes.operacao_concluida", "integracoes.operacao_falhou",

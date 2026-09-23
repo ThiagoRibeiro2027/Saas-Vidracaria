@@ -83,6 +83,7 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 }
 
 async function main() {
+  const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de fiscal, outro tenant)...");
   const admTenant = await createTenant("fiscal-test-admin", "Fiscal Admin Teste", "adr4f01", "ADMIN");
   const noPermTenant = await createTenant("fiscal-test-admin", "Fiscal SemPerm Teste", "adr4f02", "QUALIDADE", admTenant.company);
@@ -209,6 +210,9 @@ async function main() {
 
     const { error } = await otherTenant.client.rpc("cancelar_documento_fiscal", { p_id: docSemVinculoId, p_motivo: "cross-tenant" });
     check("tenant B não consegue cancelar documento do tenant A", !!error);
+
+    const { error: e2 } = await otherTenant.client.rpc("vincular_documento_fiscal", { p_id: docSemVinculoId, p_entity_type: "necessidade_compra", p_entity_id: necessidadeId });
+    check("tenant B não consegue vincular documento do tenant A", !!e2);
   }
 
   console.log("\n15. SELECT liberado sem fiscal.manage (papel QUALIDADE lê normalmente)");
@@ -222,6 +226,8 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", ["fiscal.documento_registrado", "fiscal.documento_vinculado", "fiscal.documento_cancelado"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     for (const action of ["fiscal.documento_registrado", "fiscal.documento_vinculado", "fiscal.documento_cancelado"]) {
@@ -314,6 +320,8 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", ["fiscal.documento_em_conferencia", "fiscal.documento_avaliado", "fiscal.documento_reavaliado"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     for (const action of ["fiscal.documento_em_conferencia", "fiscal.documento_avaliado", "fiscal.documento_reavaliado"]) {

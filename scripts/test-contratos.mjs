@@ -82,6 +82,7 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 }
 
 async function main() {
+  const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de contratos, outro tenant)...");
   const admTenant = await createTenant("contratos-test-admin", "Contratos Admin Teste", "18c01", "ADMIN");
   // QUALIDADE administra Qualidade, não Contratos — prova a autoridade separada.
@@ -295,6 +296,29 @@ async function main() {
 
     const { error } = await otherTenant.client.rpc("encerrar_contrato", { p_id: contratoId });
     check("tenant B não consegue mexer em contrato do tenant A", !!error);
+
+    const { error: e2 } = await otherTenant.client.rpc("upsert_contrato", {
+      p_id: contratoId, p_tipo: "cliente", p_pessoa_id: clienteId, p_obra_id: obraId, p_pedido_id: null,
+      p_funcionario_id: null, p_objeto: "tentando editar contrato de outro tenant",
+    });
+    check("tenant B não consegue editar contrato do tenant A (p_id estrangeiro)", !!e2);
+
+    const { error: e3 } = await otherTenant.client.rpc("ativar_contrato", { p_id: contratoId });
+    check("tenant B não consegue ativar contrato do tenant A (p_id estrangeiro)", !!e3);
+
+    // Injeção de referência cross-tenant: tenant B cria um contrato NA
+    // PRÓPRIA empresa, mas apontando p_pessoa_id pra uma pessoa do tenant A.
+    const { error: e4 } = await otherTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "cliente", p_pessoa_id: clienteId, p_obra_id: null, p_pedido_id: null,
+      p_funcionario_id: null, p_objeto: "tentando referenciar pessoa de outro tenant",
+    });
+    check("tenant B não consegue criar contrato referenciando pessoa do tenant A", !!e4);
+
+    const { error: e5 } = await otherTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "funcionario", p_pessoa_id: null, p_obra_id: null, p_pedido_id: null,
+      p_funcionario_id: funcionarioId, p_objeto: "tentando referenciar funcionário de outro tenant",
+    });
+    check("tenant B não consegue criar contrato referenciando funcionário do tenant A", !!e5);
   }
 
   console.log("\n15. Cada ação relevante grava sua própria linha de auditoria");
@@ -302,11 +326,40 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", ["contratos.criado", "contratos.editado", "contratos.ativado", "contratos.encerrado"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     for (const action of ["contratos.criado", "contratos.editado", "contratos.ativado", "contratos.encerrado"]) {
       check(`${action} registrado`, actions.has(action));
     }
+  }
+
+  console.log("\n16. ativar_contrato() revalida papel CLIENTE ativo no momento da ativação (achado do code review)");
+  {
+    const { data: pessoaTemp } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CPF", p_documento: "22233344410", p_nome: "Cliente Temporário",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+      p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: pessoaTemp, p_papel: "CLIENTE", p_ativo: true });
+
+    const { data: contratoTemp } = await admTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "cliente", p_pessoa_id: pessoaTemp, p_obra_id: null, p_pedido_id: null,
+      p_funcionario_id: null, p_objeto: "Contrato pra testar revalidação", p_data_inicio: "2027-01-01",
+    });
+    check("contrato de teste criado", !!contratoTemp);
+
+    // Papel é desativado DEPOIS que o rascunho já existe — upsert_contrato()
+    // não valida de novo nesse momento (só na criação/edição).
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: pessoaTemp, p_papel: "CLIENTE", p_ativo: false });
+
+    const { error } = await admTenant.client.rpc("ativar_contrato", { p_id: contratoTemp });
+    check("ativar_contrato rejeita quando o papel CLIENTE não está mais ativo", !!error);
+
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: pessoaTemp, p_papel: "CLIENTE", p_ativo: true });
+    const { error: error2 } = await admTenant.client.rpc("ativar_contrato", { p_id: contratoTemp });
+    check("ativar_contrato funciona normalmente depois que o papel volta a ficar ativo", !error2);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
