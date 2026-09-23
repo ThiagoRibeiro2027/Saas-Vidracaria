@@ -1,7 +1,7 @@
 **ROTEIRO — FECHAMENTO DA FASE 1 (GO-LIVE)**
 
-**Status:** PROPOSTO — aguardando aprovação explícita do responsável do
-produto (Thiago), conforme regra do CLAUDE.md\
+**Status:** APROVADO — ordem da seção 7 confirmada por Thiago via chat
+em 23/09/2026\
 **Versão:** 1.0\
 **Data:** 23/09/2026\
 **Base documental:** ADR-002, ADR-003, ADR-009 §4-5, ADR-010 §14-15,
@@ -46,27 +46,31 @@ serviço. Custo estimado: ~US$ 20/mês por desenvolvedor (NOTA TÉCNICA
 contar câmbio, impostos e serviços ainda não contratados (e-mail
 transacional, push, observabilidade).
 
-**2.3 — Fixar a região da hospedagem** (`regions` no `vercel.json`,
-hoje ausente). Dono: eu, assim que você confirmar a região — `gru1`
-(São Paulo) é a recomendação já registrada no
-RUNBOOK-SUBOPERADORES-LGPD.md, coerente com o Supabase já provisionado
-em `sa-east-1`.
+**2.3 — Fixar a região da hospedagem** (`regions` no `vercel.json`).
+**Concluído em 23/09/2026** — `regions: ["gru1"]` (São Paulo),
+confirmado por você, coerente com o Supabase já provisionado em
+`sa-east-1`. `RUNBOOK-SUBOPERADORES-LGPD.md` e ADR-010 §15 atualizados.
 
 **2.4 — Confirmar a residência de dados do Resend.** Dono: você
 (verificar no painel/termos do Resend) — ou registrar formalmente como
 transferência internacional caso não haja opção de região Brasil/UE.
 
-**2.5 — Preencher o inventário de dados pessoais** (LGPD) — hoje
-ainda não tratado. Dono: você para validar o conteúdo final; eu posso
-preparar um primeiro rascunho a partir do schema, já que sei
-exatamente quais tabelas/colunas guardam dado pessoal (`pessoas`,
-`funcionarios`, `profiles`, `pessoa_papeis`, etc.) — é só pedir.
+**2.5 — Preencher o inventário de dados pessoais** (LGPD). **Rascunho
+técnico pronto em 23/09/2026** —
+`docs/INVENTÁRIO DE DADOS PESSOAIS (LGPD) v1.0.md`, organizado pelas 6
+categorias do ADR-010 §3, com tabela/coluna de origem, finalidade e
+base legal preliminar para cada uma. Falta você (com apoio jurídico)
+validar a base legal e definir os dois prazos de retenção ainda em
+aberto (funcionário desligado, contrato encerrado) — aí o documento
+passa de rascunho a vigente.
 
 **2.6 — Publicar formalmente a relação de suboperadores à
-empresa-cliente.** Dono: você (ação comercial) — o levantamento já
-existe em `RUNBOOK-SUBOPERADORES-LGPD.md` (Supabase, Vercel, Resend);
-eu posso preparar uma versão pronta para anexar/enviar à JR Box, se
-quiser.
+empresa-cliente.** **Rascunho pronto em 23/09/2026** —
+`docs/RELAÇÃO DE SUBOPERADORES — Versão para a Empresa-Cliente v1.0.md`,
+sem jargão técnico, pronto para anexar ao contrato/enviar à JR Box.
+Falta só a ação comercial de publicação/envio (dono: você) e, quando
+resolvido, atualizar a seção 3 desse documento com a confirmação do
+Resend (item 2.4).
 
 **2.7 — Anexar evidência documental formal** do parecer jurídico sobre
 as bases legais e do contrato/termo de tratamento de dados assinado
@@ -139,8 +143,9 @@ paralelo, não dependem de infraestrutura) → **3.1, 3.2 e 3.3**
 
 **8. Próxima ação**
 
-Confirmar: (a) se a ordem da seção 7 serve ou se algum item tem
-prioridade diferente para você; (b) se quer que eu já prepare os
-rascunhos oferecidos nos itens 2.5 (inventário de dados pessoais) e
-2.6 (versão client-facing da relação de suboperadores); (c) a região
-de hospedagem a fixar no item 2.3 (recomendação: `gru1`).
+Itens 2.3, 2.5 e 2.6 resolvidos/rascunhados em 23/09/2026. Restam, na
+ordem da seção 7: **2.1 e 2.2** (pagamento — Supabase Pro e Vercel
+pago) são o próximo passo, pois destravam 2.4/2.8/4.2. Em paralelo,
+você pode revisar e validar os dois rascunhos (2.5, 2.6) e resolver
+2.7 (documento jurídico) a qualquer momento, já que não dependem de
+infraestrutura.
