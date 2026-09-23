@@ -58,21 +58,26 @@ export async function liberarLoteProducaoAction(formData: FormData) {
   revalidatePath("/producao");
 }
 
-export async function apontarProducaoAction(formData: FormData) {
+export type ApontarProducaoState = { error: string } | undefined;
+
+export async function apontarProducaoAction(
+  _prevState: ApontarProducaoState,
+  formData: FormData,
+): Promise<ApontarProducaoState> {
   const opLoteOperacaoId = String(formData.get("op_lote_operacao_id") ?? "");
   const produzida = Number(formData.get("quantidade_produzida") || 0);
   const rejeitada = Number(formData.get("quantidade_rejeitada") || 0);
   const retrabalho = Number(formData.get("quantidade_retrabalho") || 0);
   const observacao = String(formData.get("observacao") ?? "").trim() || null;
-  if (!opLoteOperacaoId) throw new Error("Operação inválida.");
+  if (!opLoteOperacaoId) return { error: "Operação inválida." };
   if (
     !Number.isFinite(produzida) || !Number.isFinite(rejeitada) || !Number.isFinite(retrabalho) ||
     produzida < 0 || rejeitada < 0 || retrabalho < 0
   ) {
-    throw new Error("Quantidades devem ser números válidos e não negativos.");
+    return { error: "Quantidades devem ser números válidos e não negativos." };
   }
   if (produzida === 0 && rejeitada === 0 && retrabalho === 0) {
-    throw new Error("Informe ao menos uma quantidade (produzida, rejeitada ou retrabalho) maior que zero.");
+    return { error: "Informe ao menos uma quantidade (produzida, rejeitada ou retrabalho) maior que zero." };
   }
 
   const supabase = await createClient();
@@ -83,7 +88,7 @@ export async function apontarProducaoAction(formData: FormData) {
     p_quantidade_retrabalho: retrabalho,
     p_observacao: observacao,
   });
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
 
   revalidatePath("/producao");
 }

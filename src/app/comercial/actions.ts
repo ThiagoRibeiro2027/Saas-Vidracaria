@@ -3,7 +3,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function upsertOrcamentoAction(formData: FormData) {
+export type OrcamentoState = { error: string } | undefined;
+
+export async function upsertOrcamentoAction(
+  _prevState: OrcamentoState,
+  formData: FormData,
+): Promise<OrcamentoState> {
   const id = String(formData.get("id") ?? "") || null;
   const pessoaId = String(formData.get("pessoa_id") ?? "");
   const obraId = String(formData.get("obra_id") ?? "") || null;
@@ -11,7 +16,7 @@ export async function upsertOrcamentoAction(formData: FormData) {
   const condicaoComercial = String(formData.get("condicao_comercial") ?? "").trim() || null;
   const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
 
-  if (!pessoaId) throw new Error("Cliente é obrigatório.");
+  if (!pessoaId) return { error: "Cliente é obrigatório." };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("upsert_orcamento", {
@@ -22,7 +27,7 @@ export async function upsertOrcamentoAction(formData: FormData) {
     p_condicao_comercial: condicaoComercial,
     p_observacoes: observacoes,
   });
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
 
   revalidatePath("/comercial");
 }

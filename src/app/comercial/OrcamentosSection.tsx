@@ -1,5 +1,6 @@
 "use client";
 
+import { useActionState } from "react";
 import {
   upsertOrcamentoAction,
   upsertOrcamentoItemAction,
@@ -92,6 +93,7 @@ export default function OrcamentosSection({
   const obraNome = (id: string | null) => (id ? obras.find((o) => o.id === id)?.nome ?? "(obra removida)" : "—");
   const obrasAtivas = obras.filter((o) => o.situacao === "ativo");
   const itensAtivos = itens.filter((i) => i.situacao === "ativo");
+  const [novoState, novoFormAction] = useActionState(upsertOrcamentoAction, undefined);
 
   return (
     <section>
@@ -112,7 +114,7 @@ export default function OrcamentosSection({
               Nenhuma pessoa com papel Cliente ativo — cadastre um em Cadastros antes.
             </p>
           ) : (
-            <form action={upsertOrcamentoAction} className="flex flex-wrap items-center gap-1.5">
+            <form action={novoFormAction} className="flex flex-wrap items-center gap-1.5">
               <Select name="pessoa_id" defaultValue="" required>
                 <option value="" disabled>
                   Cliente
@@ -142,6 +144,7 @@ export default function OrcamentosSection({
               </Button>
             </form>
           )}
+          {novoState?.error && <p className="mt-1 text-xs text-danger">{novoState.error}</p>}
         </div>
       )}
 
@@ -177,47 +180,16 @@ export default function OrcamentosSection({
               </div>
 
               {editavel && (
-                <form
-                  action={upsertOrcamentoAction}
-                  className="mt-2 flex flex-wrap items-center gap-1.5"
-                >
-                  <input type="hidden" name="id" value={orc.id} />
-                  <Select name="pessoa_id" defaultValue={orc.pessoa_id} required>
-                    {pessoaOpcoes.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nome}
-                        {pessoaAtual?.id === p.id && !clientesElegiveis.some((c) => c.id === p.id)
-                          ? " (papel desligado)"
-                          : ""}
-                      </option>
-                    ))}
-                  </Select>
-                  <Select name="obra_id" defaultValue={orc.obra_id ?? ""}>
-                    <option value="">Sem obra</option>
-                    {obraOpcoes.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.nome} ({pessoaNome(o.pessoa_id)})
-                        {obraAtual?.id === o.id && !obrasAtivas.some((a) => a.id === o.id) ? " (inativa)" : ""}
-                      </option>
-                    ))}
-                  </Select>
-                  <Input name="validade" type="date" defaultValue={orc.validade ?? ""} />
-                  <Input
-                    name="condicao_comercial"
-                    placeholder="condição comercial"
-                    defaultValue={orc.condicao_comercial ?? ""}
-                    className="w-40"
-                  />
-                  <Input
-                    name="observacoes"
-                    placeholder="observações"
-                    defaultValue={orc.observacoes ?? ""}
-                    className="w-44"
-                  />
-                  <Button type="submit" variant="primary">
-                    Salvar cabeçalho
-                  </Button>
-                </form>
+                <OrcamentoHeaderForm
+                  orcamento={orc}
+                  pessoaOpcoes={pessoaOpcoes}
+                  clientesElegiveis={clientesElegiveis}
+                  obraOpcoes={obraOpcoes}
+                  obrasAtivas={obrasAtivas}
+                  pessoaAtual={pessoaAtual}
+                  obraAtual={obraAtual}
+                  pessoaNome={pessoaNome}
+                />
               )}
 
               {editavel && (
@@ -304,6 +276,72 @@ export default function OrcamentosSection({
         {orcamentos.length === 0 && <p className="text-xs text-text-muted">Nenhum orçamento ainda.</p>}
       </div>
     </section>
+  );
+}
+
+function OrcamentoHeaderForm({
+  orcamento,
+  pessoaOpcoes,
+  clientesElegiveis,
+  obraOpcoes,
+  obrasAtivas,
+  pessoaAtual,
+  obraAtual,
+  pessoaNome,
+}: {
+  orcamento: Orcamento;
+  pessoaOpcoes: Pessoa[];
+  clientesElegiveis: Pessoa[];
+  obraOpcoes: Obra[];
+  obrasAtivas: Obra[];
+  pessoaAtual: Pessoa | undefined;
+  obraAtual: Obra | undefined;
+  pessoaNome: (id: string) => string;
+}) {
+  const [state, formAction] = useActionState(upsertOrcamentoAction, undefined);
+
+  return (
+    <>
+      <form action={formAction} className="mt-2 flex flex-wrap items-center gap-1.5">
+        <input type="hidden" name="id" value={orcamento.id} />
+        <Select name="pessoa_id" defaultValue={orcamento.pessoa_id} required>
+          {pessoaOpcoes.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.nome}
+              {pessoaAtual?.id === p.id && !clientesElegiveis.some((c) => c.id === p.id)
+                ? " (papel desligado)"
+                : ""}
+            </option>
+          ))}
+        </Select>
+        <Select name="obra_id" defaultValue={orcamento.obra_id ?? ""}>
+          <option value="">Sem obra</option>
+          {obraOpcoes.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.nome} ({pessoaNome(o.pessoa_id)})
+              {obraAtual?.id === o.id && !obrasAtivas.some((a) => a.id === o.id) ? " (inativa)" : ""}
+            </option>
+          ))}
+        </Select>
+        <Input name="validade" type="date" defaultValue={orcamento.validade ?? ""} />
+        <Input
+          name="condicao_comercial"
+          placeholder="condição comercial"
+          defaultValue={orcamento.condicao_comercial ?? ""}
+          className="w-40"
+        />
+        <Input
+          name="observacoes"
+          placeholder="observações"
+          defaultValue={orcamento.observacoes ?? ""}
+          className="w-44"
+        />
+        <Button type="submit" variant="primary">
+          Salvar cabeçalho
+        </Button>
+      </form>
+      {state?.error && <p className="mt-1 text-xs text-danger">{state.error}</p>}
+    </>
   );
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useActionState } from "react";
 import { upsertPessoaAction, setPessoaPapelAction } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -67,10 +68,12 @@ function PessoaRow({ row, papeis, canManage }: { row: Pessoa | null; papeis: Pap
   const temPapel = (papel: "CLIENTE" | "FORNECEDOR") =>
     row ? papeis.some((p) => p.pessoa_id === row.id && p.papel === papel && p.ativo) : false;
 
+  const [state, formAction] = useActionState(upsertPessoaAction, undefined);
+
   return (
     <tr>
       <Td colSpan={canManage ? 6 : 5}>
-        <form action={upsertPessoaAction} className="flex flex-wrap items-center gap-1.5">
+        <form action={formAction} className="flex flex-wrap items-center gap-1.5">
           {row && <input type="hidden" name="id" value={row.id} />}
           <Select name="tipo_documento" defaultValue={row?.tipo_documento ?? ""} disabled={!canManage}>
             <option value="">—</option>
@@ -152,6 +155,7 @@ function PessoaRow({ row, papeis, canManage }: { row: Pessoa | null; papeis: Pap
             </Button>
           )}
         </form>
+        {state?.error && <p className="mt-1 text-xs text-danger">{state.error}</p>}
 
         {row && (
           <div className="mt-1.5 flex gap-3">

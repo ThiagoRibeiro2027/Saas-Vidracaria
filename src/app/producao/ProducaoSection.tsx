@@ -1,5 +1,6 @@
 "use client";
 
+import { useActionState } from "react";
 import {
   liberarEngenhariaAction,
   criarOrdemProducaoAction,
@@ -104,6 +105,67 @@ export type ListaCorteRow = {
 };
 
 const num = (v: number) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+
+function OperacaoRow({ operacao: o, podeMexer }: { operacao: OpOperacao; podeMexer: boolean }) {
+  const [state, formAction] = useActionState(apontarProducaoAction, undefined);
+
+  return (
+    <tr>
+      <Td>
+        {o.sequencia}. {o.descricao}
+      </Td>
+      <Td>
+        <Badge variant={OPERACAO_STATUS_TONE[o.status]}>{OPERACAO_STATUS_LABEL[o.status]}</Badge>
+      </Td>
+      <Td>
+        {num(o.quantidade_produzida)} / {num(o.quantidade_planejada)}
+      </Td>
+      <Td>{num(o.quantidade_rejeitada)}</Td>
+      <Td>{num(o.quantidade_retrabalho)}</Td>
+      <Td>{num(o.saldo)}</Td>
+      {podeMexer && (
+        <Td>
+          {o.status !== "concluida" && (
+            <>
+              <form action={formAction} className="flex flex-wrap items-center gap-1">
+                <input type="hidden" name="op_lote_operacao_id" value={o.id} />
+                <Input
+                  name="quantidade_produzida"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder="produzida"
+                  className="w-16 text-xs"
+                />
+                <Input
+                  name="quantidade_rejeitada"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder="rejeitada"
+                  className="w-16 text-xs"
+                />
+                <Input
+                  name="quantidade_retrabalho"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder="retrabalho"
+                  className="w-16 text-xs"
+                />
+                <Input name="observacao" placeholder="obs. (opcional)" className="w-24 text-xs" />
+                <Button type="submit" variant="primary" size="sm">
+                  Apontar
+                </Button>
+              </form>
+              {state?.error && <p className="mt-0.5 text-xs text-danger">{state.error}</p>}
+            </>
+          )}
+        </Td>
+      )}
+    </tr>
+  );
+}
 
 type Tone = "neutral" | "success" | "warning" | "danger";
 
@@ -435,64 +497,7 @@ export default function ProducaoSection({
                                                   </thead>
                                                   <tbody>
                                                     {operacoes.map((o) => (
-                                                      <tr key={o.id}>
-                                                        <Td>
-                                                          {o.sequencia}. {o.descricao}
-                                                        </Td>
-                                                        <Td>
-                                                          <Badge variant={OPERACAO_STATUS_TONE[o.status]}>{OPERACAO_STATUS_LABEL[o.status]}</Badge>
-                                                        </Td>
-                                                        <Td>
-                                                          {num(o.quantidade_produzida)} / {num(o.quantidade_planejada)}
-                                                        </Td>
-                                                        <Td>{num(o.quantidade_rejeitada)}</Td>
-                                                        <Td>{num(o.quantidade_retrabalho)}</Td>
-                                                        <Td>{num(o.saldo)}</Td>
-                                                        {podeMexer && (
-                                                          <Td>
-                                                            {o.status !== "concluida" && (
-                                                              <form
-                                                                action={apontarProducaoAction}
-                                                                className="flex flex-wrap items-center gap-1"
-                                                              >
-                                                                <input type="hidden" name="op_lote_operacao_id" value={o.id} />
-                                                                <Input
-                                                                  name="quantidade_produzida"
-                                                                  type="number"
-                                                                  step="0.001"
-                                                                  min="0"
-                                                                  placeholder="produzida"
-                                                                  className="w-16 text-xs"
-                                                                />
-                                                                <Input
-                                                                  name="quantidade_rejeitada"
-                                                                  type="number"
-                                                                  step="0.001"
-                                                                  min="0"
-                                                                  placeholder="rejeitada"
-                                                                  className="w-16 text-xs"
-                                                                />
-                                                                <Input
-                                                                  name="quantidade_retrabalho"
-                                                                  type="number"
-                                                                  step="0.001"
-                                                                  min="0"
-                                                                  placeholder="retrabalho"
-                                                                  className="w-16 text-xs"
-                                                                />
-                                                                <Input
-                                                                  name="observacao"
-                                                                  placeholder="obs. (opcional)"
-                                                                  className="w-24 text-xs"
-                                                                />
-                                                                <Button type="submit" variant="primary" size="sm">
-                                                                  Apontar
-                                                                </Button>
-                                                              </form>
-                                                            )}
-                                                          </Td>
-                                                        )}
-                                                      </tr>
+                                                      <OperacaoRow key={o.id} operacao={o} podeMexer={podeMexer} />
                                                     ))}
                                                   </tbody>
                                                 </Table>

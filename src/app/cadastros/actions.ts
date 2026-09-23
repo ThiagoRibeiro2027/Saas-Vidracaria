@@ -38,7 +38,12 @@ async function lerCsv(file: File): Promise<ImportacaoLinha[]> {
   return resultado.data;
 }
 
-export async function upsertPessoaAction(formData: FormData) {
+export type PessoaState = { error: string } | undefined;
+
+export async function upsertPessoaAction(
+  _prevState: PessoaState,
+  formData: FormData,
+): Promise<PessoaState> {
   const id = String(formData.get("id") ?? "") || null;
   const tipoDocumento = String(formData.get("tipo_documento") ?? "") || null;
   const documento = String(formData.get("documento") ?? "").trim() || null;
@@ -52,7 +57,7 @@ export async function upsertPessoaAction(formData: FormData) {
   const cep = String(formData.get("cep") ?? "").trim() || null;
   const situacao = String(formData.get("situacao") ?? "ativo");
 
-  if (!nome) throw new Error("Nome é obrigatório.");
+  if (!nome) return { error: "Nome é obrigatório." };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("upsert_pessoa", {
@@ -69,7 +74,12 @@ export async function upsertPessoaAction(formData: FormData) {
     p_cep: cep,
     p_situacao: situacao,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === "23505") {
+      return { error: "Já existe uma pessoa cadastrada com esse documento (CPF/CNPJ)." };
+    }
+    return { error: error.message };
+  }
 
   revalidatePath("/cadastros");
 }
