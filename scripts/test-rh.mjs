@@ -235,6 +235,169 @@ async function main() {
     }
   }
 
+  console.log("\n18. Massa de dados — funcionário ativo pra testar documentos/afastamentos (§6-7)");
+  const { data: funcionarioAtivoId } = await admTenant.client.rpc("upsert_funcionario", { p_id: null, p_nome: "Funcionário Ativo Teste" });
+  check("funcionário ativo criado", !!funcionarioAtivoId);
+
+  console.log("\n19. registrar_documento_funcionario() — permissão, validação, sucesso");
+  let documentoId;
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "Óculos de proteção",
+    });
+    check("sem rh.manage não registra documento", !!eNoPerm);
+
+    const { error: eTipo } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "invalido", p_nome: "x",
+    });
+    check("tipo inválido é rejeitado", !!eTipo);
+
+    const { error: eNome } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "",
+    });
+    check("nome vazio é rejeitado", !!eNome);
+
+    const { error: eValidade } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "Luvas", p_data_referencia: "2027-06-01", p_validade: "2027-01-01",
+    });
+    check("validade anterior à data de referência é rejeitada", !!eValidade);
+
+    const { error: eOutroFunc } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: "00000000-0000-0000-0000-000000000000", p_tipo: "epi", p_nome: "x",
+    });
+    check("funcionário inexistente é rejeitado", !!eOutroFunc);
+
+    const { error: eDesligado } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioId, p_tipo: "epi", p_nome: "x",
+    });
+    check("registrar documento para funcionário desligado é rejeitado", !!eDesligado);
+
+    const { data, error } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "Óculos de proteção",
+      p_data_referencia: "2027-01-10", p_validade: "2027-07-10", p_observacoes: "entregue no almoxarifado",
+    });
+    check("ADMIN registra documento (EPI)", !error && !!data);
+    documentoId = data;
+
+    const { data: row } = await admin.from("funcionario_documentos").select("*").eq("id", documentoId).single();
+    check("nasce 'ativo' com os dados corretos", row?.status === "ativo" && row?.tipo === "epi" && row?.nome === "Óculos de proteção");
+  }
+
+  console.log("\n20. cancelar_documento_funcionario() — permissão, sucesso, rejeita cancelar de novo");
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("cancelar_documento_funcionario", { p_id: documentoId });
+    check("sem rh.manage não cancela documento", !!eNoPerm);
+
+    const { error } = await admTenant.client.rpc("cancelar_documento_funcionario", { p_id: documentoId, p_motivo: "registrado errado" });
+    check("ADMIN cancela documento", !error);
+    const { data: row } = await admin.from("funcionario_documentos").select("status, motivo_cancelamento").eq("id", documentoId).single();
+    check("status vira cancelado com motivo salvo", row?.status === "cancelado" && row?.motivo_cancelamento === "registrado errado");
+
+    const { error: eDeNovo } = await admTenant.client.rpc("cancelar_documento_funcionario", { p_id: documentoId });
+    check("cancelar documento já cancelado é rejeitado", !!eDeNovo);
+  }
+
+  console.log("\n21. registrar_afastamento() — permissão, validação, sucesso (período em aberto)");
+  let afastamentoId;
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "afastamento", p_data_inicio: "2027-03-01",
+    });
+    check("sem rh.manage não registra afastamento", !!eNoPerm);
+
+    const { error: eTipo } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "invalido", p_data_inicio: "2027-03-01",
+    });
+    check("tipo inválido é rejeitado", !!eTipo);
+
+    const { error: eDatas } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "ferias", p_data_inicio: "2027-03-10", p_data_fim: "2027-03-01",
+    });
+    check("data_fim anterior à data_inicio é rejeitada", !!eDatas);
+
+    const { error: eDesligado } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioId, p_tipo: "afastamento", p_data_inicio: "2027-03-01",
+    });
+    check("registrar período para funcionário desligado é rejeitado", !!eDesligado);
+
+    const { data, error } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "afastamento", p_data_inicio: "2027-03-01", p_motivo: "atestado médico",
+    });
+    check("ADMIN registra afastamento em aberto", !error && !!data);
+    afastamentoId = data;
+
+    const { data: row } = await admin.from("funcionario_afastamentos").select("*").eq("id", afastamentoId).single();
+    check("nasce 'ativo', sem data_fim (em aberto)", row?.status === "ativo" && row?.data_fim === null && row?.tipo === "afastamento");
+  }
+
+  console.log("\n22. encerrar_afastamento() — permissão, sucesso, rejeita encerrar de novo");
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-03-15" });
+    check("sem rh.manage não encerra afastamento", !!eNoPerm);
+
+    const { error: eDataInvalida } = await admTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-02-01" });
+    check("encerrar com data_fim anterior à data_inicio é rejeitado", !!eDataInvalida);
+
+    const { error } = await admTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-03-15" });
+    check("ADMIN encerra período em aberto", !error);
+    const { data: row } = await admin.from("funcionario_afastamentos").select("data_fim").eq("id", afastamentoId).single();
+    check("data_fim preenchida", row?.data_fim === "2027-03-15");
+
+    const { error: eDeNovo } = await admTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-03-20" });
+    check("encerrar período que já tem data_fim é rejeitado", !!eDeNovo);
+  }
+
+  console.log("\n23. cancelar_afastamento() — permissão e sucesso");
+  {
+    const { data: feriasId } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "ferias", p_data_inicio: "2027-05-01", p_data_fim: "2027-05-20",
+    });
+
+    const { error: eNoPerm } = await noPermTenant.client.rpc("cancelar_afastamento", { p_id: feriasId });
+    check("sem rh.manage não cancela afastamento", !!eNoPerm);
+
+    const { error } = await admTenant.client.rpc("cancelar_afastamento", { p_id: feriasId, p_motivo: "cadastrado em duplicidade" });
+    check("ADMIN cancela período", !error);
+    const { data: row } = await admin.from("funcionario_afastamentos").select("status, motivo_cancelamento").eq("id", feriasId).single();
+    check("status vira cancelado com motivo salvo", row?.status === "cancelado" && row?.motivo_cancelamento === "cadastrado em duplicidade");
+  }
+
+  console.log("\n24. SELECT em funcionario_documentos/funcionario_afastamentos exige rh.view + isolamento cross-tenant");
+  {
+    const { data: dSemPerm } = await noPermTenant.client.from("funcionario_documentos").select("id");
+    check("papel QUALIDADE não lê funcionario_documentos", (dSemPerm ?? []).length === 0);
+
+    const { data: aSemPerm } = await noPermTenant.client.from("funcionario_afastamentos").select("id");
+    check("papel QUALIDADE não lê funcionario_afastamentos", (aSemPerm ?? []).length === 0);
+
+    const { data: crossDoc } = await otherTenant.client.from("funcionario_documentos").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga documentos do tenant A", (crossDoc ?? []).length === 0);
+
+    const { data: crossAf } = await otherTenant.client.from("funcionario_afastamentos").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga afastamentos do tenant A", (crossAf ?? []).length === 0);
+
+    const { error } = await otherTenant.client.rpc("cancelar_afastamento", { p_id: afastamentoId });
+    check("tenant B não consegue cancelar afastamento do tenant A", !!error);
+  }
+
+  console.log("\n25. Cada ação de documentos/afastamentos grava a própria linha de auditoria");
+  {
+    const { data: events } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", [
+        "rh.documento_registrado", "rh.documento_cancelado",
+        "rh.afastamento_registrado", "rh.afastamento_encerrado", "rh.afastamento_cancelado",
+      ]);
+    const actions = new Set((events ?? []).map((e) => e.action));
+    for (const action of [
+      "rh.documento_registrado", "rh.documento_cancelado",
+      "rh.afastamento_registrado", "rh.afastamento_encerrado", "rh.afastamento_cancelado",
+    ]) {
+      check(`${action} registrado`, actions.has(action));
+    }
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
