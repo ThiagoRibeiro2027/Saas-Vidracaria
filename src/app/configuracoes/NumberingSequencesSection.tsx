@@ -12,8 +12,13 @@ import { Select } from "@/components/ui/Select";
 // pra eles, e criar_expedicao()/criar_instalacao()/gerar_titulos_pedido()
 // falham sempre com "Sequência de numeração não configurada". Adicionado
 // 'titulo_financeiro' (T11) junto, mesmo problema recém-introduzido.
+// Mesmo problema encontrado de novo em teste manual (22/09/2026): 'proposta'
+// (ADR-002 v2.4) ficou fora quando Propostas foi adicionado depois — sem
+// isso, gerarPropostaAction() sempre falhava com o mesmo erro de sequência
+// não configurada.
 const DOCUMENT_TYPES = [
   { key: "orcamento", label: "Orçamento" },
+  { key: "proposta", label: "Proposta comercial" },
   { key: "pedido", label: "Pedido" },
   { key: "ordem_producao", label: "Ordem de produção" },
   { key: "expedicao", label: "Expedição" },
