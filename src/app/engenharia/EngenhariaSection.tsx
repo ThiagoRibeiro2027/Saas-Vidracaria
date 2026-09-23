@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Table, Th, Td } from "@/components/ui/Table";
+import BomPedidoItem from "./BomPedidoItem";
 
 type Caracteristica = {
   peca_caracteristica_id: string;
@@ -17,12 +18,17 @@ type Caracteristica = {
   valor_texto: string | null;
 };
 
-type SimulacaoLinha = {
-  material_item_id: string;
-  material_codigo: string;
-  quantidade_base: number | null;
-  quantidade_sugerida: number;
-  origem: string;
+type BomLinha = {
+  pedido_item_bom_id: string;
+  status: string;
+  aprovado_por: string | null;
+  aprovado_em: string | null;
+  pedido_item_bom_item_id: string | null;
+  material_item_id: string | null;
+  material_codigo: string | null;
+  material_descricao: string | null;
+  quantidade_por_unidade: number | null;
+  origem: string | null;
 };
 
 type Pessoa = { id: string; nome: string };
@@ -55,7 +61,8 @@ export default function EngenhariaSection({
   obras,
   itens,
   caracteristicasPorPedidoItem,
-  simulacaoPorPedidoItem,
+  bomPorPedidoItem,
+  pecaIdPorItemId,
   canManage,
 }: {
   pedidos: Pedido[];
@@ -65,7 +72,8 @@ export default function EngenhariaSection({
   obras: Obra[];
   itens: Item[];
   caracteristicasPorPedidoItem: Map<string, Caracteristica[]>;
-  simulacaoPorPedidoItem: Map<string, SimulacaoLinha[]>;
+  bomPorPedidoItem: Map<string, BomLinha[]>;
+  pecaIdPorItemId: Map<string, string>;
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -111,7 +119,9 @@ export default function EngenhariaSection({
                         producao={producao}
                         itemLabel={itemLabel(pi.item_id)}
                         caracteristicas={caracteristicasPorPedidoItem.get(pi.id) ?? []}
-                        simulacao={simulacaoPorPedidoItem.get(pi.id) ?? []}
+                        bomLinhas={bomPorPedidoItem.get(pi.id) ?? []}
+                        ehPecaConfiguravel={pecaIdPorItemId.has(pi.item_id)}
+                        itens={itens}
                         canManage={canManage}
                       />
                     );
@@ -137,14 +147,18 @@ function ItemProducaoRow({
   producao,
   itemLabel,
   caracteristicas,
-  simulacao,
+  bomLinhas,
+  ehPecaConfiguravel,
+  itens,
   canManage,
 }: {
   pedidoItem: PedidoItem;
   producao: ItemProducao | undefined;
   itemLabel: string;
   caracteristicas: Caracteristica[];
-  simulacao: SimulacaoLinha[];
+  bomLinhas: BomLinha[];
+  ehPecaConfiguravel: boolean;
+  itens: Item[];
   canManage: boolean;
 }) {
   if (!producao) {
@@ -240,23 +254,13 @@ function ItemProducaoRow({
           </Td>
         </tr>
       )}
-      {simulacao.length > 0 && (
-        <tr>
-          <Td colSpan={canManage ? 7 : 6}>
-            <div className="text-xs">
-              <span className="font-medium text-text">BOM sugerida pelas regras (motor básico — nada foi gravado):</span>
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                {simulacao.map((s) => (
-                  <span key={s.material_item_id} className={s.origem === "regra" ? "text-primary" : "text-text-muted"}>
-                    {s.material_codigo}: {s.quantidade_base ?? "—"} → {s.quantidade_sugerida}
-                    {s.origem === "regra" && <Badge variant="warning">regra</Badge>}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </Td>
-        </tr>
-      )}
+      <BomPedidoItem
+        pedidoItemId={pedidoItem.id}
+        ehPecaConfiguravel={ehPecaConfiguravel}
+        linhas={bomLinhas}
+        itens={itens}
+        canManage={canManage}
+      />
     </>
   );
 }

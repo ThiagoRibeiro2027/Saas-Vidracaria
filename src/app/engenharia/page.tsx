@@ -3,9 +3,13 @@ import EngenhariaSection from "./EngenhariaSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
 // TÓPICO 5 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
-// novembro: "o que a fábrica faz"). Só o vínculo pedido_item → medida de
-// obra (TÓPICO 16 §7) — sem Produto/Projeto, BOM, revisão, motor de
-// regras ou Solicitação de Engenharia. Só pedidos liberados entram aqui
+// novembro: "o que a fábrica faz"): vínculo pedido_item → medida de obra
+// (TÓPICO 16 §7). Ampliado pelas Fases F/G/H do plano de evolução da BOM
+// leve (23/09/2026, ADR-002 §4.5 v2.8): características configuráveis
+// por pedido_item, simulação/geração da BOM sugerida pelo motor de
+// regras, e aprovação da BOM definitiva que Suprimentos passa a
+// consumir. Sem Produto/Projeto, biblioteca técnica ou Solicitação de
+// Engenharia — isso segue fora do MVP. Só pedidos liberados entram aqui
 // (ADR-002 §6: Liberação → Engenharia).
 export default async function EngenhariaPage() {
   const supabase = await createClient();
@@ -70,18 +74,24 @@ export default async function EngenhariaPage() {
       }),
   );
 
-  // Fase G (motor de regras) — simulação da BOM sugerida por pedido_item,
-  // comparada com a composição base. Leitura pura, nada é gravado.
-  const simulacaoPorPedidoItem = new Map<
+  // Fase H — BOM sugerida/definitiva por pedido_item (gerada pelo motor
+  // de regras, Fase G, e achatada pela hierarquia, Fase E). N chamadas
+  // sobre os pedido_itens já buscados, mesmo padrão de Promise.all já
+  // usado em producao/page.tsx.
+  const bomPorPedidoItem = new Map<
     string,
-    { material_item_id: string; material_codigo: string; quantidade_base: number | null; quantidade_sugerida: number; origem: string }[]
+    {
+      pedido_item_bom_id: string; status: string; aprovado_por: string | null; aprovado_em: string | null;
+      pedido_item_bom_item_id: string | null; material_item_id: string | null; material_codigo: string | null;
+      material_descricao: string | null; quantidade_por_unidade: number | null; origem: string | null;
+    }[]
   >();
   await Promise.all(
     (pedidoItens ?? [])
       .filter((pi) => pecaIdPorItemId.has(pi.item_id))
       .map(async (pi) => {
-        const { data } = await supabase.rpc("simular_bom_sugerida", { p_pedido_item_id: pi.id });
-        if (data && data.some((d: { origem: string }) => d.origem === "regra")) simulacaoPorPedidoItem.set(pi.id, data);
+        const { data } = await supabase.rpc("listar_bom_pedido_item", { p_pedido_item_id: pi.id });
+        if (data && data.length > 0) bomPorPedidoItem.set(pi.id, data);
       }),
   );
 
@@ -90,8 +100,9 @@ export default async function EngenhariaPage() {
       <p className="font-mono text-[11px] text-primary">TÓPICO 5 — Engenharia</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Itens a produzir</h1>
       <p className="mt-1 text-sm text-text">
-        Recorte mínimo do M1: medição em obra por item de pedido liberado, com confirmação antes
-        da produção (TÓPICO 16 §7). Sem projeto técnico, BOM ou revisão.
+        Medição em obra por item de pedido liberado, com confirmação antes da produção (TÓPICO 16
+        §7). Quando o item é uma peça configurável (TÓPICO 5, Fases F-H): valor das características,
+        geração da BOM sugerida pelo motor de regras, ajuste manual e aprovação da BOM definitiva.
       </p>
 
       <div className="mt-6">
@@ -103,7 +114,8 @@ export default async function EngenhariaPage() {
           obras={obras ?? []}
           itens={itens ?? []}
           caracteristicasPorPedidoItem={caracteristicasPorPedidoItem}
-          simulacaoPorPedidoItem={simulacaoPorPedidoItem}
+          bomPorPedidoItem={bomPorPedidoItem}
+          pecaIdPorItemId={pecaIdPorItemId}
           canManage={!!canManage}
         />
       </div>

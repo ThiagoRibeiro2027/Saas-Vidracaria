@@ -713,6 +713,186 @@ async function main() {
     check("pecas.regra_desativada registrado", actions.has("pecas.regra_desativada"));
   }
 
+  // =========================================================================
+  // Fase H do plano de 23/09/2026 — BOM sugerida → definitiva. Fecha o
+  // ciclo: gera a sugestão (composição base + regras, achatada pela
+  // hierarquia), Engenharia ajusta manualmente, aprova como definitiva —
+  // e a partir daí Suprimentos (Fase C) usa a BOM definitiva em vez da
+  // expansão ao vivo.
+  // =========================================================================
+
+  console.log("\n52. Massa de dados — peça A (contém peça B como subconjunto) + regra de reforço");
+  const { data: itemPecaHId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "JAN-PC-H", p_descricao: "Janela H", p_tipo: "produto_acabado",
+    p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+  });
+  const { data: itemFolhaHId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "FLH-PC-H", p_descricao: "Folha H", p_tipo: "componente",
+    p_classificacao: "folha", p_unidade_principal: "UN", p_situacao: "ativo",
+  });
+  const { data: itemPerfilHId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "PRF-PC-H", p_descricao: "Perfil H", p_tipo: "materia_prima",
+    p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo",
+  });
+  const { data: itemReforcoHId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "REF-PC-H", p_descricao: "Reforço H", p_tipo: "materia_prima",
+    p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo",
+  });
+  const { data: pecaAHId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaHId, p_descricao_tecnica: null });
+  const { data: pecaBHId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemFolhaHId, p_descricao_tecnica: null });
+  await admTenant.client.rpc("adicionar_material_peca", { p_peca_id: pecaAHId, p_material_item_id: itemFolhaHId, p_quantidade_por_unidade: 2, p_observacao: null });
+  await admTenant.client.rpc("adicionar_material_peca", { p_peca_id: pecaBHId, p_material_item_id: itemPerfilHId, p_quantidade_por_unidade: 3, p_observacao: null });
+  const { data: caractLarguraHId } = await admTenant.client.rpc("definir_caracteristica_peca", {
+    p_peca_id: pecaAHId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true,
+  });
+  const { data: regraReforcoHId } = await admTenant.client.rpc("criar_regra_peca", {
+    p_peca_id: pecaAHId, p_caracteristica_id: caractLarguraHId, p_operador: ">", p_valor_comparacao_numero: 1500, p_valor_comparacao_texto: null,
+    p_acao: "adicionar_material", p_acao_material_item_id: itemReforcoHId, p_acao_quantidade: 1, p_motivo: null, p_substitui_regra_id: null,
+  });
+  check("regra de reforço criada", !!regraReforcoHId);
+
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "orcamento", p_prefixo: "ORCPCH-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "pedido", p_prefixo: "PEDPCH-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  const { data: clienteHId } = await admTenant.client.rpc("upsert_pessoa", {
+    p_id: null, p_tipo_documento: "CPF", p_documento: "10101010101", p_nome: "Cliente BOM Definitiva",
+    p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+    p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+  });
+  await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: clienteHId, p_papel: "CLIENTE", p_ativo: true });
+  const { data: orcamentoHId } = await admTenant.client.rpc("upsert_orcamento", {
+    p_id: null, p_pessoa_id: clienteHId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+  });
+  await admTenant.client.rpc("upsert_orcamento_item", {
+    p_id: null, p_orcamento_id: orcamentoHId, p_item_id: itemPecaHId, p_quantidade: 5, p_preco_unitario: 1000,
+  });
+  await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoHId, p_decisao: "aprovado" });
+  const { data: pedidoHId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoHId });
+  const { data: pedidoItemH } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoHId).single();
+  const pedidoItemHId = pedidoItemH.id;
+  await admTenant.client.rpc("definir_valor_caracteristica_pedido_item", {
+    p_pedido_item_id: pedidoItemHId, p_peca_caracteristica_id: caractLarguraHId, p_valor_numero: 1800, p_valor_texto: null,
+  });
+
+  console.log("\n53. gerar_bom_sugerida_pedido_item() gera BOM achatada (só folha) com regra aplicada");
+  const { data: bomHId } = await admTenant.client.rpc("gerar_bom_sugerida_pedido_item", { p_pedido_item_id: pedidoItemHId });
+  check("BOM sugerida criada", !!bomHId);
+  {
+    const { data } = await admTenant.client.rpc("listar_bom_pedido_item", { p_pedido_item_id: pedidoItemHId });
+    const perfil = data?.find((d) => d.material_codigo === "PRF-PC-H");
+    const reforco = data?.find((d) => d.material_codigo === "REF-PC-H");
+    check("perfil achatado da hierarquia (2 folhas x 3 perfis = 6), origem base", perfil?.origem === "base" && Number(perfil?.quantidade_por_unidade) === 6);
+    check("reforço adicionado pela regra, origem regra", reforco?.origem === "regra" && Number(reforco?.quantidade_por_unidade) === 1);
+    check("folha (subconjunto) não aparece na BOM achatada", !data?.some((d) => d.material_codigo === "FLH-PC-H"));
+  }
+
+  console.log("\n54. Regerar antes de aprovar substitui as linhas (não duplica)");
+  {
+    await admTenant.client.rpc("gerar_bom_sugerida_pedido_item", { p_pedido_item_id: pedidoItemHId });
+    const { data } = await admin.from("pedido_item_bom_itens").select("id").eq("pedido_item_bom_id", bomHId);
+    check("continua só 2 linhas após regenerar", (data ?? []).length === 2);
+  }
+
+  console.log("\n55. ajustar_item_bom_pedido_item() sobrescreve quantidade, origem vira manual");
+  {
+    const { error } = await admTenant.client.rpc("ajustar_item_bom_pedido_item", {
+      p_pedido_item_bom_id: bomHId, p_material_item_id: itemReforcoHId, p_quantidade_por_unidade: 2.5,
+    });
+    check("ajuste manual aceito", !error);
+    const { data } = await admin.from("pedido_item_bom_itens").select("quantidade_por_unidade, origem").eq("pedido_item_bom_id", bomHId).eq("material_item_id", itemReforcoHId).single();
+    check("quantidade sobrescrita e origem vira manual", Number(data?.quantidade_por_unidade) === 2.5 && data?.origem === "manual");
+  }
+
+  console.log("\n56. ajustar_item_bom_pedido_item() rejeita subconjunto (peça) como material folha");
+  {
+    const { error } = await admTenant.client.rpc("ajustar_item_bom_pedido_item", {
+      p_pedido_item_bom_id: bomHId, p_material_item_id: itemFolhaHId, p_quantidade_por_unidade: 1,
+    });
+    check("subconjunto como linha de BOM é rejeitado", !!error);
+  }
+
+  console.log("\n57. aprovar_bom_definitiva() rejeita BOM vazia");
+  {
+    const { data: itemVazioHId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "JAN-PC-H-VAZIA", p_descricao: "Janela vazia H", p_tipo: "produto_acabado",
+      p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("criar_peca", { p_item_id: itemVazioHId, p_descricao_tecnica: null });
+    const { data: orcVazioId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteHId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", { p_id: null, p_orcamento_id: orcVazioId, p_item_id: itemVazioHId, p_quantidade: 1, p_preco_unitario: 100 });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcVazioId, p_decisao: "aprovado" });
+    const { data: pedidoVazioId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcVazioId });
+    const { data: pedidoItemVazio } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoVazioId).single();
+    const { data: bomVazioId } = await admTenant.client.rpc("gerar_bom_sugerida_pedido_item", { p_pedido_item_id: pedidoItemVazio.id });
+
+    const { error } = await admTenant.client.rpc("aprovar_bom_definitiva", { p_pedido_item_bom_id: bomVazioId });
+    check("BOM sem nenhum material não pode ser aprovada", !!error);
+  }
+
+  console.log("\n58. aprovar_bom_definitiva() sucesso, trava a BOM");
+  {
+    const { error } = await admTenant.client.rpc("aprovar_bom_definitiva", { p_pedido_item_bom_id: bomHId });
+    check("ADMIN aprova BOM definitiva", !error);
+    const { data } = await admin.from("pedido_item_bom").select("status, aprovado_por, aprovado_em").eq("id", bomHId).single();
+    check("status vira definitiva com aprovador e data", data?.status === "definitiva" && !!data?.aprovado_por && !!data?.aprovado_em);
+
+    const { error: gerarErr } = await admTenant.client.rpc("gerar_bom_sugerida_pedido_item", { p_pedido_item_id: pedidoItemHId });
+    check("gerar de novo após definitiva é rejeitado", !!gerarErr);
+    const { error: ajustarErr } = await admTenant.client.rpc("ajustar_item_bom_pedido_item", {
+      p_pedido_item_bom_id: bomHId, p_material_item_id: itemPerfilHId, p_quantidade_por_unidade: 99,
+    });
+    check("ajustar após definitiva é rejeitado", !!ajustarErr);
+    const { error: aprovarDeNovoErr } = await admTenant.client.rpc("aprovar_bom_definitiva", { p_pedido_item_bom_id: bomHId });
+    check("aprovar de novo é rejeitado", !!aprovarDeNovoErr);
+  }
+
+  console.log("\n59. gerar_necessidades_de_pedido() usa a BOM definitiva (ajustada), não a expansão ao vivo");
+  {
+    await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoHId });
+    await admTenant.client.rpc("liberar_pedido", { p_id: pedidoHId });
+
+    // Definitiva: perfil=6 (base, intocado), reforço=2.5 (ajustado manualmente) — x5 (quantidade do pedido_item).
+    // Expansão ao vivo daria reforço=1 (da regra), não 2.5 — prova que usou a definitiva.
+    const { data } = await admTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: pedidoHId });
+    const perfil = data?.find((d) => d.item_codigo === "PRF-PC-H");
+    const reforco = data?.find((d) => d.item_codigo === "REF-PC-H");
+    check("necessidade de perfil usa a BOM definitiva (5x6=30)", Number(perfil?.quantidade_gerada) === 30);
+    check("necessidade de reforço usa o ajuste manual da definitiva (5x2.5=12.5), não a regra (5x1=5)", Number(reforco?.quantidade_gerada) === 12.5);
+  }
+
+  console.log("\n60. gerar_bom_sugerida_pedido_item()/aprovar_bom_definitiva() exigem engenharia.manage");
+  {
+    const { error: err1 } = await noPermTenant.client.rpc("gerar_bom_sugerida_pedido_item", { p_pedido_item_id: pedidoItemHId });
+    check("sem engenharia.manage não gera BOM sugerida", !!err1);
+  }
+
+  console.log("\n61. Isolamento entre tenants (Fase H)");
+  {
+    const { error: err1 } = await otherTenant.client.rpc("gerar_bom_sugerida_pedido_item", { p_pedido_item_id: pedidoItemHId });
+    check("tenant B não gera BOM em pedido do tenant A", !!err1);
+    const { error: err2 } = await otherTenant.client.rpc("aprovar_bom_definitiva", { p_pedido_item_bom_id: bomHId });
+    check("tenant B não aprova BOM do tenant A", !!err2);
+  }
+
+  console.log("\n62. Auditoria da Fase H");
+  {
+    const { data: events } = await admin
+      .from("activity_logs")
+      .select("action")
+      .in("action", ["engenharia.bom_sugerida_gerada", "engenharia.bom_item_ajustado", "engenharia.bom_definitiva_aprovada"]);
+    const actions = new Set((events ?? []).map((e) => e.action));
+    check("engenharia.bom_sugerida_gerada registrado", actions.has("engenharia.bom_sugerida_gerada"));
+    check("engenharia.bom_item_ajustado registrado", actions.has("engenharia.bom_item_ajustado"));
+    check("engenharia.bom_definitiva_aprovada registrado", actions.has("engenharia.bom_definitiva_aprovada"));
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
