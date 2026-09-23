@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   criarPecaAction,
   inativarPecaAction,
@@ -11,7 +12,7 @@ import {
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 
 type Item = { id: string; codigo: string; descricao: string; tipo: string; unidade_principal: string };
-type Peca = { id: string; item_id: string; descricao_tecnica: string | null; situacao: "ativo" | "inativo" };
+type Peca = { id: string; item_id: string; descricao_tecnica: string | null; situacao: "ativo" | "inativo"; revisao_atual: number };
 type PecaComposicao = {
   id: string;
   peca_id: string;
@@ -19,19 +20,24 @@ type PecaComposicao = {
   quantidade_por_unidade: number;
   observacao: string | null;
 };
+type Revisao = { revisao: number; motivo: string | null; created_at: string };
 
 const PECA_TIPOS = ["componente", "produto_acabado"];
 const MATERIAL_TIPOS = ["materia_prima", "insumo", "material_auxiliar"];
+
+const fmtData = (v: string) => new Date(v).toLocaleString("pt-BR");
 
 export default function PecasSection({
   pecas,
   composicao,
   itens,
+  revisoesPorPeca,
   canManage,
 }: {
   pecas: Peca[];
   composicao: PecaComposicao[];
   itens: Item[];
+  revisoesPorPeca: Map<string, Revisao[]>;
   canManage: boolean;
 }) {
   const itemLabel = (id: string) => {
@@ -39,8 +45,8 @@ export default function PecasSection({
     return it ? `${it.codigo} — ${it.descricao}` : "(item removido)";
   };
 
-  const pecaItemIds = new Set(pecas.map((p) => p.item_id));
-  const itensDisponiveisParaPeca = itens.filter((i) => PECA_TIPOS.includes(i.tipo) && !pecaItemIds.has(i.id));
+  const pecaPorItemId = new Map(pecas.map((p) => [p.item_id, p]));
+  const itensDisponiveisParaPeca = itens.filter((i) => PECA_TIPOS.includes(i.tipo) && !pecaPorItemId.has(i.id));
   const itensMateriais = itens.filter((i) => MATERIAL_TIPOS.includes(i.tipo));
 
   const composicaoPorPeca = new Map<string, PecaComposicao[]>();
@@ -55,7 +61,9 @@ export default function PecasSection({
       <h2 style={sectionTitleStyle}>Peças e composição de materiais</h2>
       <p style={hintStyle}>
         Uma peça é um item do catálogo (tipo componente ou produto acabado); a composição é a lista
-        de perfis/vidro/acessórios/insumos e a quantidade necessária por 1 unidade da peça.
+        de perfis/vidro/acessórios/insumos — ou de outra peça já cadastrada, como subconjunto — e a
+        quantidade necessária por 1 unidade da peça. Toda mudança na composição gera uma revisão
+        nova (histórico abaixo, nada é sobrescrito).
       </p>
 
       {canManage && (
@@ -81,6 +89,9 @@ export default function PecasSection({
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {pecas.map((p) => {
           const linhas = composicaoPorPeca.get(p.id) ?? [];
+          // Subconjunto não pode ser a própria peça (o backend trava ciclo
+          // indireto também — isso aqui é só conveniência de UI).
+          const pecasComoSubconjunto = pecas.filter((sp) => sp.situacao === "ativo" && sp.id !== p.id);
           return (
             <div key={p.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px", opacity: p.situacao === "ativo" ? 1 : 0.55 }}>
               <div style={{ display: "flex", gap: "8px", alignItems: "baseline", fontSize: "13px" }}>
@@ -88,6 +99,7 @@ export default function PecasSection({
                 <span style={{ color: p.situacao === "ativo" ? "#1f5d57" : "#6b7a75", fontFamily: "monospace", fontSize: "11px" }}>
                   {p.situacao === "ativo" ? "Ativa" : "Inativa"}
                 </span>
+                <span style={{ color: "#6b7a75", fontSize: "11px" }}>rev. {p.revisao_atual}</span>
                 {canManage && (
                   <form action={p.situacao === "ativo" ? inativarPecaAction : reativarPecaAction}>
                     <input type="hidden" name="id" value={p.id} />
@@ -112,43 +124,53 @@ export default function PecasSection({
                   </tr>
                 </thead>
                 <tbody>
-                  {linhas.map((c) => (
-                    <tr key={c.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                      <td style={tdStyle}>{itemLabel(c.material_item_id)}</td>
-                      <td style={tdStyle}>
-                        {canManage ? (
-                          <form action={atualizarMaterialPecaAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                            <input type="hidden" name="id" value={c.id} />
-                            <input type="hidden" name="observacao" value={c.observacao ?? ""} />
-                            <input
-                              name="quantidade_por_unidade"
-                              type="number"
-                              min="0.0001"
-                              step="0.0001"
-                              defaultValue={c.quantidade_por_unidade}
-                              style={{ ...inputStyle, width: "90px" }}
-                            />
-                            <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
-                              Salvar
-                            </button>
-                          </form>
-                        ) : (
-                          c.quantidade_por_unidade
-                        )}
-                      </td>
-                      <td style={tdStyle}>{c.observacao ?? "—"}</td>
-                      {canManage && (
+                  {linhas.map((c) => {
+                    const ehPeca = pecaPorItemId.has(c.material_item_id);
+                    return (
+                      <tr key={c.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
                         <td style={tdStyle}>
-                          <form action={removerMaterialPecaAction}>
-                            <input type="hidden" name="id" value={c.id} />
-                            <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#9b2c2c" }}>
-                              Remover
-                            </button>
-                          </form>
+                          {itemLabel(c.material_item_id)}
+                          {ehPeca && (
+                            <span style={{ marginLeft: "6px", fontSize: "10px", color: "#1f5d57", fontFamily: "monospace" }}>
+                              subconjunto
+                            </span>
+                          )}
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        <td style={tdStyle}>
+                          {canManage ? (
+                            <form action={atualizarMaterialPecaAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                              <input type="hidden" name="id" value={c.id} />
+                              <input type="hidden" name="observacao" value={c.observacao ?? ""} />
+                              <input
+                                name="quantidade_por_unidade"
+                                type="number"
+                                min="0.0001"
+                                step="0.0001"
+                                defaultValue={c.quantidade_por_unidade}
+                                style={{ ...inputStyle, width: "90px" }}
+                              />
+                              <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
+                                Salvar
+                              </button>
+                            </form>
+                          ) : (
+                            c.quantidade_por_unidade
+                          )}
+                        </td>
+                        <td style={tdStyle}>{c.observacao ?? "—"}</td>
+                        {canManage && (
+                          <td style={tdStyle}>
+                            <form action={removerMaterialPecaAction}>
+                              <input type="hidden" name="id" value={c.id} />
+                              <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#9b2c2c" }}>
+                                Remover
+                              </button>
+                            </form>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                   {linhas.length === 0 && (
                     <tr>
                       <td style={tdStyle} colSpan={canManage ? 4 : 3}>
@@ -165,13 +187,24 @@ export default function PecasSection({
                   style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px", alignItems: "center" }}
                 >
                   <input type="hidden" name="peca_id" value={p.id} />
-                  <select name="material_item_id" required style={{ ...inputStyle, width: "220px" }}>
-                    <option value="">Selecione o material...</option>
-                    {itensMateriais.map((it) => (
-                      <option key={it.id} value={it.id}>
-                        {it.codigo} — {it.descricao} ({it.unidade_principal})
-                      </option>
-                    ))}
+                  <select name="material_item_id" required style={{ ...inputStyle, width: "260px" }}>
+                    <option value="">Selecione o material ou subconjunto...</option>
+                    <optgroup label="Matéria-prima / insumo / material auxiliar">
+                      {itensMateriais.map((it) => (
+                        <option key={it.id} value={it.id}>
+                          {it.codigo} — {it.descricao} ({it.unidade_principal})
+                        </option>
+                      ))}
+                    </optgroup>
+                    {pecasComoSubconjunto.length > 0 && (
+                      <optgroup label="Outra peça (subconjunto)">
+                        {pecasComoSubconjunto.map((sp) => (
+                          <option key={sp.item_id} value={sp.item_id}>
+                            {itemLabel(sp.item_id)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                   <input
                     name="quantidade_por_unidade"
@@ -184,15 +217,44 @@ export default function PecasSection({
                   />
                   <input name="observacao" placeholder="observação (opcional)" style={{ ...inputStyle, width: "160px" }} />
                   <button type="submit" style={buttonStyle}>
-                    Adicionar material
+                    Adicionar
                   </button>
                 </form>
               )}
+
+              <HistoricoRevisoes revisoes={revisoesPorPeca.get(p.id) ?? []} />
             </div>
           );
         })}
         {pecas.length === 0 && <p style={hintStyle}>Nenhuma peça cadastrada ainda.</p>}
       </div>
     </section>
+  );
+}
+
+function HistoricoRevisoes({ revisoes }: { revisoes: Revisao[] }) {
+  const [aberto, setAberto] = useState(false);
+
+  if (revisoes.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: "8px" }}>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
+      >
+        {aberto ? "Ocultar histórico" : `Ver histórico (${revisoes.length} revisão${revisoes.length > 1 ? "ões" : ""})`}
+      </button>
+      {aberto && (
+        <ul style={{ ...hintStyle, margin: "6px 0 0", paddingLeft: "18px" }}>
+          {revisoes.map((r) => (
+            <li key={r.revisao}>
+              rev. {r.revisao} — {r.motivo ?? "sem motivo registrado"} — {fmtData(r.created_at)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -1,14 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import PecasSection from "./PecasSection";
 
-// Peças Fabricadas — Fase A do plano de 23/09/2026 (fila de produção,
-// peças fabricadas e necessidades automáticas de suprimentos). Camada de
-// BOM deliberadamente leve: uma peça (item do catálogo, tipo componente/
-// produto_acabado) associada a uma lista plana de materiais (perfil/
-// vidro/acessório/insumo) e quantidade por unidade — sem hierarquia
-// Produto→Conjunto→Subconjunto nem motor de regras (isso é o Prompt
-// TÓPICO 5 completo, fora de escopo). Habilita a Fase C (necessidades
-// automáticas de Suprimentos) a somar material necessário por pedido.
+// Peças Fabricadas — Fase A (BOM leve) + Fase E (hierarquia + revisão
+// básica) do plano de 23/09/2026. Uma peça (item do catálogo, tipo
+// componente/produto_acabado) associada a uma composição de materiais —
+// que agora pode incluir outra peça já cadastrada como subconjunto, não
+// só matéria-prima/insumo/material_auxiliar. Cada mudança estrutural
+// grava uma revisão (histórico consultável). Motor de regras e workflow
+// de aprovação (Prompt TÓPICO 5 completo) seguem fora de escopo.
 export default async function PecasPage() {
   const supabase = await createClient();
 
@@ -39,6 +38,17 @@ export default async function PecasPage() {
       .order("codigo"),
   ]);
 
+  // TÓPICO 5 Fase E — histórico de revisões por peça (leitura, N chamadas
+  // sobre `pecas` já buscadas, mesmo padrão de Promise.all já usado em
+  // producao/page.tsx para recursos/capacidade).
+  const revisoesPorPeca = new Map<string, { revisao: number; motivo: string | null; created_at: string }[]>();
+  await Promise.all(
+    (pecas ?? []).map(async (p) => {
+      const { data } = await supabase.rpc("listar_revisoes_peca", { p_peca_id: p.id });
+      revisoesPorPeca.set(p.id, data ?? []);
+    }),
+  );
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -55,6 +65,7 @@ export default async function PecasPage() {
           pecas={pecas ?? []}
           composicao={composicao ?? []}
           itens={itens ?? []}
+          revisoesPorPeca={revisoesPorPeca}
           canManage={!!canManage}
         />
       </div>

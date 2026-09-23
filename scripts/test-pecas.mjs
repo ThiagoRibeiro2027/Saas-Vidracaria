@@ -260,6 +260,121 @@ async function main() {
     }
   }
 
+  // =========================================================================
+  // Fase E do plano de 23/09/2026 — BOM hierárquica (peça pode conter
+  // outra peça como subconjunto, com trava de ciclo) e revisão básica
+  // (snapshot a cada mudança estrutural). Dentro do que o ADR-002 §4.5 já
+  // autoriza — não precisa de emenda.
+  // =========================================================================
+
+  console.log("\n18. Massa de dados — peça A (janela) e peça B (folha), ambas ativas");
+  const { data: itemPecaAId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "JAN-PC-A", p_descricao: "Janela A", p_tipo: "produto_acabado",
+    p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+  });
+  const { data: itemPecaBId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "FLH-PC-B", p_descricao: "Folha B", p_tipo: "componente",
+    p_classificacao: "folha", p_unidade_principal: "UN", p_situacao: "ativo",
+  });
+  const { data: pecaAId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaAId, p_descricao_tecnica: null });
+  const { data: pecaBId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaBId, p_descricao_tecnica: null });
+
+  console.log("\n19. adicionar_material_peca() aceita subconjunto (peça B dentro de peça A)");
+  {
+    const { error } = await admTenant.client.rpc("adicionar_material_peca", {
+      p_peca_id: pecaAId, p_material_item_id: itemPecaBId, p_quantidade_por_unidade: 2, p_observacao: "duas folhas por janela",
+    });
+    check("ADMIN adiciona peça B como subconjunto de peça A", !error);
+  }
+
+  console.log("\n20. adicionar_material_peca() rejeita ciclo direto e indireto");
+  {
+    const { error: diretoErr } = await admTenant.client.rpc("adicionar_material_peca", {
+      p_peca_id: pecaAId, p_material_item_id: itemPecaAId, p_quantidade_por_unidade: 1, p_observacao: null,
+    });
+    check("ciclo direto (peça A dentro dela mesma) é rejeitado", !!diretoErr);
+
+    const { error: indiretoErr } = await admTenant.client.rpc("adicionar_material_peca", {
+      p_peca_id: pecaBId, p_material_item_id: itemPecaAId, p_quantidade_por_unidade: 1, p_observacao: null,
+    });
+    check("ciclo indireto (A dentro de B, que já está dentro de A) é rejeitado", !!indiretoErr);
+  }
+
+  console.log("\n21. adicionar_material_peca() rejeita item que ainda não é peça como subconjunto");
+  {
+    const { data: itemSemPecaId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "JAN-PC-SEMBOM", p_descricao: "Janela sem peça", p_tipo: "produto_acabado",
+      p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+    });
+    const { error } = await admTenant.client.rpc("adicionar_material_peca", {
+      p_peca_id: pecaAId, p_material_item_id: itemSemPecaId, p_quantidade_por_unidade: 1, p_observacao: null,
+    });
+    check("item ainda não cadastrado como peça não vira subconjunto", !!error);
+  }
+
+  console.log("\n22. listar_composicao_peca() marca eh_peca corretamente");
+  {
+    const { data } = await admTenant.client.rpc("listar_composicao_peca", { p_peca_id: pecaAId });
+    check("linha da peça B dentro de A tem eh_peca = true", data?.[0]?.eh_peca === true);
+  }
+
+  console.log("\n23. Revisão incrementada e histórico gravado");
+  {
+    const { data: peca } = await admin.from("pecas").select("revisao_atual").eq("id", pecaAId).single();
+    check("revisao_atual incrementada para 1 após a 1ª mudança estrutural", peca?.revisao_atual === 1);
+
+    const { data: revisoes, error } = await admTenant.client.rpc("listar_revisoes_peca", { p_peca_id: pecaAId });
+    check("listar_revisoes_peca() sem erro", !error);
+    check("traz 1 revisão com snapshot da composição", (revisoes ?? []).length === 1 && Array.isArray(revisoes[0].composicao_snapshot));
+  }
+
+  console.log("\n24. inativar_peca() rejeita peça usada como subconjunto ativo em outra peça");
+  {
+    const { error } = await admTenant.client.rpc("inativar_peca", { p_id: pecaBId });
+    check("peça B (subconjunto ativo de A) não pode ser inativada", !!error);
+  }
+
+  console.log("\n25. gerar_necessidades_de_pedido() soma a árvore inteira (recursivo)");
+  {
+    const { data: itemMaterialXId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "PRF-PC-X", p_descricao: "Perfil X", p_tipo: "materia_prima",
+      p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("adicionar_material_peca", {
+      p_peca_id: pecaBId, p_material_item_id: itemMaterialXId, p_quantidade_por_unidade: 3, p_observacao: null,
+    });
+
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "orcamento", p_prefixo: "ORCPC-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "pedido", p_prefixo: "PEDPC-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+    const { data: clienteId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CPF", p_documento: "55555555555", p_nome: "Cliente Peças Hier",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+      p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: clienteId, p_papel: "CLIENTE", p_ativo: true });
+    const { data: orcamentoId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: itemPecaAId, p_quantidade: 5, p_preco_unitario: 1000,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoId, p_decisao: "aprovado" });
+    const { data: pedidoId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoId });
+    await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoId });
+    await admTenant.client.rpc("liberar_pedido", { p_id: pedidoId });
+
+    // 5 janelas A x 2 folhas B x 3 perfis X = 30 — a folha B nunca aparece
+    // como necessidade de compra (não é folha da árvore, é subconjunto).
+    const { data } = await admTenant.client.rpc("gerar_necessidades_de_pedido", { p_pedido_id: pedidoId });
+    check("necessidade recursiva soma a árvore inteira (5x2x3=30)", (data ?? []).length === 1 && Number(data[0].quantidade_gerada) === 30);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
