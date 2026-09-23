@@ -1,14 +1,13 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.6\
+**Versão:** 2.5\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
 resolvida, ver nota no próprio §4.7; §4.3 revisado em 2026-09-19 —
 ampliação de escopo do TÓPICO 10; §4.17 revisado em 2026-09-23 —
-recorte mínimo do TÓPICO 13, Fase 1; §4.16 revisado em 2026-09-23 —
-Fase 2, ainda básica, do TÓPICO 12)\
+recorte mínimo do TÓPICO 13, Fase 1)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
 
@@ -870,51 +869,6 @@ Não fazem parte do MVP:
 - análises preditivas;
 
 - indicadores avançados de desempenho.
-
-**Ampliação de escopo — Fase 2, ainda básica (23/09/2026 — decisão do
-responsável do produto via chat).** O Prompt TÓPICO 12 (49 seções) é,
-do início ao fim, uma plataforma analítica completa — KPI versionado,
-drill-down, construtor de dashboards, alertas, Cockpit Executivo,
-benchmark, Assistente Analítico em linguagem natural — e continua
-integralmente fora do MVP por este parágrafo: nada disso é aprovado
-agora.
-
-O que passa a fazer parte do MVP, de forma simplificada, é só:
-
-- **Quatro indicadores calculados simples**, direto sobre o schema que
-  já existe, sem nenhuma tabela nova: ticket médio (TÓPICO 12 §14 —
-  valor liberado ÷ pedidos liberados), taxa de conversão orçamento→
-  pedido (§14 "Cotações", simplificada para contagem de orçamentos com
-  pedido vinculado ÷ total de orçamentos no período), taxa de não
-  conformidade (§18 — inspeções reprovadas ÷ total de inspeções no
-  período), e OTIF básico (§19 — só "no prazo" e "integral", comparando
-  `pedidos.previsao_entrega` com a data em que a expedição saiu;
-  simplificado — sem separar por transportadora/região/rota).
-
-- **Filtro de período** (§6, só o recorte "período personalizado" via
-  data de início/fim) aplicado ao dashboard operacional inteiro
-  (recorte mínimo e os quatro indicadores acima) — sem os períodos
-  pré-definidos do §6 (hoje/semana/mês/trimestre/etc.), sem comparação
-  com período anterior, meta, orçamento ou média histórica (isso seria
-  "análise temporal", §8, que continua fora).
-
-Continuam fora do MVP após esta ampliação, exatamente como antes: KPI
-versionado com definição centralizada (§4), os demais filtros e
-períodos pré-definidos (§5-7 além do que foi listado acima), análise
-temporal/tendência/sazonalidade (§8), drill-down (§9), análise de
-desvios e de impacto (§10-11), saúde dos processos (§12), rentabilidade
-(§13 — exigiria custo de produção que não existe no schema), os
-dashboards completos de cada área além dos quatro indicadores acima
-(§14-20), Cockpit Executivo (§21), prioridades/oportunidades/riscos
-(§22-25), metas (§26), construtor de dashboards (§27-28), alertas
-(§29-30), notificações de BI (§31), relatórios agendados/exportação
-(§32-33), compartilhamento (§34), benchmark entre unidades (§35),
-snapshots históricos (§36), comentários gerenciais (§37), e o
-Assistente Analítico em linguagem natural (§38-39). Governança de
-permissão continua só `bi.view` — a separação de três níveis do §41
-(visualizar/configurar/administrar) só faz sentido quando houver algo
-para configurar ou administrar (dashboards, metas, alertas), que
-continua fora.
 
 **4.17 Integrações**
 
