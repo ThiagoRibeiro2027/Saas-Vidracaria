@@ -385,6 +385,119 @@ async function main() {
     check("suprimentos.necessidades_geradas_de_producao registrado", actions.has("suprimentos.necessidades_geradas_de_producao"));
   }
 
+  // =========================================================================
+  // Fase D do plano de 23/09/2026 — recebimento leve (ADR-002 §4.18 v2.7).
+  // Não é Pedido de Compra/fornecedor/cotação — só o passo a mais depois
+  // de "atendida": marcar como recebida com a quantidade recebida, dando
+  // entrada física no estoque via ajustar_saldo() já existente (T6).
+  // =========================================================================
+
+  console.log("\n27. Massa de dados — item, necessidade e um papel só com suprimentos.manage (sem estoque.manage)");
+  const { data: itemRecebId } = await admTenant.client.rpc("upsert_item", {
+    p_id: null, p_codigo: "MT-RC-1", p_descricao: "Material recebimento teste", p_tipo: "materia_prima",
+    p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo",
+  });
+  const { data: necRecebId } = await admTenant.client.rpc("criar_necessidade_compra", {
+    p_item_id: itemRecebId, p_quantidade: 20, p_data_necessaria: null, p_origem: "manual", p_observacoes: null,
+  });
+
+  // Papel de empresa com só suprimentos.manage — prova que registrar_
+  // recebimento_necessidade() reaproveita o gate de estoque.manage do
+  // ajustar_saldo() em vez de contorná-lo (decisão registrada no
+  // cabeçalho da migration 20261014000000).
+  const { data: papelSoSuprId } = await admTenant.client.rpc("criar_papel_empresa", { p_key: "SO_SUPRIMENTOS", p_name: "Só Suprimentos" });
+  const { data: permSuprimentosManage } = await admin
+    .from("permissions").select("id").eq("resource", "suprimentos").eq("action", "manage").single();
+  await admTenant.client.rpc("conceder_permissao_papel", { p_role_id: papelSoSuprId, p_permission_id: permSuprimentosManage.id });
+
+  const soSuprEmail = "so-suprimentos.suprimentos-test-admin@users.internal";
+  const { data: soSuprCreated } = await admin.auth.admin.createUser({ email: soSuprEmail, password: "senha-de-teste-123456", email_confirm: true });
+  let soSuprUserId = soSuprCreated?.user?.id;
+  if (!soSuprUserId) {
+    const { data: list } = await admin.auth.admin.listUsers();
+    soSuprUserId = list.users.find((u) => u.email === soSuprEmail)?.id;
+  }
+  await admin.from("profiles").upsert(
+    { id: soSuprUserId, company_id: admTenant.company.id, login_identifier: "so-suprimentos", display_name: "Só Suprimentos Teste" },
+    { onConflict: "id" },
+  );
+  await admin.from("user_roles").insert({ profile_id: soSuprUserId, role_id: papelSoSuprId });
+  const soSuprClient = createClient(url, anonKey);
+  await soSuprClient.auth.signInWithPassword({ email: soSuprEmail, password: "senha-de-teste-123456" });
+
+  console.log("\n28. registrar_recebimento_necessidade() rejeita necessidade ainda aberta (não atendida)");
+  {
+    const { error } = await admTenant.client.rpc("registrar_recebimento_necessidade", {
+      p_id: necRecebId, p_quantidade_recebida: 20, p_observacao: null,
+    });
+    check("necessidade 'aberta' (não atendida) é rejeitada", !!error);
+  }
+
+  await admTenant.client.rpc("atender_necessidade_compra", { p_id: necRecebId });
+
+  console.log("\n29. registrar_recebimento_necessidade() rejeita quantidade <= 0");
+  {
+    const { error } = await admTenant.client.rpc("registrar_recebimento_necessidade", {
+      p_id: necRecebId, p_quantidade_recebida: 0, p_observacao: null,
+    });
+    check("quantidade recebida zero é rejeitada", !!error);
+  }
+
+  console.log("\n30. registrar_recebimento_necessidade() exige suprimentos.manage");
+  {
+    const { error } = await noPermTenant.client.rpc("registrar_recebimento_necessidade", {
+      p_id: necRecebId, p_quantidade_recebida: 20, p_observacao: null,
+    });
+    check("sem suprimentos.manage não registra recebimento", !!error);
+  }
+
+  console.log("\n31. registrar_recebimento_necessidade() exige TAMBÉM estoque.manage (reaproveita o gate do ajustar_saldo)");
+  {
+    const { error } = await soSuprClient.rpc("registrar_recebimento_necessidade", {
+      p_id: necRecebId, p_quantidade_recebida: 20, p_observacao: null,
+    });
+    check("papel com suprimentos.manage mas sem estoque.manage é rejeitado", !!error);
+  }
+
+  console.log("\n32. registrar_recebimento_necessidade() rejeita necessidade de outro tenant");
+  {
+    const { error } = await otherTenant.client.rpc("registrar_recebimento_necessidade", {
+      p_id: necRecebId, p_quantidade_recebida: 20, p_observacao: null,
+    });
+    check("necessidade de outro tenant é rejeitada", !!error);
+  }
+
+  console.log("\n33. registrar_recebimento_necessidade() sucesso — recebimento parcial (15 de 20)");
+  {
+    const { error } = await admTenant.client.rpc("registrar_recebimento_necessidade", {
+      p_id: necRecebId, p_quantidade_recebida: 15, p_observacao: "primeira remessa",
+    });
+    check("ADMIN registra recebimento parcial sem erro", !error);
+
+    const { data: nc } = await admin.from("necessidades_compra").select("*").eq("id", necRecebId).single();
+    check(
+      "necessidade vira 'recebida' com quantidade_recebida/data_recebimento/recebido_por preenchidos",
+      nc?.status === "recebida" && Number(nc?.quantidade_recebida) === 15 && !!nc?.data_recebimento && !!nc?.recebido_por,
+    );
+
+    const { data: saldo } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", itemRecebId).single();
+    check("estoque recebe entrada física de 15", Number(saldo?.quantidade_fisica) === 15);
+  }
+
+  console.log("\n34. registrar_recebimento_necessidade() rejeita necessidade já recebida");
+  {
+    const { error } = await admTenant.client.rpc("registrar_recebimento_necessidade", {
+      p_id: necRecebId, p_quantidade_recebida: 5, p_observacao: null,
+    });
+    check("necessidade já recebida não pode ser recebida de novo", !!error);
+  }
+
+  console.log("\n35. Auditoria do recebimento");
+  {
+    const { data: events } = await admin.from("activity_logs").select("action").eq("action", "suprimentos.necessidade_recebida");
+    check("suprimentos.necessidade_recebida registrado", (events ?? []).length >= 1);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
