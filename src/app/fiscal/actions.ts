@@ -56,3 +56,33 @@ export async function cancelarDocumentoFiscalAction(formData: FormData) {
 
   revalidatePath("/fiscal");
 }
+
+export async function registrarTentativaProcessamentoAction(formData: FormData) {
+  const documentoId = String(formData.get("documento_id") ?? "");
+  const resultado = String(formData.get("resultado") ?? "");
+  const mensagemRetorno = String(formData.get("mensagem_retorno") ?? "").trim() || null;
+  const provedor = String(formData.get("provedor") ?? "").trim() || null;
+  if (!documentoId || !resultado) throw new Error("Documento e resultado são obrigatórios.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("registrar_tentativa_processamento_fiscal", {
+    p_documento_id: documentoId,
+    p_resultado: resultado,
+    p_mensagem_retorno: mensagemRetorno,
+    p_provedor: provedor,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/fiscal");
+}
+
+export async function reprocessarDocumentoFiscalAction(formData: FormData) {
+  const documentoId = String(formData.get("documento_id") ?? "");
+  if (!documentoId) throw new Error("Documento inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("reprocessar_documento_fiscal", { p_documento_id: documentoId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/fiscal");
+}

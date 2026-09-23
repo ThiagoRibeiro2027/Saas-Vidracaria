@@ -22,19 +22,24 @@ export default async function FiscalPage() {
     );
   }
 
-  const { data: documentos } = await supabase.from("documentos_fiscais").select("*").order("created_at", { ascending: false });
+  const [{ data: documentos }, { data: tentativas }] = await Promise.all([
+    supabase.from("documentos_fiscais").select("*").order("created_at", { ascending: false }),
+    supabase.from("documento_fiscal_tentativas").select("*").order("numero_tentativa", { ascending: false }),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">ADR-004 — Fiscal</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Fiscal</h1>
       <p className="mt-1 text-sm text-text">
-        Recorte mínimo do MVP: registro e rastreabilidade de documentos fiscais. Sem emissão
-        real neste piloto.
+        Registro e rastreabilidade de documentos fiscais, com histórico de tentativas de
+        processamento e reprocessamento controlado (§7-8). Sem emissão real, cancelamento fiscal
+        real, inutilização ou transmissão neste piloto (§9.1/§9.3) — nenhuma tentativa aqui chama
+        um provedor de verdade.
       </p>
 
       <div className="mt-6">
-        <FiscalSection rows={documentos ?? []} canManage={!!canManage} />
+        <FiscalSection rows={documentos ?? []} tentativas={tentativas ?? []} canManage={!!canManage} />
       </div>
     </div>
   );

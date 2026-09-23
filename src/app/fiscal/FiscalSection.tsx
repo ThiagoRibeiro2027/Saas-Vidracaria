@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { cancelarDocumentoFiscalAction, registrarDocumentoFiscalAction, vincularDocumentoFiscalAction } from "./actions";
+import {
+  cancelarDocumentoFiscalAction,
+  registrarDocumentoFiscalAction,
+  registrarTentativaProcessamentoAction,
+  reprocessarDocumentoFiscalAction,
+  vincularDocumentoFiscalAction,
+} from "./actions";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -14,6 +20,24 @@ const TIPOS = [
   ["outro", "Outro"],
 ] as const;
 
+const STATUS_PROCESSAMENTO_LABEL: Record<string, string> = {
+  nao_processado: "Não processado",
+  processado: "Processado",
+  com_erro: "Com erro",
+};
+
+const STATUS_PROCESSAMENTO_TONE: Record<string, "neutral" | "success" | "danger"> = {
+  nao_processado: "neutral",
+  processado: "success",
+  com_erro: "danger",
+};
+
+const RESULTADO_LABEL: Record<string, string> = {
+  sucesso: "Sucesso",
+  erro: "Erro",
+  rejeitado: "Rejeitado",
+};
+
 type Documento = {
   id: string;
   tipo: "nfe" | "nfse" | "outro";
@@ -22,19 +46,45 @@ type Documento = {
   entity_type: string | null;
   entity_id: string | null;
   status: "recebido" | "cancelado";
+  status_processamento: "nao_processado" | "processado" | "com_erro";
   motivo_cancelamento: string | null;
   observacoes: string | null;
 };
 
-export default function FiscalSection({ rows, canManage }: { rows: Documento[]; canManage: boolean }) {
+type Tentativa = {
+  id: string;
+  documento_fiscal_id: string;
+  numero_tentativa: number;
+  resultado: "sucesso" | "erro" | "rejeitado";
+  mensagem_retorno: string | null;
+  provedor: string | null;
+  created_at: string;
+};
+
+export default function FiscalSection({
+  rows,
+  tentativas,
+  canManage,
+}: {
+  rows: Documento[];
+  tentativas: Tentativa[];
+  canManage: boolean;
+}) {
+  const tentativasPorDocumento = new Map<string, Tentativa[]>();
+  for (const t of tentativas) {
+    const list = tentativasPorDocumento.get(t.documento_fiscal_id) ?? [];
+    list.push(t);
+    tentativasPorDocumento.set(t.documento_fiscal_id, list);
+  }
+
   return (
     <section>
       <h2 className="text-sm font-semibold text-text">Documentos fiscais</h2>
       <p className="mt-1 text-xs text-text-muted">
-        Recorte mínimo do MVP (ADR-004 §9.2): registro e rastreabilidade de documentos fiscais
-        recebidos, com vínculo operacional opcional (independente de Pedido de Compra). Sem
-        emissão, cancelamento fiscal real, inutilização ou transmissão — durante o piloto, o
-        faturamento permanece no sistema atual da empresa (§9.1).
+        Registro e rastreabilidade de documentos fiscais recebidos, com vínculo operacional
+        opcional (independente de Pedido de Compra) e histórico de tentativas de processamento
+        (ADR-004 §9.2, §7-8). Sem emissão, cancelamento fiscal real, inutilização ou transmissão —
+        durante o piloto, o faturamento permanece no sistema atual da empresa (§9.1).
       </p>
 
       {canManage && (
@@ -52,28 +102,78 @@ export default function FiscalSection({ rows, canManage }: { rows: Documento[]; 
               <Th>Chave de acesso</Th>
               <Th>Vínculo</Th>
               <Th>Status</Th>
+              <Th>Processamento</Th>
               {canManage && <Th />}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id}>
-                <Td>{TIPOS.find(([v]) => v === row.tipo)?.[1] ?? row.tipo}</Td>
-                <Td>{row.numero ?? "—"}</Td>
-                <Td>{row.chave_acesso ?? "—"}</Td>
-                <Td>{row.entity_type ? `${row.entity_type} (${row.entity_id?.slice(0, 8)}…)` : "sem vínculo"}</Td>
-                <Td>
-                  <Badge variant={row.status === "recebido" ? "success" : "danger"}>
-                    {row.status === "cancelado" ? `Cancelado — ${row.motivo_cancelamento ?? ""}` : "Recebido"}
-                  </Badge>
-                </Td>
-                {canManage && <Td>{row.status === "recebido" && <AcoesDocumento row={row} />}</Td>}
-              </tr>
+              <LinhaDocumento
+                key={row.id}
+                row={row}
+                tentativas={tentativasPorDocumento.get(row.id) ?? []}
+                canManage={canManage}
+              />
             ))}
           </tbody>
         </Table>
       </div>
     </section>
+  );
+}
+
+function LinhaDocumento({ row, tentativas, canManage }: { row: Documento; tentativas: Tentativa[]; canManage: boolean }) {
+  const [verHistorico, setVerHistorico] = useState(false);
+
+  return (
+    <>
+      <tr>
+        <Td>{TIPOS.find(([v]) => v === row.tipo)?.[1] ?? row.tipo}</Td>
+        <Td>{row.numero ?? "—"}</Td>
+        <Td>{row.chave_acesso ?? "—"}</Td>
+        <Td>{row.entity_type ? `${row.entity_type} (${row.entity_id?.slice(0, 8)}…)` : "sem vínculo"}</Td>
+        <Td>
+          <Badge variant={row.status === "recebido" ? "success" : "danger"}>
+            {row.status === "cancelado" ? `Cancelado — ${row.motivo_cancelamento ?? ""}` : "Recebido"}
+          </Badge>
+        </Td>
+        <Td>
+          <Badge variant={STATUS_PROCESSAMENTO_TONE[row.status_processamento]}>
+            {STATUS_PROCESSAMENTO_LABEL[row.status_processamento]}
+          </Badge>
+          {tentativas.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setVerHistorico((v) => !v)}
+              className="ml-1.5 cursor-pointer text-xs text-primary underline"
+            >
+              {tentativas.length} tentativa{tentativas.length > 1 ? "s" : ""}
+            </button>
+          )}
+        </Td>
+        {canManage && <Td>{row.status === "recebido" && <AcoesDocumento row={row} />}</Td>}
+      </tr>
+      {verHistorico && tentativas.length > 0 && (
+        <tr>
+          <Td colSpan={canManage ? 7 : 6} className="bg-page-bg">
+            <ul className="flex flex-col gap-0.5 text-xs text-text-muted">
+              {tentativas
+                .slice()
+                .sort((a, b) => b.numero_tentativa - a.numero_tentativa)
+                .map((t) => (
+                  <li key={t.id}>
+                    #{t.numero_tentativa} — {RESULTADO_LABEL[t.resultado]}
+                    {t.provedor && ` (${t.provedor})`}
+                    {t.mensagem_retorno && `: ${t.mensagem_retorno}`}
+                    {" — "}
+                    {new Date(t.created_at).toLocaleString("pt-BR")}
+                  </li>
+                ))}
+            </ul>
+          </Td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -98,7 +198,7 @@ function NovoDocumentoForm() {
 }
 
 function AcoesDocumento({ row }: { row: Documento }) {
-  const [modo, setModo] = useState<"nenhum" | "vincular" | "cancelar">("nenhum");
+  const [modo, setModo] = useState<"nenhum" | "vincular" | "cancelar" | "tentativa">("nenhum");
 
   if (modo === "vincular") {
     return (
@@ -131,11 +231,47 @@ function AcoesDocumento({ row }: { row: Documento }) {
     );
   }
 
+  if (modo === "tentativa") {
+    return (
+      <form
+        action={registrarTentativaProcessamentoAction}
+        className="flex items-center gap-1"
+        onSubmit={() => setModo("nenhum")}
+      >
+        <input type="hidden" name="documento_id" value={row.id} />
+        <Select name="resultado" defaultValue="erro" required>
+          <option value="sucesso">Sucesso</option>
+          <option value="erro">Erro</option>
+          <option value="rejeitado">Rejeitado</option>
+        </Select>
+        <Input name="provedor" placeholder="provedor (opcional)" className="w-24" />
+        <Input name="mensagem_retorno" placeholder="mensagem (opcional)" className="w-32" />
+        <Button type="submit" variant="primary">
+          Registrar
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setModo("nenhum")}>
+          Voltar
+        </Button>
+      </form>
+    );
+  }
+
   return (
     <div className="flex items-center gap-1">
       <Button type="button" variant="primary" onClick={() => setModo("vincular")}>
         Vincular
       </Button>
+      <Button type="button" variant="secondary" onClick={() => setModo("tentativa")}>
+        Tentativa
+      </Button>
+      {row.status_processamento === "com_erro" && (
+        <form action={reprocessarDocumentoFiscalAction}>
+          <input type="hidden" name="documento_id" value={row.id} />
+          <Button type="submit" variant="outline">
+            Reprocessar
+          </Button>
+        </form>
+      )}
       <Button type="button" variant="outlineDanger" onClick={() => setModo("cancelar")}>
         Cancelar
       </Button>
