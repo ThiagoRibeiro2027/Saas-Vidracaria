@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.8\
+**Versão:** 2.7\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -10,8 +10,7 @@ ampliação de escopo do TÓPICO 10; §4.17 revisado em 2026-09-23 —
 recorte mínimo do TÓPICO 13, Fase 1; §4.16 revisado em 2026-09-23 —
 Fase 2, ainda básica, do TÓPICO 12; §4.18 revisado em 2026-09-23 —
 recebimento leve de material, Fase D do plano de fila de
-produção/peças/suprimentos; §4.5 revisado em 2026-09-23 — motor de
-regras básico, Fase G do mesmo plano)\
+produção/peças/suprimentos)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
 
@@ -368,46 +367,6 @@ Não fazem parte do MVP:
 - algoritmos avançados de aproveitamento;
 
 - otimização matemática avançada.
-
-**Ampliação de escopo — motor de regras básico, Fase G (23/09/2026 —
-decisão do responsável do produto via chat).** O Prompt TÓPICO 5 (54
-seções) chama de "MVP" (§50) um PDM/PLM completo — Produto×Projeto,
-biblioteca técnica como módulo próprio, configurador de produto,
-motor de regras, BOM sugerida→definitiva com workflow de aprovação
-separado, versionamento de regras, "Solicitação de Engenharia" como
-fluxo à parte, CMV técnico, fila de Engenharia. Nada disso é aprovado
-por este parágrafo — o texto acima desta seção (composição,
-componentes, materiais, quantidades, características técnicas,
-necessidades de produção/materiais, revisões, histórico) continua
-sendo o real corte de MVP da Engenharia, e é isso que já foi
-implementado nas Fases A/E/F do plano de evolução da BOM leve
-(peças/composição hierárquica com revisão básica, e configurador de
-características por peça).
-
-O que passa a fazer parte do MVP, de forma simplificada, é só um
-**motor de regras básico**: regra = 1 condição (uma característica já
-configurada na peça, um operador de comparação, um valor) → 1 ação
-sobre a composição da peça (ajustar quantidade de um material,
-adicionar material, ou remover material). Regras são dados
-configuráveis (tabela, não código), cada regra é imutável uma vez
-criada — "editar" uma regra cria uma nova, vinculada à anterior, que é
-desativada; nada é sobrescrito, preservando o princípio do Prompt
-TÓPICO 5 §14 ("nova versão de regra não altera projetos históricos").
-Uma função de simulação mostra o que as regras ativas sugeririam para
-um pedido_item específico, comparando com a composição base — **o
-sistema sugere, a Engenharia decide** (Prompt TÓPICO 5 §13, princípio
-adotado integralmente): nenhuma regra escreve na composição real da
-peça automaticamente nesta fase.
-
-Continua fora do MVP após esta ampliação, exatamente como antes: mais
-de uma condição combinada por regra (E/OU), motor avançado de regras,
-configurador de produto como tela própria além dos campos já cobertos
-pela Fase F, Produto×Projeto, biblioteca técnica como módulo dedicado,
-workflow de aprovação/liberação separado do que já existe em Pedidos/
-Produção, "Solicitação de Engenharia", CMV técnico, fila de
-Engenharia, e a aplicação automática da sugestão na composição real
-(BOM sugerida→definitiva com workflow de revisão — fase futura
-distinta, mediante nova aprovação).
 
 **4.6 Estoque**
 
