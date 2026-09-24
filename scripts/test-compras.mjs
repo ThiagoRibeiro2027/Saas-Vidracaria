@@ -889,6 +889,160 @@ async function main() {
     check("tenant B não consegue decidir etapa de aprovação do tenant A", !!e2);
   }
 
+  // =======================================================================
+  // Fase 6 da ADR-011 — Pedido de Compra formal, compras recorrentes via
+  // contrato de fornecedor (T18) e orçado×comprometido×realizado
+  // (TÓPICO 7 §24/§25/§33). Reaproveita a cotação já concluída e aprovada
+  // automaticamente na Fase 5 (cotacaoId, split Alfa 40 + Beta 60, sem
+  // alçada configurada naquele momento) — não recria todo o pipeline de
+  // SC/cotação só pra esta fase.
+  // =======================================================================
+
+  console.log("\n46. gerar_pedido_compra_de_cotacao() -- 1 PC por fornecedor distinto, idempotência");
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "pedido_compra", p_prefixo: "PC-CPT-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "titulo_compra", p_prefixo: "TCP-CPT-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  let pcAlfaId;
+  {
+    const { data: pcIds, error } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotacaoId });
+    check("gera pedido(s) de compra a partir da cotação aprovada", !error && Array.isArray(pcIds) && pcIds.length === 2);
+
+    const { data: pcs } = await admin.from("pedidos_compra").select("id, pessoa_id").eq("cotacao_id", cotacaoId);
+    check("1 PC por fornecedor distinto (Alfa e Beta)", pcs.length === 2 && new Set(pcs.map((p) => p.pessoa_id)).size === 2);
+    pcAlfaId = pcs.find((p) => p.pessoa_id === fornAlfaCotId).id;
+
+    const { data: itensAlfa } = await admin.from("pedido_compra_itens").select("quantidade, preco_unitario").eq("pedido_compra_id", pcAlfaId);
+    check("PC do fornecedor Alfa reflete a quantidade e preço selecionados (40 x 9.5)", itensAlfa.length === 1 && Number(itensAlfa[0].quantidade) === 40 && Number(itensAlfa[0].preco_unitario) === 9.5);
+
+    const { error: errRepete } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotacaoId });
+    check("rejeita gerar PC de novo pra mesma cotação", !!errRepete);
+  }
+
+  console.log("\n47. atualizar_status_pedido_compra() -- transições válidas e inválidas");
+  {
+    const { error: errStatusInvalido } = await admTenant.client.rpc("atualizar_status_pedido_compra", { p_id: pcAlfaId, p_status: "emitido" });
+    check("rejeita status alvo inválido (emitido não é transição possível)", !!errStatusInvalido);
+
+    const { error } = await admTenant.client.rpc("atualizar_status_pedido_compra", { p_id: pcAlfaId, p_status: "confirmado" });
+    check("confirma o PC", !error);
+    const { data: pc } = await admin.from("pedidos_compra").select("status").eq("id", pcAlfaId).single();
+    check("PC fica confirmado", pc.status === "confirmado");
+
+    const { error: errRepete } = await admTenant.client.rpc("atualizar_status_pedido_compra", { p_id: pcAlfaId, p_status: "confirmado" });
+    check("rejeita repetir a mesma transição", !!errRepete);
+  }
+
+  console.log("\n48. vincular_pedido_compra_contrato() -- valida tipo/fornecedor/status do contrato");
+  {
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "contrato", p_prefixo: "CTR-CPT-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+    // Alfa ganha também papel CLIENTE só pra permitir um contrato tipo!=fornecedor válido (upsert_contrato exige o papel compatível com o tipo).
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: fornAlfaCotId, p_papel: "CLIENTE", p_ativo: true });
+    const { data: contratoClienteId } = await admTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "cliente", p_pessoa_id: fornAlfaCotId, p_obra_id: null, p_pedido_id: null, p_funcionario_id: null,
+      p_objeto: "objeto teste", p_data_inicio: null, p_data_fim: null, p_renovacao: "manual", p_valor: null, p_forma_pagamento: null, p_observacoes: null,
+    });
+    const { error: errTipo } = await admTenant.client.rpc("vincular_pedido_compra_contrato", { p_pedido_compra_id: pcAlfaId, p_contrato_id: contratoClienteId });
+    check("rejeita contrato de tipo diferente de fornecedor", !!errTipo);
+
+    const { data: contratoBetaId } = await admTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "fornecedor", p_pessoa_id: fornBetaCotId, p_obra_id: null, p_pedido_id: null, p_funcionario_id: null,
+      p_objeto: "contrato fornecedor errado", p_data_inicio: null, p_data_fim: null, p_renovacao: "manual", p_valor: null, p_forma_pagamento: null, p_observacoes: null,
+    });
+    const { error: errFornecedorErrado } = await admTenant.client.rpc("vincular_pedido_compra_contrato", { p_pedido_compra_id: pcAlfaId, p_contrato_id: contratoBetaId });
+    check("rejeita contrato de outro fornecedor", !!errFornecedorErrado);
+
+    const { data: contratoAlfaId } = await admTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "fornecedor", p_pessoa_id: fornAlfaCotId, p_obra_id: null, p_pedido_id: null, p_funcionario_id: null,
+      p_objeto: "contrato Alfa recorrente", p_data_inicio: new Date().toISOString().slice(0, 10), p_data_fim: null, p_renovacao: "manual", p_valor: null, p_forma_pagamento: null, p_observacoes: null,
+    });
+    const { error: errRascunho } = await admTenant.client.rpc("vincular_pedido_compra_contrato", { p_pedido_compra_id: pcAlfaId, p_contrato_id: contratoAlfaId });
+    check("rejeita contrato ainda em rascunho (não vigente)", !!errRascunho);
+
+    await admTenant.client.rpc("ativar_contrato", { p_id: contratoAlfaId });
+    const { error } = await admTenant.client.rpc("vincular_pedido_compra_contrato", { p_pedido_compra_id: pcAlfaId, p_contrato_id: contratoAlfaId });
+    check("vincula contrato vigente do fornecedor correto", !error);
+    const { data: pc } = await admin.from("pedidos_compra").select("contrato_id").eq("id", pcAlfaId).single();
+    check("PC reflete o contrato vinculado", pc.contrato_id === contratoAlfaId);
+  }
+
+  console.log("\n49. programar_entrega_pedido_compra() -- soma não pode exceder o total do PC (40), permite múltiplas datas (recorrência)");
+  {
+    const { error: errExcede } = await admTenant.client.rpc("programar_entrega_pedido_compra", { p_pedido_compra_id: pcAlfaId, p_data_entrega: "2027-06-01", p_quantidade: 100 });
+    check("rejeita quantidade que excede o total do PC", !!errExcede);
+
+    await admTenant.client.rpc("programar_entrega_pedido_compra", { p_pedido_compra_id: pcAlfaId, p_data_entrega: "2027-06-01", p_quantidade: 15 });
+    await admTenant.client.rpc("programar_entrega_pedido_compra", { p_pedido_compra_id: pcAlfaId, p_data_entrega: "2027-07-01", p_quantidade: 15 });
+    await admTenant.client.rpc("programar_entrega_pedido_compra", { p_pedido_compra_id: pcAlfaId, p_data_entrega: "2027-08-01", p_quantidade: 10 });
+    const { data: programacoes } = await admin.from("pedido_compra_programacoes").select("id").eq("pedido_compra_id", pcAlfaId);
+    check("3 entregas programadas somando exatamente o total (recorrência via contrato, §25)", (programacoes ?? []).length === 3);
+
+    const { error: errUltrapassa } = await admTenant.client.rpc("programar_entrega_pedido_compra", { p_pedido_compra_id: pcAlfaId, p_data_entrega: "2027-09-01", p_quantidade: 1 });
+    check("rejeita programar além do total já alcançado", !!errUltrapassa);
+  }
+
+  console.log("\n50. upsert_orcamento_compra() + calcular_orcado_comprometido_realizado() -- comprometido e realizado corretos");
+  let tituloId;
+  {
+    const { error: errValor } = await admTenant.client.rpc("upsert_orcamento_compra", { p_categoria: "teste", p_periodo_inicio: "2020-01-01", p_periodo_fim: "2030-12-31", p_valor_orcado: -1 });
+    check("rejeita valor orçado negativo", !!errValor);
+
+    const { data: orc1 } = await admTenant.client.rpc("upsert_orcamento_compra", { p_categoria: "teste", p_periodo_inicio: "2020-01-01", p_periodo_fim: "2030-12-31", p_valor_orcado: 1000 });
+    const { data: orc2 } = await admTenant.client.rpc("upsert_orcamento_compra", { p_categoria: "teste", p_periodo_inicio: "2020-01-01", p_periodo_fim: "2030-12-31", p_valor_orcado: 1500 });
+    check("upsert é idempotente por categoria+período (mesmo id)", orc1 === orc2);
+
+    const { data: linha1 } = await admTenant.client.rpc("calcular_orcado_comprometido_realizado", { p_categoria: "teste", p_periodo_inicio: "2020-01-01", p_periodo_fim: "2030-12-31" });
+    // comprometido: PC Alfa confirmado (40*9.5=380) + PC Beta emitido (60*7.5=450) = 830
+    check("comprometido soma PCs emitidos/confirmados corretamente (830)", Number(linha1[0].comprometido) === 830 && Number(linha1[0].realizado) === 0);
+
+    const { data: titIds } = await admTenant.client.rpc("gerar_titulos_pedido_compra", {
+      p_pedido_compra_id: pcAlfaId, p_parcelas: [{ valor: 380, vencimento: "2027-01-01" }],
+    });
+    tituloId = titIds[0];
+    await admTenant.client.rpc("registrar_pagamento_titulo_compra", { p_titulo_id: tituloId, p_valor: 380, p_data_pagamento: "2027-01-01" });
+
+    const { data: linha2 } = await admTenant.client.rpc("calcular_orcado_comprometido_realizado", { p_categoria: "teste", p_periodo_inicio: "2020-01-01", p_periodo_fim: "2030-12-31" });
+    check("realizado reflete o pagamento do título (380) -- nasce do Financeiro real", Number(linha2[0].realizado) === 380);
+  }
+
+  console.log("\n51. registrar_pagamento_titulo_compra() -- rejeita exceder o valor, rejeita título já pago");
+  {
+    const { error: errExcede } = await admTenant.client.rpc("registrar_pagamento_titulo_compra", { p_titulo_id: tituloId, p_valor: 1, p_data_pagamento: "2027-01-01" });
+    check("rejeita pagamento em título já pago (excede o saldo)", !!errExcede);
+  }
+
+  console.log("\n52. Deny -- usuário sem compras.manage/financeiro.manage/financeiro.pagar (papel QUALIDADE)");
+  {
+    const { error: e1 } = await noPermTenant.client.rpc("atualizar_status_pedido_compra", { p_id: pcAlfaId, p_status: "cancelado" });
+    check("atualizar_status_pedido_compra negado sem compras.manage", !!e1);
+    const { error: e2 } = await noPermTenant.client.rpc("upsert_orcamento_compra", { p_categoria: "teste", p_periodo_inicio: "2020-01-01", p_periodo_fim: "2030-12-31", p_valor_orcado: 1 });
+    check("upsert_orcamento_compra negado sem compras.manage", !!e2);
+    const { error: e3 } = await noPermTenant.client.rpc("registrar_pagamento_titulo_compra", { p_titulo_id: tituloId, p_valor: 1 });
+    check("registrar_pagamento_titulo_compra negado sem financeiro.pagar", !!e3);
+    const { data: still } = await noPermTenant.client.from("pedidos_compra").select("id").eq("id", pcAlfaId);
+    check("SELECT direto continua liberado (RLS por company_id)", (still ?? []).length === 1);
+  }
+
+  console.log("\n53. Isolamento cross-tenant -- tenant B não vê nem altera pedidos/títulos do tenant A");
+  {
+    const { data: pcOutro } = await otherTenant.client.from("pedidos_compra").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê pedidos de compra do tenant A", (pcOutro ?? []).length === 0);
+    const { data: titOutro } = await otherTenant.client.from("titulos_pagar").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê títulos a pagar do tenant A", (titOutro ?? []).length === 0);
+
+    const { error: e1 } = await otherTenant.client.rpc("atualizar_status_pedido_compra", { p_id: pcAlfaId, p_status: "cancelado" });
+    check("tenant B não consegue alterar PC do tenant A", !!e1);
+    const { error: e2 } = await otherTenant.client.rpc("registrar_pagamento_titulo_compra", { p_titulo_id: tituloId, p_valor: 1 });
+    check("tenant B não consegue pagar título do tenant A", !!e2);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

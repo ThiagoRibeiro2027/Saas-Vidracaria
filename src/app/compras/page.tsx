@@ -65,12 +65,15 @@ export default async function ComprasPage() {
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
           Primeira das 10 fases do módulo completo de Compras (ADR-011, escopo aprovado em
           23/09/2026): cadastro comercial do fornecedor, fornecedor principal/alternativo por item,
-          material alternativo e política de abastecimento. Pedido de compra formal e recebimento
-          completo ainda não existem — seguem em fases futuras. Recebimento leve continua em{" "}
-          <code>/suprimentos</code>, sem mudança. Motor de necessidades e mapa de compras futuras
-          (Fase 3) ficam em <Link href="/compras/mapa">/compras/mapa</Link>. Solicitação de compra e
-          compras diretas (Fase 4) ficam em <Link href="/compras/solicitacoes">/compras/solicitacoes</Link>.
-          Cotação, negociação e alçada (Fase 5) ficam em <Link href="/compras/cotacoes">/compras/cotacoes</Link>.
+          material alternativo e política de abastecimento. Recebimento completo ainda não existe —
+          segue em fase futura. Recebimento leve continua em <code>/suprimentos</code>, sem mudança.
+          Motor de necessidades e mapa de compras futuras (Fase 3) ficam em{" "}
+          <Link href="/compras/mapa">/compras/mapa</Link>. Solicitação de compra e compras diretas
+          (Fase 4) ficam em <Link href="/compras/solicitacoes">/compras/solicitacoes</Link>. Cotação,
+          negociação e alçada (Fase 5) ficam em <Link href="/compras/cotacoes">/compras/cotacoes</Link>.
+          Pedido de compra e orçado×comprometido×realizado (Fase 6) ficam em{" "}
+          <Link href="/compras/pedidos">/compras/pedidos</Link> e{" "}
+          <Link href="/compras/orcamento">/compras/orcamento</Link>.
         </p>
 
         <ComprasSection
