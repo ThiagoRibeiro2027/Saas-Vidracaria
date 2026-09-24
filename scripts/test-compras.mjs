@@ -690,6 +690,23 @@ async function main() {
   const { data: adminRoleRow } = await admin.from("roles").select("id").is("company_id", null).eq("key", "ADMIN").single();
   await admin.from("user_roles").insert({ profile_id: aprov1Tenant.userId, role_id: adminRoleRow.id });
   await admin.from("user_roles").insert({ profile_id: aprov2Tenant.userId, role_id: adminRoleRow.id });
+
+  // A partir do bloco 40, admTenant tem uma alçada permanente configurada pra
+  // processo='cotacao' (etapa 1, COMERCIA, valor_minimo=0 -- sempre se aplica;
+  // etapa 2 é desativada no bloco 43). Toda cotação NOVA criada depois disso
+  // (blocos 61+, Fases 7-9) precisa decidir essa etapa 1 antes de virar
+  // aprovada -- sem isso, gerar_pedido_compra_de_cotacao() rejeita (aprovação
+  // ainda pendente), corretamente. Sem alçada nenhuma pendente, é um no-op.
+  async function aprovarEtapaPendente(cotacaoId) {
+    const { data: cot } = await admin.from("cotacoes").select("aprovacao_id").eq("id", cotacaoId).single();
+    if (!cot?.aprovacao_id) return;
+    const { data: etapa } = await admin.from("compras_aprovacao_etapas")
+      .select("id").eq("compra_aprovacao_id", cot.aprovacao_id).eq("status", "pendente").order("ordem").limit(1).maybeSingle();
+    if (etapa) {
+      await aprov1Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa.id, p_decisao: "aprovar", p_observacao: "aprovação automática do fixture" });
+    }
+  }
+
   const itemCotId = await upsertItem(admTenant, "ITQ-CPT", "materia_prima");
   await admTenant.client.rpc("upsert_numbering_sequence", {
     p_document_type: "cotacao", p_prefixo: "COT-CPT-", p_sufixo: "", p_digitos: 4,
@@ -1213,6 +1230,7 @@ async function main() {
     const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 5 });
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 10, p_justificativa: "único fornecedor" });
     await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotId });
+    await aprovarEtapaPendente(cotId);
     const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
     const pcRastreioId = pcIds[0];
     const { data: pciRastreio } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcRastreioId).single();
@@ -1290,6 +1308,7 @@ async function main() {
     const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornF8Id, p_preco_unitario: 12, p_prazo_entrega_dias: 5 });
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 50, p_justificativa: "único fornecedor" });
     await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotId });
+    await aprovarEtapaPendente(cotId);
     const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
     pcEmergId = pcIds[0];
     const { data: pc } = await admin.from("pedidos_compra").select("urgencia").eq("id", pcEmergId).single();
@@ -1327,6 +1346,7 @@ async function main() {
     const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornF8Id, p_preco_unitario: 9, p_prazo_entrega_dias: 3 });
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 5, p_justificativa: "único fornecedor" });
     await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotId });
+    await aprovarEtapaPendente(cotId);
     const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
     const { data: pci } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcIds[0]).single();
     const { data: recId } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", { p_pedido_compra_id: pcIds[0], p_itens: [{ pedido_compra_item_id: pci.id, quantidade_recebida: 5 }] });
@@ -1442,7 +1462,8 @@ async function main() {
     propF9Id = propId;
     await admTenant.client.rpc("registrar_negociacao_cotacao", { p_cotacao_proposta_id: propF9Id, p_preco_novo: 18, p_observacao: "negociado" }); // 9. registrar negociação
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItemF9Id, p_cotacao_proposta_id: propF9Id, p_quantidade: 30, p_justificativa: "decisão manual do comprador" }); // 10. decisão manual do comprador
-    await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotF9Id }); // 11. submeter à alçada (sem etapa configurada = auto-aprovada)
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotF9Id }); // 11. submeter à alçada
+    await aprovarEtapaPendente(cotF9Id); // etapa 1 (COMERCIAL) ainda ativa desde o bloco 40 -- decide antes de gerar o PC
     const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotF9Id }); // 12. gerar PC
     pcF9Id = pcIds[0];
     const { data: pci } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcF9Id).single();
