@@ -60,25 +60,27 @@ export default async function ComprasPage() {
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 1 da ADR-011)</p>
+        <p style={eyebrowStyle}>TÓPICO 7 — Compras (escopo completo, ADR-011, 9 fases)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Fornecedores e políticas de abastecimento</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Primeira das 10 fases do módulo completo de Compras (ADR-011, escopo aprovado em
-          23/09/2026): cadastro comercial do fornecedor, fornecedor principal/alternativo por item,
-          material alternativo e política de abastecimento. Recebimento completo ainda não existe —
-          segue em fase futura. Recebimento leve continua em <code>/suprimentos</code>, sem mudança.
+          Módulo completo de Compras (ADR-011, escopo aprovado em 23/09/2026): cadastro comercial do
+          fornecedor, fornecedor principal/alternativo por item, material alternativo e política de
+          abastecimento (Fase 1, esta página). Recebimento leve continua em <code>/suprimentos</code>,
+          sem mudança — é um ciclo independente do recebimento completo desta Fase 7 abaixo.
           Motor de necessidades e mapa de compras futuras (Fase 3) ficam em{" "}
-          <Link href="/compras/mapa">/compras/mapa</Link>. Solicitação de compra e compras diretas
-          (Fase 4) ficam em <Link href="/compras/solicitacoes">/compras/solicitacoes</Link>. Cotação,
-          negociação e alçada (Fase 5) ficam em <Link href="/compras/cotacoes">/compras/cotacoes</Link>.
+          <Link href="/compras/mapa">/compras/mapa</Link>. Solicitação de compra, compras diretas e
+          compra emergencial (Fases 4 e 8) ficam em{" "}
+          <Link href="/compras/solicitacoes">/compras/solicitacoes</Link>. Cotação, negociação e
+          alçada (Fase 5) ficam em <Link href="/compras/cotacoes">/compras/cotacoes</Link>.
           Pedido de compra e orçado×comprometido×realizado (Fase 6) ficam em{" "}
           <Link href="/compras/pedidos">/compras/pedidos</Link> e{" "}
           <Link href="/compras/orcamento">/compras/orcamento</Link>. Recebimento, conferência,
           lote, divergência e devolução (Fase 7) ficam em{" "}
-          <Link href="/compras/recebimentos">/compras/recebimentos</Link>. Compra emergencial
-          fica em <Link href="/compras/solicitacoes">/compras/solicitacoes</Link>; avaliação de
+          <Link href="/compras/recebimentos">/compras/recebimentos</Link>. Avaliação de
           fornecedores e rastreabilidade completa (Fase 8) ficam em{" "}
-          <Link href="/compras/fornecedores">/compras/fornecedores</Link>.
+          <Link href="/compras/fornecedores">/compras/fornecedores</Link>. Dashboard e configuração
+          consolidada (Fase 9) ficam em <Link href="/compras/dashboard">/compras/dashboard</Link> e{" "}
+          <Link href="/compras/configuracoes">/compras/configuracoes</Link>.
         </p>
 
         <ComprasSection

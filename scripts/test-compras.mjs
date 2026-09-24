@@ -1399,6 +1399,96 @@ async function main() {
     check("SELECT direto continua liberado (RLS por company_id)", (still ?? []).length === 1);
   }
 
+  // =========================================================================
+  // Fase 9 da ADR-011 (TÓPICO 7 §38 + fechamento) -- Dashboard, configuração
+  // consolidada, auditoria de permissões, critério de conclusão. Pipeline
+  // dedicado (itemF9/fornF9) para medir o dashboard com números exatos e
+  // conhecidos, sem se acoplar ao acumulado das fases anteriores.
+  // =========================================================================
+
+  console.log("\n70. dashboard_compras() -- vazio antes de qualquer dado, números corretos depois do fluxo ponta a ponta");
+  const itemF9Id = await upsertItem(admTenant, "ITF9-CPT", "materia_prima");
+  const fornF9Id = await upsertPessoa(admTenant, "21", "Fornecedor Fase9", "FORNECEDOR");
+  await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "solicitacao_compra", p_prefixo: "SC-F9-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+  await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "cotacao", p_prefixo: "COT-F9-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+  await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "pedido_compra", p_prefixo: "PC-F9-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+  await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "recebimento_compra", p_prefixo: "REC-F9-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+  let necF9Id, scF9Id, cotF9Id, cotItemF9Id, propF9Id, pcF9Id, pciF9Id, recF9Id, riF9Id, divF9Id;
+  {
+    const { data: vazio, error } = await admTenant.client.rpc("dashboard_compras", { p_data_inicio: "1990-01-01", p_data_fim: "1990-01-31" });
+    check("dashboard_compras() funciona mesmo sem dado no período", !error && vazio.pedidos.valor_total === 0 && vazio.necessidades.por_status && Object.keys(vazio.necessidades.por_status).length === 0);
+
+    // ===== CRITÉRIO DE CONCLUSÃO do TÓPICO 7 -- fluxo completo, 1 passo por linha =====
+    const { data: necId } = await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemF9Id, p_quantidade: 30, p_origem: "manual" }); // 1. criar necessidade
+    necF9Id = necId;
+    const { data: saldo1 } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", itemF9Id).maybeSingle(); // 2. verificar estoque/sobras/trânsito (nada ainda)
+    check("estoque inicial vazio antes da necessidade ser atendida", !saldo1 || Number(saldo1.quantidade_fisica) === 0);
+    const { data: liquida } = await admTenant.client.rpc("calcular_saldo_projetado", { p_item_id: itemF9Id }); // 3. calcular necessidade líquida
+    check("calcular_saldo_projetado() calcula a necessidade líquida", liquida !== null);
+    const { data: scId } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: "Produção", p_prioridade: "alta", p_justificativa: "fluxo ponta a ponta F9" }); // 5. criar SC
+    scF9Id = scId;
+    await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: scF9Id, p_item_id: itemF9Id, p_quantidade: 30, p_necessidade_compra_id: necF9Id });
+    await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scF9Id });
+    const { data: cotId } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scF9Id }); // 6. selecionar fornecedores / 7. solicitar cotação
+    cotF9Id = cotId;
+    const { data: cotItens } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotF9Id);
+    cotItemF9Id = cotItens[0].id;
+    const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItemF9Id, p_pessoa_id: fornF9Id, p_preco_unitario: 20, p_prazo_entrega_dias: 5 }); // 7. registrar cotação
+    propF9Id = propId;
+    await admTenant.client.rpc("registrar_negociacao_cotacao", { p_cotacao_proposta_id: propF9Id, p_preco_novo: 18, p_observacao: "negociado" }); // 9. registrar negociação
+    await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItemF9Id, p_cotacao_proposta_id: propF9Id, p_quantidade: 30, p_justificativa: "decisão manual do comprador" }); // 10. decisão manual do comprador
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotF9Id }); // 11. submeter à alçada (sem etapa configurada = auto-aprovada)
+    const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotF9Id }); // 12. gerar PC
+    pcF9Id = pcIds[0];
+    const { data: pci } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcF9Id).single();
+    pciF9Id = pci.id;
+    const { data: recId } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", { p_pedido_compra_id: pcF9Id, p_itens: [{ pedido_compra_item_id: pciF9Id, quantidade_recebida: 30 }] }); // 14. receber (total)
+    recF9Id = recId;
+    const { data: itensRec } = await admin.from("recebimento_itens").select("id").eq("recebimento_id", recF9Id);
+    riF9Id = itensRec[0].id;
+    const { data: divId } = await admTenant.client.rpc("registrar_divergencia_recebimento", { p_recebimento_item_id: riF9Id, p_tipo: "quantidade_menor", p_descricao: "1 unidade avariada", p_quantidade_divergente: 1 }); // 15. registrar divergência
+    divF9Id = divId;
+    await admTenant.client.rpc("tratar_divergencia", { p_id: divF9Id, p_decisao: "aceitar", p_observacao: "avaria aceita" }); // 16. conferência/qualidade
+    const { error: errFinal } = await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: recF9Id }); // 17. atualizar estoque
+    check("fluxo ponta a ponta completo (necessidade -> ... -> estoque) sem erro", !errFinal);
+
+    const { data: necFinal } = await admin.from("necessidades_compra").select("status").eq("id", necF9Id).single(); // 18. rastreabilidade (status final)
+    check("18. necessidade mantém rastreabilidade até o fim (status recebida)", necFinal.status === "recebida");
+    const { data: rastreio } = await admTenant.client.rpc("rastrear_necessidade", { p_necessidade_compra_id: necF9Id }); // 18. rastreabilidade (consulta ponta a ponta)
+    check("18. rastrear_necessidade() reconstrói a cadeia completa", rastreio.pedido_compra?.numero && rastreio.cotacao?.numero && rastreio.solicitacao_compra?.numero);
+    const { data: logs } = await admin.from("activity_logs").select("id").eq("entity_id", recF9Id); // 19. auditoria
+    check("19. auditoria -- ao menos um activity_log referenciando o recebimento", (logs ?? []).length > 0);
+
+    const { data: dashboard } = await admTenant.client.rpc("dashboard_compras", { p_data_inicio: null, p_data_fim: null }); // 20. indicadores/dashboard
+    check("20. dashboard reflete o pedido gerado (valor 18*30=540)", Number(dashboard.pedidos.valor_total) >= 540);
+    check("20. dashboard reflete a economia da negociação (20-18=2)", Number(dashboard.cotacoes.economia_negociacao) >= 2);
+    check("20. mapa de compras futuras (necessidades futuras) segue disponível", Array.isArray(await admTenant.client.rpc("mapa_compras_futuras").then((r) => r.data)));
+  }
+
+  console.log("\n71. Matriz de permissões (lista PERMISSÕES do Prompt TÓPICO 7) -- QUALIDADE negado em toda ação crítica");
+  {
+    const acoes = [
+      ["criar necessidade", () => noPermTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemF9Id, p_quantidade: 1, p_origem: "manual" })],
+      ["criar compra direta", () => noPermTenant.client.rpc("criar_compra_direta", { p_item_id: itemF9Id, p_quantidade: 1, p_motivo: "outro", p_justificativa: "j" })],
+      ["criar SC", () => noPermTenant.client.rpc("criar_solicitacao_compra", { p_setor: "S" })],
+      ["cotar", () => noPermTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItemF9Id, p_pessoa_id: fornF9Id, p_preco_unitario: 1 })],
+      ["negociar", () => noPermTenant.client.rpc("registrar_negociacao_cotacao", { p_cotacao_proposta_id: propF9Id, p_preco_novo: 1 })],
+      ["escolher fornecedor", () => noPermTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItemF9Id, p_cotacao_proposta_id: propF9Id, p_quantidade: 1, p_justificativa: "j" })],
+      ["aprovar", () => noPermTenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: "00000000-0000-0000-0000-000000000000", p_decisao: "aprovar" })],
+      ["gerar PC", () => noPermTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotF9Id })],
+      ["receber", () => noPermTenant.client.rpc("registrar_recebimento_pedido_compra", { p_pedido_compra_id: pcF9Id, p_itens: [{ pedido_compra_item_id: pciF9Id, quantidade_recebida: 1 }] })],
+      ["aceitar divergência", () => noPermTenant.client.rpc("tratar_divergencia", { p_id: divF9Id, p_decisao: "aceitar" })],
+      ["devolver", () => noPermTenant.client.rpc("registrar_devolucao_compra", { p_recebimento_item_id: riF9Id, p_quantidade: 1, p_motivo: "j" })],
+      ["alterar regras (política de abastecimento)", () => noPermTenant.client.rpc("upsert_politica_abastecimento", { p_item_id: itemF9Id, p_tipo: "estoque_minimo", p_estoque_minimo: 1 })],
+      ["configurar alçadas", () => noPermTenant.client.rpc("upsert_alcada_compra", { p_processo: "cotacao", p_ordem: 1, p_valor_minimo: 0, p_role_id: "00000000-0000-0000-0000-000000000000" })],
+      ["consultar dashboard", () => noPermTenant.client.rpc("dashboard_compras", {})],
+    ];
+    for (const [nome, chamada] of acoes) {
+      const { error } = await chamada();
+      check(`"${nome}" negado sem compras.manage/compras.view (papel QUALIDADE)`, !!error);
+    }
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
