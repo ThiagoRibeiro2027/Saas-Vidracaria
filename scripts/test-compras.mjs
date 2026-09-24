@@ -673,6 +673,222 @@ async function main() {
     check("tenant B não consegue registrar compra direta em item do tenant A", !!e2);
   }
 
+  // =======================================================================
+  // Fase 5 da ADR-011 — cotação, negociação, histórico de preços, custo
+  // total de aquisição e alçada de aprovação multi-etapa (TÓPICO 7
+  // §17-§23). custo_unitario é objetivo (preço - desconto + impostos +
+  // frete, por unidade), sem score ponderado subjetivo -- qualquer
+  // proposta pode ser selecionada, sempre com justificativa.
+  // =======================================================================
+
+  console.log("\n35. criar_cotacao_de_solicitacao() -- exige SC enviada, cria a partir dos itens");
+  // Aprovadores precisam do papel específico da etapa (checado por decidir_etapa_aprovacao_compra)
+  // E de compras.manage como gate de base (assert_tenant_write) -- por isso também ganham ADMIN,
+  // mesmo padrão usado no cenário SQL standalone que validou este fluxo antes deste commit.
+  const aprov1Tenant = await createTenant("compras-test-admin", "Compras Aprovador Etapa 1", "cp10", "COMERCIAL", admTenant.company);
+  const aprov2Tenant = await createTenant("compras-test-admin", "Compras Aprovador Etapa 2", "cp11", "PRODUCAO", admTenant.company);
+  const { data: adminRoleRow } = await admin.from("roles").select("id").is("company_id", null).eq("key", "ADMIN").single();
+  await admin.from("user_roles").insert({ profile_id: aprov1Tenant.userId, role_id: adminRoleRow.id });
+  await admin.from("user_roles").insert({ profile_id: aprov2Tenant.userId, role_id: adminRoleRow.id });
+  const itemCotId = await upsertItem(admTenant, "ITQ-CPT", "materia_prima");
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "cotacao", p_prefixo: "COT-CPT-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  let cotacaoId;
+  let cotacaoItemId;
+  {
+    const { data: scCotId } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: "Produção", p_prioridade: "alta", p_justificativa: null });
+    const { error: errRascunho } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scCotId, p_item_ids: null });
+    check("rejeita cotar SC em rascunho", !!errRascunho);
+
+    await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: scCotId, p_item_id: itemCotId, p_quantidade: 100 });
+    await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scCotId });
+
+    const { data: cotId, error } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scCotId, p_item_ids: null });
+    check("cria cotação a partir da SC enviada", !error);
+    cotacaoId = cotId;
+    const { data: itensCot } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotacaoId);
+    cotacaoItemId = itensCot[0].id;
+  }
+
+  console.log("\n36. registrar_proposta_cotacao() -- rejeita pessoa sem papel FORNECEDOR, calcula custo_unitario, upsert atualiza e alimenta histórico");
+  const fornAlfaCotId = await upsertPessoa(admTenant, "10", "Fornecedor Cotação Alfa", "FORNECEDOR");
+  const fornBetaCotId = await upsertPessoa(admTenant, "11", "Fornecedor Cotação Beta", "FORNECEDOR");
+  let propAlfaId;
+  {
+    const { error: errSemPapel } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotacaoItemId, p_pessoa_id: pessoaClienteId, p_preco_unitario: 10 });
+    check("rejeita fornecedor sem papel FORNECEDOR ativo", !!errSemPapel);
+
+    const { data, error } = await admTenant.client.rpc("registrar_proposta_cotacao", {
+      p_cotacao_item_id: cotacaoItemId, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 10, p_desconto: 1, p_impostos: 0.5, p_frete: 0.5,
+    });
+    check("registra proposta com custo_unitario calculado (10 - 1 + 0.5 + 0.5 = 10)", !error);
+    propAlfaId = data;
+    const { data: row } = await admin.from("cotacao_propostas").select("custo_unitario").eq("id", propAlfaId).single();
+    check("custo_unitario correto", Number(row.custo_unitario) === 10);
+
+    const { data: reenvio } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotacaoItemId, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 9.5 });
+    check("reenviar proposta do mesmo fornecedor faz upsert (mesmo id)", reenvio === propAlfaId);
+    const { data: hist } = await admin.from("historico_precos_item_fornecedor").select("id").eq("item_id", itemCotId).eq("pessoa_id", fornAlfaCotId);
+    check("histórico de preços registra cada envio (2 linhas)", (hist ?? []).length === 2);
+  }
+
+  console.log("\n37. registrar_negociacao_cotacao() -- reduz preço, atualiza custo_unitario, registra rodada");
+  let propBetaId;
+  {
+    const { data } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotacaoItemId, p_pessoa_id: fornBetaCotId, p_preco_unitario: 8 });
+    propBetaId = data;
+
+    const { error } = await admTenant.client.rpc("registrar_negociacao_cotacao", { p_cotacao_proposta_id: propBetaId, p_preco_novo: 7.5, p_observacao: "fechou por volume" });
+    check("registra rodada de negociação", !error);
+    const { data: row } = await admin.from("cotacao_propostas").select("preco_unitario, custo_unitario").eq("id", propBetaId).single();
+    check("proposta reflete o preço negociado", Number(row.preco_unitario) === 7.5 && Number(row.custo_unitario) === 7.5);
+    const { data: negRows } = await admin.from("cotacao_negociacoes").select("rodada, preco_anterior, preco_novo").eq("cotacao_proposta_id", propBetaId);
+    check("negociação registra rodada 1 com preço anterior correto", negRows.length === 1 && negRows[0].rodada === 1 && Number(negRows[0].preco_anterior) === 8);
+  }
+
+  console.log("\n38. selecionar_fornecedor_cotacao() -- exige justificativa, valida quantidade, permite split (§18)");
+  {
+    const { error: errSemJustificativa } = await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotacaoItemId, p_cotacao_proposta_id: propBetaId, p_quantidade: 60, p_justificativa: "" });
+    check("rejeita justificativa vazia", !!errSemJustificativa);
+
+    const { error: e1 } = await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotacaoItemId, p_cotacao_proposta_id: propBetaId, p_quantidade: 60, p_justificativa: "melhor preço para o grosso" });
+    check("seleciona parte da quantidade com Beta", !e1);
+    const { error: errExcede } = await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotacaoItemId, p_cotacao_proposta_id: propAlfaId, p_quantidade: 50, p_justificativa: "excede" });
+    check("rejeita quantidade que excede o restante do item", !!errExcede);
+    const { error: e2 } = await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotacaoItemId, p_cotacao_proposta_id: propAlfaId, p_quantidade: 40, p_justificativa: "restante com Alfa, prazo melhor" });
+    check("seleciona o restante com Alfa (split completo)", !e2);
+  }
+
+  console.log("\n39. concluir_selecao_cotacao() -- sem alçada configurada, aprova automaticamente");
+  let aprovacaoId;
+  {
+    // valor = 60 * 7.5 (Beta pós-negociação) + 40 * 9.5 (Alfa pós-upsert) = 450 + 380 = 830
+    const { error } = await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotacaoId });
+    check("conclui a seleção sem erro", !error);
+    const { data: cot } = await admin.from("cotacoes").select("status, aprovacao_id").eq("id", cotacaoId).single();
+    check("cotação fica selecionada com aprovacao_id preenchido", cot.status === "selecionada" && !!cot.aprovacao_id);
+    aprovacaoId = cot.aprovacao_id;
+    const { data: aprov } = await admin.from("compras_aprovacoes").select("status, valor").eq("id", aprovacaoId).single();
+    check("sem alçada configurada, aprovação é automática com valor correto (830)", aprov.status === "aprovada" && Number(aprov.valor) === 830);
+
+    const { error: errRepete } = await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotacaoId });
+    check("rejeita concluir cotação já concluída", !!errRepete);
+  }
+
+  console.log("\n40. upsert_alcada_compra() -- 2 etapas multi-perfil, aprovação fica pendente com etapas na ordem certa");
+  const { data: comercialRole } = await admin.from("roles").select("id").is("company_id", null).eq("key", "COMERCIAL").single();
+  const { data: producaoRole } = await admin.from("roles").select("id").is("company_id", null).eq("key", "PRODUCAO").single();
+  let etapa1Id;
+  let etapa2Id;
+  let cotacao2Id;
+  {
+    await admTenant.client.rpc("upsert_alcada_compra", { p_processo: "cotacao", p_ordem: 1, p_valor_minimo: 0, p_role_id: comercialRole.id, p_ativo: true });
+    await admTenant.client.rpc("upsert_alcada_compra", { p_processo: "cotacao", p_ordem: 2, p_valor_minimo: 500, p_role_id: producaoRole.id, p_ativo: true });
+
+    const { data: scId2 } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: null, p_prioridade: "urgente", p_justificativa: null });
+    await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: scId2, p_item_id: itemCotId, p_quantidade: 100 });
+    await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scId2 });
+    const { data: cotId2 } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scId2, p_item_ids: null });
+    cotacao2Id = cotId2;
+    const { data: itensCot2 } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotacao2Id);
+    const { data: propUnica } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: itensCot2[0].id, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 10 });
+    await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: itensCot2[0].id, p_cotacao_proposta_id: propUnica, p_quantidade: 100, p_justificativa: "único fornecedor" });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotacao2Id });
+
+    const { data: cot2 } = await admin.from("cotacoes").select("aprovacao_id").eq("id", cotacao2Id).single();
+    const { data: aprov2 } = await admin.from("compras_aprovacoes").select("status, valor").eq("id", cot2.aprovacao_id).single();
+    check("valor 1000 (>= 500) exige as 2 etapas -- aprovação fica pendente", aprov2.status === "pendente" && Number(aprov2.valor) === 1000);
+
+    const { data: etapas } = await admin.from("compras_aprovacao_etapas").select("id, ordem").eq("compra_aprovacao_id", cot2.aprovacao_id).order("ordem");
+    check("2 etapas criadas na ordem certa", etapas.length === 2 && etapas[0].ordem === 1 && etapas[1].ordem === 2);
+    etapa1Id = etapas[0].id;
+    etapa2Id = etapas[1].id;
+  }
+
+  console.log("\n41. decidir_etapa_aprovacao_compra() -- ordem, perfil, e conclusão sequencial");
+  {
+    const { error: errFora } = await aprov2Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa2Id, p_decisao: "aprovar" });
+    check("rejeita decidir etapa 2 antes da etapa 1", !!errFora);
+
+    const { error: errPerfil } = await aprov2Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa1Id, p_decisao: "aprovar" });
+    check("rejeita perfil errado (PRODUCAO tentando etapa da COMERCIAL)", !!errPerfil);
+
+    const { error: e1 } = await aprov1Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa1Id, p_decisao: "aprovar", p_observacao: "ok" });
+    check("perfil COMERCIAL aprova a etapa 1", !e1);
+    const { data: cot2 } = await admin.from("cotacoes").select("aprovacao_id").eq("id", cotacao2Id).single();
+    const { data: aprovMeio } = await admin.from("compras_aprovacoes").select("status").eq("id", cot2.aprovacao_id).single();
+    check("aprovação ainda pendente (falta etapa 2)", aprovMeio.status === "pendente");
+
+    const { error: e2 } = await aprov2Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa2Id, p_decisao: "aprovar" });
+    check("perfil PRODUCAO aprova a etapa 2", !e2);
+    const { data: aprovFinal } = await admin.from("compras_aprovacoes").select("status").eq("id", cot2.aprovacao_id).single();
+    check("aprovação completa após a última etapa", aprovFinal.status === "aprovada");
+
+    const { error: errRedecide } = await aprov2Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa2Id, p_decisao: "aprovar" });
+    check("rejeita decidir etapa já decidida", !!errRedecide);
+  }
+
+  console.log("\n42. Rejeição de etapa mata a aprovação inteira (short-circuit)");
+  {
+    const { data: scId3 } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: null, p_prioridade: "normal", p_justificativa: null });
+    await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: scId3, p_item_id: itemCotId, p_quantidade: 50 });
+    await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scId3 });
+    const { data: cotId3 } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scId3, p_item_ids: null });
+    const { data: itensCot3 } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotId3);
+    const { data: prop3 } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: itensCot3[0].id, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 20 });
+    await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: itensCot3[0].id, p_cotacao_proposta_id: prop3, p_quantidade: 50, p_justificativa: "único" });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotId3 });
+    const { data: cot3 } = await admin.from("cotacoes").select("aprovacao_id").eq("id", cotId3).single();
+    const { data: etapasCot3 } = await admin.from("compras_aprovacao_etapas").select("id").eq("compra_aprovacao_id", cot3.aprovacao_id).eq("ordem", 1).single();
+
+    await aprov1Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapasCot3.id, p_decisao: "rejeitar", p_observacao: "orçamento estourado" });
+    const { data: aprovRejeitada } = await admin.from("compras_aprovacoes").select("status").eq("id", cot3.aprovacao_id).single();
+    check("rejeição de uma etapa rejeita a aprovação inteira, sem precisar decidir as demais", aprovRejeitada.status === "rejeitada");
+  }
+
+  console.log("\n43. desativar_alcada_compra() e cancelar_cotacao()");
+  {
+    const { data: alcadas } = await admin.from("compras_alcada_etapas").select("id").eq("company_id", admTenant.company.id).eq("ordem", 2);
+    const { error } = await admTenant.client.rpc("desativar_alcada_compra", { p_id: alcadas[0].id });
+    check("desativa etapa de alçada", !error);
+    const { data: row } = await admin.from("compras_alcada_etapas").select("ativo").eq("id", alcadas[0].id).single();
+    check("etapa fica inativa", row.ativo === false);
+
+    const { data: scId4 } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: null, p_prioridade: "normal", p_justificativa: null });
+    await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: scId4, p_item_id: itemCotId, p_quantidade: 5 });
+    await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scId4 });
+    const { data: cotId4 } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scId4, p_item_ids: null });
+    const { error: errCancel } = await admTenant.client.rpc("cancelar_cotacao", { p_id: cotId4, p_motivo: "não precisa mais" });
+    check("cancela cotação aberta", !errCancel);
+    const { error: errCancelSelecionada } = await admTenant.client.rpc("cancelar_cotacao", { p_id: cotacaoId, p_motivo: null });
+    check("rejeita cancelar cotação já selecionada", !!errCancelSelecionada);
+  }
+
+  console.log("\n44. Deny -- usuário sem compras.manage (papel QUALIDADE)");
+  {
+    const { error: e1 } = await noPermTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotacaoItemId, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 1 });
+    check("registrar_proposta_cotacao negado sem compras.manage", !!e1);
+    const { error: e2 } = await noPermTenant.client.rpc("upsert_alcada_compra", { p_processo: "cotacao", p_ordem: 9, p_valor_minimo: 0, p_role_id: comercialRole.id });
+    check("upsert_alcada_compra negado sem compras.manage", !!e2);
+    const { data: still } = await noPermTenant.client.from("cotacoes").select("id").eq("id", cotacaoId);
+    check("SELECT direto continua liberado (RLS por company_id)", (still ?? []).length === 1);
+  }
+
+  console.log("\n45. Isolamento cross-tenant -- tenant B não vê nem altera cotações/alçada do tenant A");
+  {
+    const { data: cotOutro } = await otherTenant.client.from("cotacoes").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê cotações do tenant A", (cotOutro ?? []).length === 0);
+    const { data: alcadaOutro } = await otherTenant.client.from("compras_alcada_etapas").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê alçada do tenant A", (alcadaOutro ?? []).length === 0);
+
+    const { error: e1 } = await otherTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotacaoItemId, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 1 });
+    check("tenant B não consegue registrar proposta em item do tenant A", !!e1);
+    const { error: e2 } = await otherTenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa1Id, p_decisao: "aprovar" });
+    check("tenant B não consegue decidir etapa de aprovação do tenant A", !!e2);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
