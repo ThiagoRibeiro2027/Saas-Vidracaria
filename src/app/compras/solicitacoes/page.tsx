@@ -55,8 +55,10 @@ export default async function SolicitacoesComprasPage() {
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
           SC em rascunho pode ganhar/perder item livremente; ao enviar, cada item com necessidade
           vinculada atende essa necessidade automaticamente. Compra direta é um bypass deliberado da
-          SC — sempre exige motivo e justificativa. Cotação e Pedido de Compra formal ainda não
-          existem (fases futuras). <Link href="/compras">← Voltar para Compras</Link>
+          SC — sempre exige motivo e justificativa. Compra emergencial (Fase 8, §32) é uma SC com
+          urgência marcada e motivo/impacto obrigatórios — segue o mesmo fluxo de cotação/aprovação/PC
+          das demais. <Link href="/compras">← Voltar para Compras</Link> ·{" "}
+          <Link href="/compras/fornecedores">Avaliação de fornecedores e rastreabilidade →</Link>
         </p>
 
         <SolicitacoesComprasSection

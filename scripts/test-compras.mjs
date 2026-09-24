@@ -1248,6 +1248,157 @@ async function main() {
     check("tenant B não consegue registrar recebimento contra PC do tenant A", !!e2);
   }
 
+  // =========================================================================
+  // Fase 8 da ADR-011 (TÓPICO 7 §32, §35, §39; verificação de §37) --
+  // Compras emergenciais, avaliação de fornecedores, rastreabilidade.
+  // Pipeline dedicado (itemF8/fornF8) para não acoplar aos dados já
+  // acumulados pelas fases anteriores neste mesmo arquivo.
+  // =========================================================================
+
+  console.log("\n64. criar_compra_emergencial() -- rejeita campos faltando, urgencia=emergencial, PC herda urgencia");
+  const itemF8Id = await upsertItem(admTenant, "ITF8-CPT", "materia_prima");
+  const fornF8Id = await upsertPessoa(admTenant, "20", "Fornecedor Fase8", "FORNECEDOR");
+  await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "solicitacao_compra", p_prefixo: "SC-F8-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+  await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "cotacao", p_prefixo: "COT-F8-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+  await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "pedido_compra", p_prefixo: "PC-F8-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+  await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "recebimento_compra", p_prefixo: "REC-F8-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+  let scEmergId, pcEmergId, pciEmergId;
+  {
+    const { error: e1 } = await admTenant.client.rpc("criar_compra_emergencial", { p_setor: "Produção", p_motivo: null, p_justificativa: "j", p_impacto: "i" });
+    check("rejeita motivo ausente", !!e1);
+    const { error: e2 } = await admTenant.client.rpc("criar_compra_emergencial", { p_setor: "Produção", p_motivo: "m", p_justificativa: "", p_impacto: "i" });
+    check("rejeita justificativa ausente", !!e2);
+    const { error: e3 } = await admTenant.client.rpc("criar_compra_emergencial", { p_setor: "Produção", p_motivo: "m", p_justificativa: "j", p_impacto: null });
+    check("rejeita impacto ausente", !!e3);
+
+    const { data: scId } = await admTenant.client.rpc("criar_compra_emergencial", {
+      p_setor: "Produção", p_motivo: "linha parada por falta de material", p_justificativa: "sem estoque", p_impacto: "atraso na entrega X",
+    });
+    scEmergId = scId;
+    const { data: sc } = await admin.from("solicitacoes_compra").select("urgencia, emergencial_motivo, emergencial_impacto").eq("id", scEmergId).single();
+    check("SC nasce com urgencia=emergencial e campos preenchidos", sc.urgencia === "emergencial" && !!sc.emergencial_motivo && !!sc.emergencial_impacto);
+
+    await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: scEmergId, p_item_id: itemF8Id, p_quantidade: 50 });
+    await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scEmergId });
+    const { data: cotId } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scEmergId });
+    const { data: cotItens } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotId);
+    const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornF8Id, p_preco_unitario: 12, p_prazo_entrega_dias: 5 });
+    await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 50, p_justificativa: "único fornecedor" });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotId });
+    const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
+    pcEmergId = pcIds[0];
+    const { data: pc } = await admin.from("pedidos_compra").select("urgencia").eq("id", pcEmergId).single();
+    check("PC gerado herda urgencia=emergencial da SC de origem", pc.urgencia === "emergencial");
+
+    const { data: pci } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcEmergId).single();
+    pciEmergId = pci.id;
+  }
+
+  console.log("\n65. Recebimento + finalizar -- estoque_movimentacoes.recebimento_item_id preenchido (base de rastrear_material)");
+  let ri8Id;
+  {
+    const { data: recId } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", { p_pedido_compra_id: pcEmergId, p_itens: [{ pedido_compra_item_id: pciEmergId, quantidade_recebida: 50 }] });
+    const { data: itensRec } = await admin.from("recebimento_itens").select("id").eq("recebimento_id", recId);
+    ri8Id = itensRec[0].id;
+    await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: recId });
+
+    const { data: mov } = await admin.from("estoque_movimentacoes").select("id, recebimento_item_id").eq("item_id", itemF8Id).eq("tipo", "compra").single();
+    check("movimentação de compra fica ligada ao recebimento_item (§39)", mov.recebimento_item_id === ri8Id);
+  }
+
+  console.log("\n66. rastrear_necessidade() / rastrear_material() -- cadeia completa e consulta reversa");
+  let necF8Id;
+  {
+    const { data: necId } = await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemF8Id, p_quantidade: 5, p_origem: "manual" });
+    necF8Id = necId;
+    const { data: semVinculo } = await admTenant.client.rpc("rastrear_necessidade", { p_necessidade_compra_id: necId });
+    check("rastrear_necessidade sem vínculo ainda retorna nota, não erro", semVinculo.nota?.includes("ainda não vinculada"));
+
+    const { data: scId } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: "Produção", p_prioridade: "alta", p_justificativa: "normal" });
+    await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: scId, p_item_id: itemF8Id, p_quantidade: 5, p_necessidade_compra_id: necId });
+    await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scId });
+    const { data: cotId } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scId });
+    const { data: cotItens } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotId);
+    const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornF8Id, p_preco_unitario: 9, p_prazo_entrega_dias: 3 });
+    await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 5, p_justificativa: "único fornecedor" });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotId });
+    const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
+    const { data: pci } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcIds[0]).single();
+    const { data: recId } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", { p_pedido_compra_id: pcIds[0], p_itens: [{ pedido_compra_item_id: pci.id, quantidade_recebida: 5 }] });
+    await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: recId });
+
+    const { data: necRecebida } = await admin.from("necessidades_compra").select("status, quantidade_recebida").eq("id", necId).single();
+    check("necessidade fecha o ciclo (status recebida) ao final da cadeia", necRecebida.status === "recebida" && Number(necRecebida.quantidade_recebida) === 5);
+
+    const { data: cadeia } = await admTenant.client.rpc("rastrear_necessidade", { p_necessidade_compra_id: necId });
+    check("rastrear_necessidade traz a cadeia completa até o estoque", cadeia.pedido_compra?.numero && cadeia.recebimentos?.length === 1 && cadeia.recebimentos[0].estoque_movimentacao?.tipo === "compra");
+
+    const { data: movRecente } = await admin.from("estoque_movimentacoes").select("id").eq("item_id", itemF8Id).eq("tipo", "compra").order("created_at", { ascending: false }).limit(1).single();
+    const { data: reverso } = await admTenant.client.rpc("rastrear_material", { p_estoque_movimentacao_id: movRecente.id });
+    check("rastrear_material (reverso) resolve a mesma necessidade", reverso.estoque_movimentacao?.necessidade_compra_id === necId);
+
+    const { data: ajusteId } = await admTenant.client.rpc("ajustar_saldo", { p_item_id: itemF8Id, p_quantidade_delta: 1, p_motivo: "ajuste manual sem recebimento" });
+    const { data: semCadeia } = await admTenant.client.rpc("rastrear_material", { p_estoque_movimentacao_id: ajusteId });
+    check("rastrear_material de ajuste manual não quebra, retorna nota", semCadeia.nota?.includes("sem cadeia de Compras"));
+  }
+
+  console.log("\n67. upsert_criterio_avaliacao_fornecedor() + avaliar_fornecedor() -- pesos customizados, score calculado de dado real");
+  let avaliacaoId;
+  {
+    const { error: e1 } = await admTenant.client.rpc("upsert_criterio_avaliacao_fornecedor", { p_chave: "invalido", p_peso: 10 });
+    check("rejeita critério inválido", !!e1);
+    const { error: e2 } = await admTenant.client.rpc("upsert_criterio_avaliacao_fornecedor", { p_chave: "preco", p_peso: -1 });
+    check("rejeita peso negativo", !!e2);
+
+    await admTenant.client.rpc("upsert_criterio_avaliacao_fornecedor", { p_chave: "preco", p_peso: 50 });
+    await admTenant.client.rpc("upsert_criterio_avaliacao_fornecedor", { p_chave: "prazo", p_peso: 20 });
+    await admTenant.client.rpc("upsert_criterio_avaliacao_fornecedor", { p_chave: "divergencias", p_peso: 10 });
+    await admTenant.client.rpc("upsert_criterio_avaliacao_fornecedor", { p_chave: "rejeicoes", p_peso: 10 });
+    await admTenant.client.rpc("upsert_criterio_avaliacao_fornecedor", { p_chave: "volume", p_peso: 10 });
+
+    const { data: id, error } = await admTenant.client.rpc("avaliar_fornecedor", { p_pessoa_id: fornF8Id, p_periodo_inicio: "2000-01-01", p_periodo_fim: "2100-01-01" });
+    check("avalia fornecedor com sucesso", !error);
+    avaliacaoId = id;
+    const { data: aval } = await admin.from("fornecedor_avaliacoes").select("score, detalhamento").eq("id", avaliacaoId).single();
+    check("score calculado (dois recebimentos no prazo, sem divergência, 100% aceito)", aval.score !== null && Number(aval.score) > 0);
+    check("preço reflete o desvio entre as duas propostas (12 e 9) -- nem 0 nem 100", Number(aval.detalhamento.preco.score) > 0 && Number(aval.detalhamento.preco.score) < 100);
+    check("volume = 100 (único fornecedor com PC no período)", Number(aval.detalhamento.volume.score) === 100);
+    check("rejeições = 100 (tudo aceito, nenhuma divergência)", Number(aval.detalhamento.rejeicoes.score) === 100);
+
+    const { data: idSemDado } = await admTenant.client.rpc("avaliar_fornecedor", { p_pessoa_id: fornF8Id, p_periodo_inicio: "1990-01-01", p_periodo_fim: "1990-01-31" });
+    const { data: avalSemDado } = await admin.from("fornecedor_avaliacoes").select("score").eq("id", idSemDado).single();
+    check("período sem nenhum dado -- score null, não força 0", avalSemDado.score === null);
+
+    const { error: errPeriodo } = await admTenant.client.rpc("avaliar_fornecedor", { p_pessoa_id: fornF8Id, p_periodo_inicio: "2020-02-01", p_periodo_fim: "2020-01-01" });
+    check("rejeita período inválido", !!errPeriodo);
+    const { error: errPessoa } = await admTenant.client.rpc("avaliar_fornecedor", { p_pessoa_id: "00000000-0000-0000-0000-000000000000", p_periodo_inicio: "2020-01-01", p_periodo_fim: "2020-01-31" });
+    check("rejeita pessoa que não é fornecedor", !!errPessoa);
+  }
+
+  console.log("\n68. Isolamento -- avaliar_fornecedor() de pessoa de OUTRO tenant é rejeitado (achado real na validação SQL desta fase)");
+  {
+    const { error } = await otherTenant.client.rpc("avaliar_fornecedor", { p_pessoa_id: fornF8Id, p_periodo_inicio: "2020-01-01", p_periodo_fim: "2020-01-31" });
+    check("tenant B não consegue avaliar fornecedor do tenant A (pessoa_papeis agora é escopado por company_id)", !!error);
+    const { data: avalOutro } = await otherTenant.client.from("fornecedor_avaliacoes").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê avaliações do tenant A", (avalOutro ?? []).length === 0);
+    const { error: errRastreio } = await otherTenant.client.rpc("rastrear_necessidade", { p_necessidade_compra_id: necF8Id });
+    check("tenant B não consegue rastrear necessidade do tenant A", !!errRastreio);
+  }
+
+  console.log("\n69. Deny -- usuário sem compras.manage/compras.view (papel QUALIDADE)");
+  {
+    const { error: e1 } = await noPermTenant.client.rpc("criar_compra_emergencial", { p_setor: "Produção", p_motivo: "m", p_justificativa: "j", p_impacto: "i" });
+    check("criar_compra_emergencial negado sem compras.manage", !!e1);
+    const { error: e2 } = await noPermTenant.client.rpc("upsert_criterio_avaliacao_fornecedor", { p_chave: "preco", p_peso: 1 });
+    check("upsert_criterio_avaliacao_fornecedor negado sem compras.manage", !!e2);
+    const { error: e3 } = await noPermTenant.client.rpc("avaliar_fornecedor", { p_pessoa_id: fornF8Id, p_periodo_inicio: "2020-01-01", p_periodo_fim: "2020-01-31" });
+    check("avaliar_fornecedor negado sem compras.manage", !!e3);
+    const { error: e4 } = await noPermTenant.client.rpc("rastrear_necessidade", { p_necessidade_compra_id: necF8Id });
+    check("rastrear_necessidade negado sem compras.view", !!e4);
+    const { data: still } = await noPermTenant.client.from("fornecedor_avaliacoes").select("id").eq("id", avaliacaoId);
+    check("SELECT direto continua liberado (RLS por company_id)", (still ?? []).length === 1);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

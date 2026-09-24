@@ -75,7 +75,10 @@ export default async function ComprasPage() {
           <Link href="/compras/pedidos">/compras/pedidos</Link> e{" "}
           <Link href="/compras/orcamento">/compras/orcamento</Link>. Recebimento, conferência,
           lote, divergência e devolução (Fase 7) ficam em{" "}
-          <Link href="/compras/recebimentos">/compras/recebimentos</Link>.
+          <Link href="/compras/recebimentos">/compras/recebimentos</Link>. Compra emergencial
+          fica em <Link href="/compras/solicitacoes">/compras/solicitacoes</Link>; avaliação de
+          fornecedores e rastreabilidade completa (Fase 8) ficam em{" "}
+          <Link href="/compras/fornecedores">/compras/fornecedores</Link>.
         </p>
 
         <ComprasSection

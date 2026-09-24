@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   criarSolicitacaoCompraAction,
+  criarCompraEmergencialAction,
   adicionarItemSolicitacaoAction,
   removerItemSolicitacaoAction,
   enviarSolicitacaoCompraAction,
@@ -41,6 +42,9 @@ type Solicitacao = {
   justificativa: string | null;
   status: "rascunho" | "aberta" | "cancelada";
   motivo_cancelamento: string | null;
+  urgencia: "normal" | "emergencial";
+  emergencial_motivo: string | null;
+  emergencial_impacto: string | null;
 };
 type SolicitacaoItem = {
   id: string;
@@ -105,6 +109,19 @@ export default function SolicitacoesComprasSection({
             <input name="justificativa" placeholder="justificativa (opcional)" style={{ ...inputStyle, width: "200px" }} />
             <button type="submit" style={buttonStyle}>Nova solicitação</button>
           </form>
+        )}
+
+        {canManage && (
+          <details style={{ marginBottom: "10px" }}>
+            <summary style={{ fontSize: "12px", color: "#9b2c2c", cursor: "pointer" }}>Compra emergencial (§32) — urgência com motivo/impacto obrigatórios</summary>
+            <form action={criarCompraEmergencialAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginTop: "8px" }}>
+              <input name="setor" placeholder="setor (opcional)" style={{ ...inputStyle, width: "120px" }} />
+              <input name="motivo" placeholder="motivo da emergência" required style={{ ...inputStyle, width: "180px" }} />
+              <input name="justificativa" placeholder="justificativa" required style={{ ...inputStyle, width: "180px" }} />
+              <input name="impacto" placeholder="impacto operacional" required style={{ ...inputStyle, width: "180px" }} />
+              <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>Registrar compra emergencial</button>
+            </form>
+          </details>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -224,10 +241,16 @@ function SolicitacaoCard({
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", fontSize: "12px" }}>
         <strong>{sc.numero}</strong>
         <span>{STATUS_SC_LABEL[sc.status]}</span>
+        {sc.urgencia === "emergencial" && (
+          <span style={{ color: "#fff", background: "#9b2c2c", borderRadius: "4px", padding: "1px 6px", fontSize: "11px" }}>EMERGENCIAL</span>
+        )}
         <span style={{ color: "#6b7a75" }}>{sc.setor ?? "—"}</span>
         <span style={{ color: "#6b7a75" }}>prioridade: {PRIORIDADES.find(([v]) => v === sc.prioridade)?.[1] ?? sc.prioridade}</span>
         <span style={{ color: "#6b7a75" }}>solicitante: {solicitanteNome}</span>
       </div>
+      {sc.urgencia === "emergencial" && (
+        <p style={hintStyle}>Motivo: {sc.emergencial_motivo} — Impacto: {sc.emergencial_impacto}</p>
+      )}
       {sc.justificativa && <p style={hintStyle}>{sc.justificativa}</p>}
       {sc.status === "cancelada" && sc.motivo_cancelamento && <p style={hintStyle}>Motivo do cancelamento: {sc.motivo_cancelamento}</p>}
 

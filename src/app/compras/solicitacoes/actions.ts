@@ -19,6 +19,26 @@ export async function criarSolicitacaoCompraAction(formData: FormData) {
   revalidatePath("/compras/solicitacoes");
 }
 
+export async function criarCompraEmergencialAction(formData: FormData) {
+  const setor = String(formData.get("setor") ?? "").trim() || null;
+  const motivo = String(formData.get("motivo") ?? "").trim();
+  const justificativa = String(formData.get("justificativa") ?? "").trim();
+  const impacto = String(formData.get("impacto") ?? "").trim();
+
+  if (!motivo || !justificativa || !impacto) throw new Error("Motivo, justificativa e impacto são obrigatórios numa compra emergencial.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_compra_emergencial", {
+    p_setor: setor,
+    p_motivo: motivo,
+    p_justificativa: justificativa,
+    p_impacto: impacto,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/compras/solicitacoes");
+}
+
 export async function adicionarItemSolicitacaoAction(formData: FormData) {
   const solicitacaoId = String(formData.get("solicitacao_compra_id") ?? "");
   const itemId = String(formData.get("item_id") ?? "");
