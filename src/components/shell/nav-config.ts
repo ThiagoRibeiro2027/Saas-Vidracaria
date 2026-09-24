@@ -25,6 +25,7 @@ import {
   Download,
   Plug,
   FileSignature,
+  Handshake,
   type LucideIcon,
 } from "lucide-react";
 
@@ -63,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Instalação", href: "/instalacao", icon: Wrench },
       { label: "Instalação — Campo (PWA)", href: "/campo", icon: Smartphone },
       { label: "Suprimentos", href: "/suprimentos", icon: PackageSearch },
+      { label: "Compras", href: "/compras", icon: Handshake },
     ],
   },
   {

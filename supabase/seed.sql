@@ -65,7 +65,9 @@ insert into public.permissions (resource, action, description) values
   ('contratos', 'view', 'Visualizar contratos com clientes, fornecedores e funcionários/prestadores da empresa — mistura dado sensível de RH (TÓPICO 18)'),
   ('contratos', 'manage', 'Criar/editar contrato em rascunho, ativar e encerrar contratos da empresa (TÓPICO 18)'),
   ('pecas', 'view', 'Visualizar peças fabricadas e sua composição de materiais da empresa (Fase A, plano de 23/09/2026)'),
-  ('pecas', 'manage', 'Criar/inativar peça e gerir a composição de materiais (Fase A, plano de 23/09/2026)')
+  ('pecas', 'manage', 'Criar/inativar peça e gerir a composição de materiais (Fase A, plano de 23/09/2026)'),
+  ('compras', 'view', 'Visualizar fornecedores, materiais alternativos e políticas de abastecimento da empresa (TÓPICO 7, ADR-011)'),
+  ('compras', 'manage', 'Cadastrar fornecedor, definir fornecedor principal/alternativo, material alternativo e política de abastecimento (TÓPICO 7, ADR-011)')
 on conflict (resource, action) do nothing;
 
 -- Catálogo global de integrações (TÓPICO 13 §3) — Fase 1 só semeia os
