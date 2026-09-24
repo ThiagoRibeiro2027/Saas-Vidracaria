@@ -766,12 +766,17 @@ async function main() {
   {
     // valor = 60 * 7.5 (Beta pós-negociação) + 40 * 9.5 (Alfa pós-upsert) = 450 + 380 = 830
     const { error } = await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotacaoId });
+    if (error) console.error("  [debug] concluir_selecao_cotacao error:", JSON.stringify(error));
     check("conclui a seleção sem erro", !error);
     const { data: cot } = await admin.from("cotacoes").select("status, aprovacao_id").eq("id", cotacaoId).single();
-    check("cotação fica selecionada com aprovacao_id preenchido", cot.status === "selecionada" && !!cot.aprovacao_id);
-    aprovacaoId = cot.aprovacao_id;
-    const { data: aprov } = await admin.from("compras_aprovacoes").select("status, valor").eq("id", aprovacaoId).single();
-    check("sem alçada configurada, aprovação é automática com valor correto (830)", aprov.status === "aprovada" && Number(aprov.valor) === 830);
+    check("cotação fica selecionada com aprovacao_id preenchido", !!cot && cot.status === "selecionada" && !!cot.aprovacao_id);
+    aprovacaoId = cot?.aprovacao_id;
+    if (aprovacaoId) {
+      const { data: aprov } = await admin.from("compras_aprovacoes").select("status, valor").eq("id", aprovacaoId).single();
+      check("sem alçada configurada, aprovação é automática com valor correto (830)", !!aprov && aprov.status === "aprovada" && Number(aprov.valor) === 830);
+    } else {
+      check("sem alçada configurada, aprovação é automática com valor correto (830)", false);
+    }
 
     const { error: errRepete } = await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotacaoId });
     check("rejeita concluir cotação já concluída", !!errRepete);
