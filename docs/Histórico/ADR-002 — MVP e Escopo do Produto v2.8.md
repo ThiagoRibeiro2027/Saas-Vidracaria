@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.9\
+**Versão:** 2.8\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -11,11 +11,9 @@ recorte mínimo do TÓPICO 13, Fase 1; §4.16 revisado em 2026-09-23 —
 Fase 2, ainda básica, do TÓPICO 12; §4.18 revisado em 2026-09-23 —
 recebimento leve de material, Fase D do plano de fila de
 produção/peças/suprimentos; §4.5 revisado em 2026-09-23 — motor de
-regras básico, Fase G do mesmo plano; §4.6 e §4.18 revisados em
-2026-09-23 — escopo completo do módulo de Compras, ver ADR-011)\
+regras básico, Fase G do mesmo plano)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
-**Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
-ADR-011
+**Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
 
 **1. Contexto**
 
@@ -443,37 +441,6 @@ Incluído:
 
 O estoque deverá refletir as necessidades do fluxo operacional e
 preservar a integridade das quantidades.
-
-**Ampliação de escopo — estoque dimensional e conversão de unidade
-completa, Fase 0 da ADR-011 (23/09/2026 — decisão do responsável do
-produto via chat).** T6 modela saldo como **escalar** por decisão
-original (TÓPICO 6: "saldo é ESCALAR... não peça física individual") —
-decisão que continua valendo, sem alteração de comportamento, para todo
-item que não pedir o contrário.
-
-Esta emenda autoriza, de forma aditiva, dois mecanismos exigidos pelo
-módulo de Compras completo (ADR-011, TÓPICO 7 §5/§6/§9): controle de
-estoque por **peça física individual** (barra, chapa, bobina — com
-comprimento/área/peso restante e sobra reaproveitável) e as
-**propriedades físicas de item** (densidade, espessura, peso por
-metro/por área) necessárias a uma conversão de unidade **dimensional
-completa** (ex.: metro linear → kg via densidade linear, área → peso) —
-não um fator de conversão fixo.
-
-Nada disso se aplica a item que não optar por controle por peça: o
-modelo escalar de `estoque_saldos` continua servindo, sem alteração de
-comportamento, todo item e todo módulo que já o consome hoje (Estoque,
-Produção, Suprimentos, Fila de Produção). O controle dimensional é
-aditivo — não substitui, não migra e não obriga a migração de
-`estoque_saldos`.
-
-Continua fora desta emenda: rastreamento de lote/série/certificado de
-qualidade por peça (isso é Recebimento, escopo da ADR-011, não deste
-controle de saldo) e qualquer forma de otimização de corte/nesting sobre
-as peças e sobras controladas por esta emenda — a vedação do TÓPICO 4
-§54/deste ADR §4.7/§5 à otimização matemática de corte permanece
-integralmente; o controle dimensional de estoque autorizado aqui é só
-saldo/posição/sobra, nunca decisão de corte.
 
 **4.7 PCP / Produção**
 
@@ -1092,41 +1059,11 @@ recebimento aqui é só "a necessidade virou material disponível em
 estoque" — um estado a mais no ciclo de vida da necessidade, não um
 processo de recebimento com conferência.
 
-**Ampliação de escopo — módulo completo de Compras, ADR-011 (23/09/2026
-— decisão do responsável do produto via chat).** As duas ampliações
-acima deste parágrafo (recebimento leve, Fase D) permanecem válidas e
-implementadas — não são revogadas por esta ampliação.
-
-Esta nova ampliação as supera em abrangência: a frase "o módulo completo
-de Compras continua integralmente fora do MVP... nada disso é aprovado
-agora", registrada na ampliação de recebimento leve acima, deixa de
-valer a partir desta data. Você aprovou explicitamente o **escopo
-literal completo** do `docs/Prompt TÓPICO 7 - SUPRIMENTOS E COMPRAS.md`
-(39 seções — cadastro de fornecedor com dados/condições de compra,
-cotação e comparação de preço, negociação, pedido de compra formal com
-termos comerciais, aprovação por alçada de compra, compra
-recorrente/contrato, orçado×comprometido×realizado, mapa de compras
-futuras, avaliação de fornecedor, recebimento completo com
-conferência/lote/divergência/devolução, e o próprio conceito de Pedido
-de Compra como documento).
-
-O detalhamento completo de escopo, as fases de entrega e o que cada fase
-inclui/exclui estão registrados em **ADR-011 — Compras**, que passa a
-governar este módulo — este §4.18 fica, a partir de agora, só com a
-remissão. `necessidades_compra` e o ciclo leve (`aberta→atendida→
-recebida/cancelada`) das duas ampliações acima continuam existindo e em
-produção; a ADR-011 define como esse ciclo se encaixa no fluxo completo
-novo (convergem no mesmo registro — uma Solicitação de Compra consome a
-necessidade via `atender_necessidade_compra()` já existente, sem
-transição paralela).
-
-Continua fora, mesmo com o escopo completo aprovado, por pertencer a
-outro ADR: nota fiscal de entrada vinculada automaticamente ao
-recebimento (TÓPICO 13, captura/conferência fiscal — ADR-004).
-
 **5. Funcionalidades explicitamente fora do MVP**
 
 Ficam fora do MVP:
+
+- Compras completas;
 
 - Qualidade avançada;
 
@@ -1151,12 +1088,6 @@ Ficam fora do MVP:
   mesmo após a ampliação de escopo de 2026-09-16 registrada no §4.7);
 
 - OEE (não previsto no TÓPICO 4 e não incluído por esta revisão).
-
-**Revisado em 2026-09-23:** "Compras completas" deixa de constar nesta
-lista — passa a ser escopo aprovado por decisão do responsável do
-produto, registrada no §4.18 e detalhada na ADR-011. Nenhuma regra de
-negócio nova é criada por esta revisão em si; a autorização e o
-detalhamento estão nas emendas ao §4.6/§4.18 e na ADR-011.
 
 **Revisado em 2026-09-16:** PCP avançado, sequenciamento avançado,
 simulação de capacidade e manutenção deixam de constar nesta lista —
