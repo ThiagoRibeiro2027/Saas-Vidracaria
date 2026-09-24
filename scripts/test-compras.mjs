@@ -1043,6 +1043,211 @@ async function main() {
     check("tenant B não consegue pagar título do tenant A", !!e2);
   }
 
+  // =========================================================================
+  // Fase 7 da ADR-011 (TÓPICO 7 §26-§31, §36) -- Recebimento completo,
+  // conferência/qualidade, lote, divergência, devolução. Reaproveita pcAlfaId
+  // da Fase 6 (40 unidades de itemCotId, já confirmado) -- não recria um PC
+  // só pra esta fase. §28 usa tabelas próprias (divergencias_recebimento),
+  // não inspecoes_qualidade/nao_conformidades (T8, hardwired a
+  // ordens_producao -- ver comentário no topo da migration desta fase).
+  // =========================================================================
+
+  await admTenant.client.rpc("upsert_numbering_sequence", {
+    p_document_type: "recebimento_compra", p_prefixo: "REC-CPT-", p_sufixo: "", p_digitos: 4,
+    p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+  });
+  const { data: pciAlfa } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcAlfaId).single();
+  const pciAlfaId = pciAlfa.id;
+
+  console.log("\n54. registrar_recebimento_pedido_compra() -- rejeita exceder o total do item, sucesso parcial (25 de 40)");
+  let rec1Id, ri1Id;
+  {
+    const { error: errExcede } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", {
+      p_pedido_compra_id: pcAlfaId, p_itens: [{ pedido_compra_item_id: pciAlfaId, quantidade_recebida: 41 }],
+    });
+    check("rejeita quantidade que excede o total do item do PC", !!errExcede);
+
+    const { data: id, error } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", {
+      p_pedido_compra_id: pcAlfaId, p_itens: [{ pedido_compra_item_id: pciAlfaId, quantidade_recebida: 25 }],
+      p_numero_nf: "NF-CPT-001", p_transportadora: "Transp. Teste", p_observacoes: "primeira remessa",
+    });
+    check("registra recebimento parcial com sucesso", !error);
+    rec1Id = id;
+    const { data: rec } = await admin.from("recebimentos_pedido_compra").select("status, numero").eq("id", rec1Id).single();
+    check("recebimento nasce em_conferencia -- compra não significa estoque disponível (§26)", rec.status === "em_conferencia" && rec.numero === "REC-CPT-0001");
+
+    const { data: itensRec } = await admin.from("recebimento_itens").select("id, quantidade_recebida, status").eq("recebimento_id", rec1Id);
+    ri1Id = itensRec[0].id;
+    check("item de recebimento reflete a quantidade parcial", itensRec.length === 1 && Number(itensRec[0].quantidade_recebida) === 25 && itensRec[0].status === "pendente");
+
+    const { error: errExcedeAcumulado } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", {
+      p_pedido_compra_id: pcAlfaId, p_itens: [{ pedido_compra_item_id: pciAlfaId, quantidade_recebida: 20 }],
+    });
+    check("rejeita novo recebimento que, somado ao já recebido (25), excederia o total (40)", !!errExcedeAcumulado);
+  }
+
+  console.log("\n55. registrar_lote_recebimento() -- split em lotes, rejeita exceder a quantidade recebida");
+  {
+    await admTenant.client.rpc("registrar_lote_recebimento", { p_recebimento_item_id: ri1Id, p_numero_lote: "LOTE-A", p_quantidade: 15, p_data_validade: "2028-01-01" });
+    const { error: errExcede } = await admTenant.client.rpc("registrar_lote_recebimento", { p_recebimento_item_id: ri1Id, p_numero_lote: "LOTE-B", p_quantidade: 15 });
+    check("rejeita soma de lotes que excede a quantidade recebida (15+15 > 25)", !!errExcede);
+
+    await admTenant.client.rpc("registrar_lote_recebimento", { p_recebimento_item_id: ri1Id, p_numero_lote: "LOTE-B", p_quantidade: 10 });
+    const { data: lotes } = await admin.from("lotes_recebimento").select("id").eq("recebimento_item_id", ri1Id);
+    check("2 lotes registrados somando exatamente a quantidade recebida (15+10=25)", (lotes ?? []).length === 2);
+  }
+
+  console.log("\n56. registrar_divergencia_recebimento() + tratar_divergencia() -- qualidade põe em quarentena, decisão aceitar/recusar");
+  let div1Id, div2Id;
+  {
+    const { data: id1 } = await admTenant.client.rpc("registrar_divergencia_recebimento", {
+      p_recebimento_item_id: ri1Id, p_tipo: "qualidade", p_descricao: "amostra fora do padrão, aguardando laudo",
+    });
+    div1Id = id1;
+    const { data: itemQuarentena } = await admin.from("recebimento_itens").select("status").eq("id", ri1Id).single();
+    check("divergência de qualidade põe o item em quarentena (§28)", itemQuarentena.status === "quarentena");
+
+    const { data: id2 } = await admTenant.client.rpc("registrar_divergencia_recebimento", {
+      p_recebimento_item_id: ri1Id, p_tipo: "quantidade_menor", p_descricao: "faltaram 5 unidades na caixa", p_quantidade_divergente: 5,
+    });
+    div2Id = id2;
+
+    const { error: errDecisaoInvalida } = await admTenant.client.rpc("tratar_divergencia", { p_id: div1Id, p_decisao: "invalida" });
+    check("rejeita decisão inválida", !!errDecisaoInvalida);
+
+    await admTenant.client.rpc("tratar_divergencia", { p_id: div1Id, p_decisao: "aceitar", p_observacao: "laudo aprovou depois de tudo" });
+    const { data: itemPosAceite } = await admin.from("recebimento_itens").select("status").eq("id", ri1Id).single();
+    check("sai da quarentena só quando não há mais divergência aberta (ainda há a de quantidade)", itemPosAceite.status === "quarentena");
+
+    await admTenant.client.rpc("tratar_divergencia", { p_id: div2Id, p_decisao: "recusar", p_observacao: "fornecedor confirmou falta" });
+    const { data: itemPosRecusa } = await admin.from("recebimento_itens").select("status").eq("id", ri1Id).single();
+    check("volta a pendente quando a última divergência aberta é tratada", itemPosRecusa.status === "pendente");
+
+    const { error: errJaTratada } = await admTenant.client.rpc("tratar_divergencia", { p_id: div2Id, p_decisao: "aceitar" });
+    check("rejeita tratar divergência já tratada", !!errJaTratada);
+  }
+
+  console.log("\n57. finalizar_conferencia_recebimento() -- sem divergência aberta, aplica ajustar_saldo(tipo=compra) e fecha o item");
+  {
+    const { error } = await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: rec1Id });
+    check("finaliza com sucesso (todas as divergências já tratadas)", !error);
+
+    const { data: item } = await admin.from("recebimento_itens").select("status, quantidade_aceita").eq("id", ri1Id).single();
+    check("quantidade_aceita = 25 recebido - 5 recusado = 20, status conferido", item.status === "conferido" && Number(item.quantidade_aceita) === 20);
+
+    const { data: saldo } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", itemCotId).single();
+    check("saldo físico reflete a entrada (20)", Number(saldo.quantidade_fisica) === 20);
+
+    const { data: mov } = await admin.from("estoque_movimentacoes").select("tipo, quantidade").eq("item_id", itemCotId).eq("tipo", "compra");
+    check("movimentação registrada com tipo=compra (§27, novo valor de estoque_movimentacoes.tipo)", mov.length === 1 && Number(mov[0].quantidade) === 20);
+
+    const { error: errRepete } = await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: rec1Id });
+    check("rejeita finalizar de novo (já conferido)", !!errRepete);
+  }
+
+  console.log("\n58. segundo recebimento (completa os 15 restantes, sem divergência) -- múltiplos recebimentos por PC (§27)");
+  let ri2Id;
+  {
+    const { data: rec2Id } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", {
+      p_pedido_compra_id: pcAlfaId, p_itens: [{ pedido_compra_item_id: pciAlfaId, quantidade_recebida: 15 }], p_numero_nf: "NF-CPT-002",
+    });
+    const { data: itensRec2 } = await admin.from("recebimento_itens").select("id").eq("recebimento_id", rec2Id);
+    ri2Id = itensRec2[0].id;
+
+    const { error: errNaoConferido } = await admTenant.client.rpc("registrar_devolucao_compra", { p_recebimento_item_id: ri2Id, p_quantidade: 1, p_motivo: "item ainda não conferido" });
+    check("rejeita devolução sobre item ainda não conferido (nunca entrou em estoque)", !!errNaoConferido);
+
+    await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: rec2Id });
+    const { data: saldo } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", itemCotId).single();
+    check("saldo acumula o segundo recebimento (20 + 15 = 35)", Number(saldo.quantidade_fisica) === 35);
+
+    const { error: errDivergenciaTardia } = await admTenant.client.rpc("registrar_divergencia_recebimento", { p_recebimento_item_id: ri2Id, p_tipo: "avaria", p_descricao: "tardia" });
+    check("rejeita registrar divergência em item já conferido", !!errDivergenciaTardia);
+    const { error: errLoteTardio } = await admTenant.client.rpc("registrar_lote_recebimento", { p_recebimento_item_id: ri2Id, p_numero_lote: "X", p_quantidade: 1 });
+    check("rejeita registrar lote em item já conferido", !!errLoteTardio);
+  }
+
+  console.log("\n59. registrar_devolucao_compra() -- sucesso sobre item conferido, rejeita exceder o aceito");
+  {
+    const { error: errExcede } = await admTenant.client.rpc("registrar_devolucao_compra", { p_recebimento_item_id: ri1Id, p_quantidade: 100, p_motivo: "devolução muito grande" });
+    check("rejeita devolução maior que a quantidade aceita", !!errExcede);
+
+    const { error } = await admTenant.client.rpc("registrar_devolucao_compra", { p_recebimento_item_id: ri1Id, p_quantidade: 8, p_motivo: "peça com defeito percebido depois", p_divergencia_id: div1Id });
+    check("registra devolução com sucesso", !error);
+
+    const { data: saldo } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", itemCotId).single();
+    check("saldo reduz com a devolução (35 - 8 = 27)", Number(saldo.quantidade_fisica) === 27);
+
+    const { data: mov } = await admin.from("estoque_movimentacoes").select("quantidade").eq("item_id", itemCotId).eq("tipo", "devolucao");
+    check("movimentação registrada com tipo=devolucao, quantidade sempre positiva (sinal vem do tipo)", mov.length === 1 && Number(mov[0].quantidade) === 8);
+
+    const { error: errExcedeRestante } = await admTenant.client.rpc("registrar_devolucao_compra", { p_recebimento_item_id: ri1Id, p_quantidade: 15, p_motivo: "excede o que restou aceito (20-8=12 disponível)" });
+    check("rejeita devolução que excede o que resta aceito e não devolvido", !!errExcedeRestante);
+  }
+
+  console.log("\n60. ajustar_saldo() -- regressão: chamada antiga de 3 argumentos posicionais continua funcionando (tipo default 'ajuste')");
+  {
+    const { data: movId, error } = await admTenant.client.rpc("ajustar_saldo", { p_item_id: itemCotId, p_quantidade_delta: 1000, p_motivo: "ajuste de regressão, sem tipo explícito" });
+    check("chamada de 3 argumentos continua funcionando sem ambiguidade de overload", !error);
+    const { data: mov } = await admin.from("estoque_movimentacoes").select("tipo").eq("id", movId).single();
+    check("tipo default continua 'ajuste'", mov.tipo === "ajuste");
+  }
+
+  console.log("\n61. Rastreabilidade -- recebimento completo fecha a necessidade de origem (decisão 1 da ADR-011)");
+  {
+    const itemRastreioId = await upsertItem(admTenant, "ITR-CPT", "materia_prima");
+    const { data: necId } = await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemRastreioId, p_quantidade: 10, p_origem: "manual" });
+    const { data: scId } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: "Produção", p_prioridade: "alta" });
+    await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: scId, p_item_id: itemRastreioId, p_quantidade: 10, p_necessidade_compra_id: necId });
+    await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scId });
+    const { data: necAtendida } = await admin.from("necessidades_compra").select("status").eq("id", necId).single();
+    check("necessidade fica atendida ao enviar a SC", necAtendida.status === "atendida");
+
+    const { data: cotId } = await admTenant.client.rpc("criar_cotacao_de_solicitacao", { p_solicitacao_compra_id: scId });
+    const { data: cotItens } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotId);
+    const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 5 });
+    await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 10, p_justificativa: "único fornecedor" });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotId });
+    const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
+    const pcRastreioId = pcIds[0];
+    const { data: pciRastreio } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcRastreioId).single();
+
+    const { data: recRastreioId } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", {
+      p_pedido_compra_id: pcRastreioId, p_itens: [{ pedido_compra_item_id: pciRastreio.id, quantidade_recebida: 10 }],
+    });
+    await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: recRastreioId });
+
+    const { data: necRecebida } = await admin.from("necessidades_compra").select("status, quantidade_recebida").eq("id", necId).single();
+    check("necessidade de origem transiciona para recebida com a quantidade aceita", necRecebida.status === "recebida" && Number(necRecebida.quantidade_recebida) === 10);
+  }
+
+  console.log("\n62. Deny -- usuário sem compras.manage (papel QUALIDADE)");
+  {
+    const { error: e1 } = await noPermTenant.client.rpc("registrar_recebimento_pedido_compra", { p_pedido_compra_id: pcAlfaId, p_itens: [{ pedido_compra_item_id: pciAlfaId, quantidade_recebida: 1 }] });
+    check("registrar_recebimento_pedido_compra negado sem compras.manage", !!e1);
+    const { error: e2 } = await noPermTenant.client.rpc("registrar_divergencia_recebimento", { p_recebimento_item_id: ri2Id, p_tipo: "outra", p_descricao: "sem permissão" });
+    check("registrar_divergencia_recebimento negado sem compras.manage", !!e2);
+    const { error: e3 } = await noPermTenant.client.rpc("registrar_devolucao_compra", { p_recebimento_item_id: ri1Id, p_quantidade: 1, p_motivo: "sem permissão" });
+    check("registrar_devolucao_compra negado sem compras.manage", !!e3);
+    const { data: still } = await noPermTenant.client.from("recebimentos_pedido_compra").select("id").eq("id", rec1Id);
+    check("SELECT direto continua liberado (RLS por company_id)", (still ?? []).length === 1);
+  }
+
+  console.log("\n63. Isolamento cross-tenant -- tenant B não vê nem altera recebimentos/divergências/devoluções do tenant A");
+  {
+    const { data: recOutro } = await otherTenant.client.from("recebimentos_pedido_compra").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê recebimentos do tenant A", (recOutro ?? []).length === 0);
+    const { data: divOutro } = await otherTenant.client.from("divergencias_recebimento").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê divergências do tenant A", (divOutro ?? []).length === 0);
+    const { data: devOutro } = await otherTenant.client.from("devolucoes_compra").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê devoluções do tenant A", (devOutro ?? []).length === 0);
+
+    const { error: e1 } = await otherTenant.client.rpc("registrar_devolucao_compra", { p_recebimento_item_id: ri1Id, p_quantidade: 1, p_motivo: "tenant errado" });
+    check("tenant B não consegue devolver item do tenant A", !!e1);
+    const { error: e2 } = await otherTenant.client.rpc("registrar_recebimento_pedido_compra", { p_pedido_compra_id: pcAlfaId, p_itens: [{ pedido_compra_item_id: pciAlfaId, quantidade_recebida: 1 }] });
+    check("tenant B não consegue registrar recebimento contra PC do tenant A", !!e2);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

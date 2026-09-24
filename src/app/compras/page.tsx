@@ -73,7 +73,9 @@ export default async function ComprasPage() {
           negociação e alçada (Fase 5) ficam em <Link href="/compras/cotacoes">/compras/cotacoes</Link>.
           Pedido de compra e orçado×comprometido×realizado (Fase 6) ficam em{" "}
           <Link href="/compras/pedidos">/compras/pedidos</Link> e{" "}
-          <Link href="/compras/orcamento">/compras/orcamento</Link>.
+          <Link href="/compras/orcamento">/compras/orcamento</Link>. Recebimento, conferência,
+          lote, divergência e devolução (Fase 7) ficam em{" "}
+          <Link href="/compras/recebimentos">/compras/recebimentos</Link>.
         </p>
 
         <ComprasSection

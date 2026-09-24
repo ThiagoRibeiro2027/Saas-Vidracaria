@@ -65,6 +65,7 @@ export default async function PedidosComprasPage() {
           Só cotação selecionada e já aprovada pela alçada pode virar Pedido de Compra — um PC por
           fornecedor distinto. Vincule um contrato de fornecedor (T18) e programe entregas futuras
           para compra recorrente (§25). <Link href="/compras/cotacoes">← Voltar para Cotações</Link>
+          {" "}· <Link href="/compras/recebimentos">Receber pedidos →</Link>
         </p>
 
         <PedidosComprasSection
