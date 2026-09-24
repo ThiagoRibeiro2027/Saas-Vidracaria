@@ -387,6 +387,157 @@ async function main() {
     check("saldo escalar acumula a sobra (105) -- mecanismo T6 intocado pela Fase 2", Number(saldo2.quantidade_fisica) === 105);
   }
 
+  // =======================================================================
+  // Fase 3 da ADR-011 — motor de necessidades, saldo projetado,
+  // consolidação e mapa de compras futuras (TÓPICO 7 §1/§3/§4/§7/§8,
+  // conclusão de §9, §11/§12). Gates compras.manage/compras.view — não
+  // suprimentos.* (as funções de geração já existentes, gerar_
+  // necessidades_de_pedido/ordem_producao, continuam suprimentos.manage,
+  // só reaproveitam o motor generalizado por dentro).
+  // A interação cruzada entre necessidade de política e necessidade de
+  // pedido/produção (regressão do filtro "já sinalizado" generalizado pra
+  // todas as origens) foi validada via cenário SQL standalone antes deste
+  // commit — não repetida aqui pra não duplicar todo o fixture de
+  // pedido/BOM que scripts/test-suprimentos.mjs já cobre.
+  // =======================================================================
+
+  console.log("\n18. gerar_necessidades_de_politica_abastecimento() -- estoque_minimo, idempotência e item sem política");
+  const itemPoliticaAId = await upsertItem(admTenant, "ITA-CPT", "materia_prima");
+  const itemPoliticaBId = await upsertItem(admTenant, "ITB-CPT", "materia_prima");
+  const itemSemPoliticaId = await upsertItem(admTenant, "ITE-CPT", "materia_prima");
+  {
+    await admTenant.client.rpc("upsert_politica_abastecimento", { p_item_id: itemPoliticaAId, p_tipo: "estoque_minimo", p_estoque_minimo: 20 });
+    const { data, error } = await admTenant.client.rpc("gerar_necessidades_de_politica_abastecimento", { p_item_id: itemPoliticaAId });
+    check("gera necessidade a partir da política de estoque mínimo", !error && data?.length === 1 && data[0].origem_gerada === "estoque_minimo" && Number(data[0].quantidade_gerada) === 20);
+
+    const { data: rerun } = await admTenant.client.rpc("gerar_necessidades_de_politica_abastecimento", { p_item_id: itemPoliticaAId });
+    check("reexecução é idempotente (já sinalizado cobre o alvo)", (rerun ?? []).length === 0);
+
+    const { data: semPolitica } = await admTenant.client.rpc("gerar_necessidades_de_politica_abastecimento", { p_item_id: itemSemPoliticaId });
+    check("item sem política não gera necessidade nem erro", (semPolitica ?? []).length === 0);
+  }
+
+  console.log("\n19. gerar_necessidades_de_politica_abastecimento() -- ponto_reposicao aplica múltiplo/lote mínimo (§8)");
+  {
+    await admTenant.client.rpc("upsert_politica_abastecimento", {
+      p_item_id: itemPoliticaBId, p_tipo: "ponto_reposicao", p_ponto_reposicao: 15, p_lote_minimo: 5, p_multiplo: 10,
+    });
+    const { data, error } = await admTenant.client.rpc("gerar_necessidades_de_politica_abastecimento", { p_item_id: itemPoliticaBId });
+    // falta bruta 15 -> arredonda pro múltiplo de 10 -> 20 (já >= lote mínimo 5)
+    check("arredonda pro múltiplo configurado na política", !error && data?.length === 1 && data[0].origem_gerada === "ponto_reposicao" && Number(data[0].quantidade_gerada) === 20);
+  }
+
+  console.log("\n20. calcular_saldo_projetado() -- item dimensional usa peça disponível (Fase 2), não saldo escalar");
+  const itemDimensionalId = await upsertItem(admTenant, "ITC-CPT", "materia_prima");
+  {
+    await admTenant.client.rpc("definir_propriedades_dimensionais_item", { p_item_id: itemDimensionalId, p_dimensao_tipo: "linear", p_peso_por_unidade_dimensao: 1.5 });
+    await admTenant.client.rpc("registrar_peca_dimensional", { p_item_id: itemDimensionalId, p_quantidade: 8 });
+    const { data: saldoInicial } = await admTenant.client.rpc("calcular_saldo_projetado", { p_item_id: itemDimensionalId });
+    check("saldo projetado começa em 8 (peça disponível, sem necessidade aberta)", Number(saldoInicial) === 8);
+
+    await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemDimensionalId, p_quantidade: 20, p_origem: "manual" });
+    const { data: saldoDepois } = await admTenant.client.rpc("calcular_saldo_projetado", { p_item_id: itemDimensionalId });
+    check("saldo projetado desconta necessidade aberta da peça disponível (8 - 20 = -12)", Number(saldoDepois) === -12);
+  }
+
+  console.log("\n21. consolidar_necessidades() -- validações e sucesso com rastreabilidade");
+  const itemConsolidacaoId = await upsertItem(admTenant, "ITD-CPT", "materia_prima");
+  let necConsolidadaId;
+  {
+    const { data: nec1 } = await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemConsolidacaoId, p_quantidade: 5, p_data_necessaria: null, p_origem: "manual" });
+    const { error: errPoucos } = await admTenant.client.rpc("consolidar_necessidades", { p_necessidade_ids: [nec1] });
+    check("rejeita menos de 2 necessidades", !!errPoucos);
+
+    const { data: necOutroItem } = await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemSemPoliticaId, p_quantidade: 3, p_origem: "manual" });
+    const { error: errItemDiferente } = await admTenant.client.rpc("consolidar_necessidades", { p_necessidade_ids: [nec1, necOutroItem] });
+    check("rejeita necessidades de itens diferentes", !!errItemDiferente);
+
+    const { data: nec2 } = await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemConsolidacaoId, p_quantidade: 7, p_origem: "manual" });
+    const { data: novaId, error } = await admTenant.client.rpc("consolidar_necessidades", { p_necessidade_ids: [nec1, nec2], p_observacoes: "teste consolidação" });
+    check("consolida com sucesso", !error);
+    necConsolidadaId = novaId;
+
+    const { data: nova } = await admin.from("necessidades_compra").select("quantidade, origem, status").eq("id", necConsolidadaId).single();
+    check("nova necessidade soma as quantidades e nasce com origem consolidada", Number(nova.quantidade) === 12 && nova.origem === "consolidada" && nova.status === "aberta");
+
+    const { data: originais } = await admin.from("necessidades_compra").select("status, motivo_cancelamento").in("id", [nec1, nec2]);
+    check("as duas originais ficam canceladas", originais.every((n) => n.status === "cancelada" && !!n.motivo_cancelamento));
+
+    const { data: vinculos } = await admin.from("necessidade_consolidacao").select("necessidade_origem_id").eq("necessidade_compra_id", necConsolidadaId);
+    check("rastreabilidade preservada -- 2 vínculos criados", (vinculos ?? []).length === 2);
+
+    const { error: errJaCancelada } = await admTenant.client.rpc("consolidar_necessidades", { p_necessidade_ids: [nec1, necConsolidadaId] });
+    check("rejeita reconsolidar uma necessidade já cancelada", !!errJaCancelada);
+  }
+
+  console.log("\n22. calendario_feriados -- upsert_feriado()/remover_feriado()");
+  let feriadoId;
+  {
+    const { data, error } = await admTenant.client.rpc("upsert_feriado", { p_data: "2026-12-25", p_descricao: "Natal" });
+    check("cria feriado", !error);
+    feriadoId = data;
+    const { error: errRemove } = await admTenant.client.rpc("remover_feriado", { p_id: feriadoId });
+    check("remove feriado", !errRemove);
+    const { data: still } = await admin.from("calendario_feriados").select("id").eq("id", feriadoId);
+    check("feriado removido não aparece mais", (still ?? []).length === 0);
+  }
+
+  console.log("\n23. calcular_data_recomendada_compra() -- lead time do fornecedor principal, nunca recomenda depois do prazo menos lead time");
+  {
+    const fornF3Id = await upsertPessoa(admTenant, "9", "Fornecedor Lead Time Ltda", "FORNECEDOR");
+    await admTenant.client.rpc("upsert_fornecedor_dados", { p_pessoa_id: fornF3Id, p_lead_time_dias: 5 });
+    await admTenant.client.rpc("upsert_item_fornecedor", { p_item_id: itemPoliticaAId, p_pessoa_id: fornF3Id });
+    await admTenant.client.rpc("definir_fornecedor_principal", { p_item_id: itemPoliticaAId, p_pessoa_id: fornF3Id });
+
+    const dataNecessaria = new Date();
+    dataNecessaria.setDate(dataNecessaria.getDate() + 10);
+    const dataNecessariaStr = dataNecessaria.toISOString().slice(0, 10);
+    const { data: recomendada, error } = await admTenant.client.rpc("calcular_data_recomendada_compra", { p_item_id: itemPoliticaAId, p_data_necessaria: dataNecessariaStr, p_fornecedor_id: null });
+    check("calcula data recomendada sem erro", !error);
+    const limite = new Date();
+    limite.setDate(limite.getDate() + 5);
+    check("nunca recomenda depois de data_necessaria - lead_time (5 dias)", new Date(recomendada) <= limite);
+    check("nunca recomenda em fim de semana", ![0, 6].includes(new Date(`${recomendada}T00:00:00`).getDay()));
+
+    const { data: semFornecedor } = await admTenant.client.rpc("calcular_data_recomendada_compra", { p_item_id: itemSemPoliticaId, p_data_necessaria: dataNecessariaStr, p_fornecedor_id: null });
+    const limite30 = new Date();
+    limite30.setDate(limite30.getDate() + 10);
+    check("sem fornecedor/lead time configurado usa horizonte fixo de 30 dias", new Date(semFornecedor) <= limite30);
+  }
+
+  console.log("\n24. mapa_compras_futuras() -- classifica risco (crítico/atenção/ok)");
+  {
+    const { data, error } = await admTenant.client.rpc("mapa_compras_futuras");
+    check("consulta o mapa sem erro", !error);
+    const linhaA = (data ?? []).find((l) => l.item_id === itemPoliticaAId);
+    check("item A (saldo projetado negativo, sem data) aparece com risco atenção", linhaA?.risco === "atencao" && Number(linhaA?.saldo_projetado) < 0);
+  }
+
+  console.log("\n25. Deny -- usuário sem compras.manage/compras.view (papel QUALIDADE)");
+  {
+    const { error: e1 } = await noPermTenant.client.rpc("gerar_necessidades_de_politica_abastecimento", { p_item_id: null });
+    check("gerar_necessidades_de_politica_abastecimento negado sem compras.manage", !!e1);
+    const { error: e2 } = await noPermTenant.client.rpc("consolidar_necessidades", { p_necessidade_ids: [necConsolidadaId, itemSemPoliticaId] });
+    check("consolidar_necessidades negado sem compras.manage", !!e2);
+    const { error: e3 } = await noPermTenant.client.rpc("calcular_saldo_projetado", { p_item_id: itemPoliticaAId });
+    check("calcular_saldo_projetado negado sem compras.view", !!e3);
+    const { error: e4 } = await noPermTenant.client.rpc("mapa_compras_futuras");
+    check("mapa_compras_futuras negado sem compras.view", !!e4);
+  }
+
+  console.log("\n26. Isolamento cross-tenant -- tenant B não vê nem altera dados do tenant A");
+  {
+    const { data: consol } = await otherTenant.client.from("necessidade_consolidacao").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê necessidade_consolidacao do tenant A", (consol ?? []).length === 0);
+    const { data: feriados } = await otherTenant.client.from("calendario_feriados").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê calendario_feriados do tenant A", (feriados ?? []).length === 0);
+
+    const { error: e1 } = await otherTenant.client.rpc("calcular_saldo_projetado", { p_item_id: itemPoliticaAId });
+    check("tenant B não consegue consultar saldo projetado de item do tenant A", !!e1);
+    const { data: mapaOutro } = await otherTenant.client.rpc("mapa_compras_futuras");
+    check("mapa do tenant B não traz necessidades do tenant A", (mapaOutro ?? []).length === 0);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

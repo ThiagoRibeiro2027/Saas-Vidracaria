@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 import ComprasSection from "./ComprasSection";
 
 // TÓPICO 7 — Compras, Fase 1 da ADR-011 (docs/ADR-011 — Compras v1.0.md,
@@ -66,7 +67,8 @@ export default async function ComprasPage() {
           23/09/2026): cadastro comercial do fornecedor, fornecedor principal/alternativo por item,
           material alternativo e política de abastecimento. Cotação, pedido de compra e recebimento
           completo ainda não existem — seguem em fases futuras. Recebimento leve continua em{" "}
-          <code>/suprimentos</code>, sem mudança.
+          <code>/suprimentos</code>, sem mudança. Motor de necessidades e mapa de compras futuras
+          (Fase 3) ficam em <Link href="/compras/mapa">/compras/mapa</Link>.
         </p>
 
         <ComprasSection
