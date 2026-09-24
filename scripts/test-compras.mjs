@@ -765,7 +765,7 @@ async function main() {
   let aprovacaoId;
   {
     // valor = 60 * 7.5 (Beta pós-negociação) + 40 * 9.5 (Alfa pós-upsert) = 450 + 380 = 830
-    const { error } = await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotacaoId });
+    const { error } = await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotacaoId });
     if (error) console.error("  [debug] concluir_selecao_cotacao error:", JSON.stringify(error));
     check("conclui a seleção sem erro", !error);
     const { data: cot } = await admin.from("cotacoes").select("status, aprovacao_id").eq("id", cotacaoId).single();
@@ -778,7 +778,7 @@ async function main() {
       check("sem alçada configurada, aprovação é automática com valor correto (830)", false);
     }
 
-    const { error: errRepete } = await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotacaoId });
+    const { error: errRepete } = await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotacaoId });
     check("rejeita concluir cotação já concluída", !!errRepete);
   }
 
@@ -800,7 +800,7 @@ async function main() {
     const { data: itensCot2 } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotacao2Id);
     const { data: propUnica } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: itensCot2[0].id, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 10 });
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: itensCot2[0].id, p_cotacao_proposta_id: propUnica, p_quantidade: 100, p_justificativa: "único fornecedor" });
-    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotacao2Id });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotacao2Id });
 
     const { data: cot2 } = await admin.from("cotacoes").select("aprovacao_id").eq("id", cotacao2Id).single();
     const { data: aprov2 } = await admin.from("compras_aprovacoes").select("status, valor").eq("id", cot2.aprovacao_id).single();
@@ -844,7 +844,7 @@ async function main() {
     const { data: itensCot3 } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotId3);
     const { data: prop3 } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: itensCot3[0].id, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 20 });
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: itensCot3[0].id, p_cotacao_proposta_id: prop3, p_quantidade: 50, p_justificativa: "único" });
-    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotId3 });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotId3 });
     const { data: cot3 } = await admin.from("cotacoes").select("aprovacao_id").eq("id", cotId3).single();
     const { data: etapasCot3 } = await admin.from("compras_aprovacao_etapas").select("id").eq("compra_aprovacao_id", cot3.aprovacao_id).eq("ordem", 1).single();
 
@@ -1212,7 +1212,7 @@ async function main() {
     const { data: cotItens } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotId);
     const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornAlfaCotId, p_preco_unitario: 5 });
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 10, p_justificativa: "único fornecedor" });
-    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotId });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotId });
     const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
     const pcRastreioId = pcIds[0];
     const { data: pciRastreio } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcRastreioId).single();
@@ -1289,7 +1289,7 @@ async function main() {
     const { data: cotItens } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotId);
     const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornF8Id, p_preco_unitario: 12, p_prazo_entrega_dias: 5 });
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 50, p_justificativa: "único fornecedor" });
-    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotId });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotId });
     const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
     pcEmergId = pcIds[0];
     const { data: pc } = await admin.from("pedidos_compra").select("urgencia").eq("id", pcEmergId).single();
@@ -1326,7 +1326,7 @@ async function main() {
     const { data: cotItens } = await admin.from("cotacao_itens").select("id").eq("cotacao_id", cotId);
     const { data: propId } = await admTenant.client.rpc("registrar_proposta_cotacao", { p_cotacao_item_id: cotItens[0].id, p_pessoa_id: fornF8Id, p_preco_unitario: 9, p_prazo_entrega_dias: 3 });
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItens[0].id, p_cotacao_proposta_id: propId, p_quantidade: 5, p_justificativa: "único fornecedor" });
-    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotId });
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotId });
     const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotId });
     const { data: pci } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcIds[0]).single();
     const { data: recId } = await admTenant.client.rpc("registrar_recebimento_pedido_compra", { p_pedido_compra_id: pcIds[0], p_itens: [{ pedido_compra_item_id: pci.id, quantidade_recebida: 5 }] });
@@ -1442,7 +1442,7 @@ async function main() {
     propF9Id = propId;
     await admTenant.client.rpc("registrar_negociacao_cotacao", { p_cotacao_proposta_id: propF9Id, p_preco_novo: 18, p_observacao: "negociado" }); // 9. registrar negociação
     await admTenant.client.rpc("selecionar_fornecedor_cotacao", { p_cotacao_item_id: cotItemF9Id, p_cotacao_proposta_id: propF9Id, p_quantidade: 30, p_justificativa: "decisão manual do comprador" }); // 10. decisão manual do comprador
-    await admTenant.client.rpc("concluir_selecao_cotacao", { p_id: cotF9Id }); // 11. submeter à alçada (sem etapa configurada = auto-aprovada)
+    await admTenant.client.rpc("concluir_selecao_cotacao", { p_cotacao_id: cotF9Id }); // 11. submeter à alçada (sem etapa configurada = auto-aprovada)
     const { data: pcIds } = await admTenant.client.rpc("gerar_pedido_compra_de_cotacao", { p_cotacao_id: cotF9Id }); // 12. gerar PC
     pcF9Id = pcIds[0];
     const { data: pci } = await admin.from("pedido_compra_itens").select("id").eq("pedido_compra_id", pcF9Id).single();
