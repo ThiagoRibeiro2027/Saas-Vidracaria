@@ -272,6 +272,121 @@ async function main() {
     check("índice único parcial rejeita um segundo principal no mesmo item", !!error);
   }
 
+  // =======================================================================
+  // Fase 2 da ADR-011 — estoque dimensional e conversão de unidade completa
+  // (TÓPICO 7 §5/§6, base de §9). Funções gated por itens.manage/
+  // estoque.manage/estoque.view (T2/T6), não compras.* — o controle é uma
+  // capacidade de Estoque, só desbloqueada por esta frente de Compras.
+  // =======================================================================
+
+  console.log("\n10. definir_propriedades_dimensionais_item() validações e sucesso (linear + área)");
+  const itemPerfilId = await upsertItem(admTenant, "PRF-CPT-DIM", "materia_prima");
+  const itemVidroId = await upsertItem(admTenant, "VDR-CPT-DIM", "materia_prima");
+  {
+    const { error: errTipo } = await admTenant.client.rpc("definir_propriedades_dimensionais_item", { p_item_id: itemPerfilId, p_dimensao_tipo: "volume" });
+    check("rejeita dimensao_tipo inválido", !!errTipo);
+
+    const { error: errLinear } = await admTenant.client.rpc("definir_propriedades_dimensionais_item", { p_item_id: itemPerfilId, p_dimensao_tipo: "linear", p_peso_por_unidade_dimensao: 1.85 });
+    check("configura item linear (kg/m)", !errLinear);
+    const { error: errArea } = await admTenant.client.rpc("definir_propriedades_dimensionais_item", { p_item_id: itemVidroId, p_dimensao_tipo: "area", p_peso_por_unidade_dimensao: 6.0 });
+    check("configura item área (kg/m²)", !errArea);
+  }
+
+  console.log("\n11. registrar_peca_dimensional() validações e sucesso");
+  let pecaBarraId;
+  {
+    const { error: errSemDimensao } = await admTenant.client.rpc("registrar_peca_dimensional", { p_item_id: itemMaterialId, p_quantidade: 10 });
+    check("rejeita item sem controle dimensional configurado", !!errSemDimensao);
+    const { error: errQtdZero } = await admTenant.client.rpc("registrar_peca_dimensional", { p_item_id: itemPerfilId, p_quantidade: 0 });
+    check("rejeita quantidade <= 0", !!errQtdZero);
+
+    const { data, error } = await admTenant.client.rpc("registrar_peca_dimensional", { p_item_id: itemPerfilId, p_quantidade: 6, p_identificador: "BARRA-001", p_observacao: "carga inicial" });
+    check("registra peça (barra de 6m)", !error);
+    pecaBarraId = data;
+    const { data: row } = await admin.from("itens_pecas_dimensionais").select("quantidade_original, quantidade_disponivel, situacao").eq("id", pecaBarraId).single();
+    check("peça nasce com disponível = original, situação disponível", Number(row.quantidade_original) === 6 && Number(row.quantidade_disponivel) === 6 && row.situacao === "disponivel");
+  }
+
+  console.log("\n12. consumir_peca_dimensional() -- consumo parcial deixa sobra disponível, consumo total esgota");
+  {
+    const { error: errExcede } = await admTenant.client.rpc("consumir_peca_dimensional", { p_peca_id: pecaBarraId, p_quantidade: 10 });
+    check("rejeita consumir mais do que o disponível", !!errExcede);
+
+    const { error: errParcial } = await admTenant.client.rpc("consumir_peca_dimensional", { p_peca_id: pecaBarraId, p_quantidade: 4, p_observacao: "corte pedido X" });
+    check("consome parte da peça", !errParcial);
+    const { data: rowParcial } = await admin.from("itens_pecas_dimensionais").select("quantidade_disponivel, situacao").eq("id", pecaBarraId).single();
+    check("sobra de 2m fica disponível na mesma linha (sem tabela/estado separado)", Number(rowParcial.quantidade_disponivel) === 2 && rowParcial.situacao === "disponivel");
+
+    const { error: errTotal } = await admTenant.client.rpc("consumir_peca_dimensional", { p_peca_id: pecaBarraId, p_quantidade: 2, p_observacao: "sobra reaproveitada" });
+    check("consome o restante", !errTotal);
+    const { data: rowEsgotada } = await admin.from("itens_pecas_dimensionais").select("quantidade_disponivel, situacao").eq("id", pecaBarraId).single();
+    check("peça fica esgotada ao chegar a zero", Number(rowEsgotada.quantidade_disponivel) === 0 && rowEsgotada.situacao === "esgotada");
+
+    const { error: errJaEsgotada } = await admTenant.client.rpc("consumir_peca_dimensional", { p_peca_id: pecaBarraId, p_quantidade: 1 });
+    check("rejeita consumir peça já esgotada", !!errJaEsgotada);
+  }
+
+  console.log("\n13. definir_propriedades_dimensionais_item() bloqueia desligar controle com peça já registrada");
+  {
+    const { error } = await admTenant.client.rpc("definir_propriedades_dimensionais_item", { p_item_id: itemPerfilId, p_dimensao_tipo: null });
+    check("bloqueia desligar controle dimensional com peça existente", !!error);
+  }
+
+  console.log("\n14. converter_item_para_peso() / converter_item_de_peso() -- linear e área");
+  {
+    const { data: kg, error: errKg } = await admTenant.client.rpc("converter_item_para_peso", { p_item_id: itemPerfilId, p_quantidade: 6 });
+    check("6m de perfil (1.85 kg/m) converte para 11.1 kg", !errKg && Number(kg) === 11.1);
+    const { data: metros, error: errM } = await admTenant.client.rpc("converter_item_de_peso", { p_item_id: itemPerfilId, p_quantidade_kg: 11.1 });
+    check("11.1 kg converte de volta para 6m", !errM && Number(metros) === 6);
+
+    const { data: kgVidro, error: errKgVidro } = await admTenant.client.rpc("converter_item_para_peso", { p_item_id: itemVidroId, p_quantidade: 2 });
+    check("2m² de vidro (6 kg/m²) converte para 12 kg", !errKgVidro && Number(kgVidro) === 12);
+
+    const { error: errSemConversao } = await admTenant.client.rpc("converter_item_para_peso", { p_item_id: itemMaterialId, p_quantidade: 5 });
+    check("rejeita item sem conversão configurada", !!errSemConversao);
+  }
+
+  console.log("\n15. Deny -- usuário sem itens.manage/estoque.manage/estoque.view (papel QUALIDADE)");
+  {
+    const { error: e1 } = await noPermTenant.client.rpc("definir_propriedades_dimensionais_item", { p_item_id: itemVidroId, p_dimensao_tipo: "area", p_peso_por_unidade_dimensao: 6 });
+    check("definir_propriedades_dimensionais_item negado sem itens.manage", !!e1);
+    const { error: e2 } = await noPermTenant.client.rpc("registrar_peca_dimensional", { p_item_id: itemVidroId, p_quantidade: 2 });
+    check("registrar_peca_dimensional negado sem estoque.manage", !!e2);
+    const { error: e3 } = await noPermTenant.client.rpc("converter_item_para_peso", { p_item_id: itemPerfilId, p_quantidade: 1 });
+    check("converter_item_para_peso negado sem estoque.view", !!e3);
+
+    const { data: still } = await noPermTenant.client.from("itens_pecas_dimensionais").select("id").eq("id", pecaBarraId);
+    check("SELECT direto continua liberado (RLS por company_id, sem gate de permissão)", (still ?? []).length === 1);
+  }
+
+  console.log("\n16. Isolamento cross-tenant -- tenant B não vê nem altera peças dimensionais do tenant A");
+  {
+    const { data: pecas } = await otherTenant.client.from("itens_pecas_dimensionais").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê peças dimensionais do tenant A", (pecas ?? []).length === 0);
+
+    const { error: e1 } = await otherTenant.client.rpc("registrar_peca_dimensional", { p_item_id: itemPerfilId, p_quantidade: 5 });
+    check("tenant B não consegue registrar peça em item do tenant A", !!e1);
+    const { error: e2 } = await otherTenant.client.rpc("consumir_peca_dimensional", { p_peca_id: pecaBarraId, p_quantidade: 1 });
+    check("tenant B não consegue consumir peça do tenant A", !!e2);
+    const { error: e3 } = await otherTenant.client.rpc("definir_propriedades_dimensionais_item", { p_item_id: itemPerfilId, p_dimensao_tipo: "linear", p_peso_por_unidade_dimensao: 2 });
+    check("tenant B não consegue configurar item do tenant A", !!e3);
+    const { error: e4 } = await otherTenant.client.rpc("converter_item_para_peso", { p_item_id: itemPerfilId, p_quantidade: 1 });
+    check("tenant B não consegue converter unidade de item do tenant A", !!e4);
+  }
+
+  console.log("\n17. Regressão -- estoque_saldos/ajustar_saldo/registrar_entrada_sobra continuam intocados para item escalar");
+  {
+    const { error: errAjuste } = await admTenant.client.rpc("ajustar_saldo", { p_item_id: itemMaterialId, p_quantidade_delta: 100, p_motivo: "carga inicial teste" });
+    check("ajustar_saldo continua funcionando normalmente (item escalar)", !errAjuste);
+    const { data: saldo1 } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", itemMaterialId).single();
+    check("saldo escalar reflete o ajuste (100)", Number(saldo1.quantidade_fisica) === 100);
+
+    const { error: errSobra } = await admTenant.client.rpc("registrar_entrada_sobra", { p_item_id: itemMaterialId, p_quantidade: 5, p_pedido_item_id: null, p_observacao: "sobra escalar teste" });
+    check("registrar_entrada_sobra continua funcionando normalmente (item escalar)", !errSobra);
+    const { data: saldo2 } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", itemMaterialId).single();
+    check("saldo escalar acumula a sobra (105) -- mecanismo T6 intocado pela Fase 2", Number(saldo2.quantidade_fisica) === 105);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
