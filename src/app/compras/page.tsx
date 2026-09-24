@@ -68,7 +68,8 @@ export default async function ComprasPage() {
           material alternativo e política de abastecimento. Cotação, pedido de compra e recebimento
           completo ainda não existem — seguem em fases futuras. Recebimento leve continua em{" "}
           <code>/suprimentos</code>, sem mudança. Motor de necessidades e mapa de compras futuras
-          (Fase 3) ficam em <Link href="/compras/mapa">/compras/mapa</Link>.
+          (Fase 3) ficam em <Link href="/compras/mapa">/compras/mapa</Link>. Solicitação de compra e
+          compras diretas (Fase 4) ficam em <Link href="/compras/solicitacoes">/compras/solicitacoes</Link>.
         </p>
 
         <ComprasSection

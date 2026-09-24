@@ -538,6 +538,141 @@ async function main() {
     check("mapa do tenant B não traz necessidades do tenant A", (mapaOutro ?? []).length === 0);
   }
 
+  // =======================================================================
+  // Fase 4 da ADR-011 — Solicitação de Compra (SC) e Compras Diretas
+  // (TÓPICO 7 §16/§2). Item de SC com necessidade vinculada só atende a
+  // necessidade (atender_necessidade_compra() já existente) no envio da
+  // SC, nunca ao adicionar item num rascunho.
+  // =======================================================================
+
+  console.log("\n27. criar_solicitacao_compra() -- exige numeração configurada, valida prioridade, cria em rascunho");
+  const itemScId = await upsertItem(admTenant, "ITX-CPT", "materia_prima");
+  let solicitacaoId;
+  let necessidadeVinculadaId;
+  {
+    const { error: errSemNumeracao } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: null, p_prioridade: "normal", p_justificativa: null });
+    check("rejeita sem numeração configurada para solicitacao_compra", !!errSemNumeracao);
+
+    await admTenant.client.rpc("upsert_numbering_sequence", {
+      p_document_type: "solicitacao_compra", p_prefixo: "SC-CPT-", p_sufixo: "", p_digitos: 4,
+      p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+    });
+
+    const { error: errPrioridade } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: null, p_prioridade: "super-urgente", p_justificativa: null });
+    check("rejeita prioridade inválida", !!errPrioridade);
+
+    const { data: scId, error } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: "Produção", p_prioridade: "alta", p_justificativa: "reposição de perfil" });
+    check("cria SC em rascunho", !error);
+    solicitacaoId = scId;
+    const { data: sc } = await admin.from("solicitacoes_compra").select("status, prioridade, numero").eq("id", solicitacaoId).single();
+    check("nasce em rascunho com o número gerado", sc.status === "rascunho" && sc.prioridade === "alta" && sc.numero === "SC-CPT-0001");
+  }
+
+  console.log("\n28. adicionar_item_solicitacao() -- rejeita necessidade de outro item, aceita vínculo correto, remove em rascunho");
+  let itemScLinhaId;
+  {
+    const { data: necScId } = await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemScId, p_quantidade: 10, p_origem: "manual" });
+    const { data: outroItemId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "ITZ-CPT", p_descricao: "outro item", p_tipo: "materia_prima", p_classificacao: "teste", p_unidade_principal: "UN" });
+
+    const { error: errItemErrado } = await admTenant.client.rpc("adicionar_item_solicitacao", {
+      p_solicitacao_compra_id: solicitacaoId, p_item_id: outroItemId, p_quantidade: 3, p_necessidade_compra_id: necScId,
+    });
+    check("rejeita necessidade vinculada a item diferente do item da linha", !!errItemErrado);
+
+    const { data: linhaId, error } = await admTenant.client.rpc("adicionar_item_solicitacao", {
+      p_solicitacao_compra_id: solicitacaoId, p_item_id: itemScId, p_quantidade: 10, p_necessidade_compra_id: necScId,
+    });
+    check("adiciona item com necessidade vinculada corretamente", !error);
+    itemScLinhaId = linhaId;
+
+    const { data: linhaAvulsaId } = await admTenant.client.rpc("adicionar_item_solicitacao", {
+      p_solicitacao_compra_id: solicitacaoId, p_item_id: outroItemId, p_quantidade: 2,
+    });
+    const { error: errRemove } = await admTenant.client.rpc("remover_item_solicitacao", { p_id: linhaAvulsaId });
+    check("remove item em rascunho", !errRemove);
+
+    necessidadeVinculadaId = necScId;
+  }
+
+  console.log("\n29. enviar_solicitacao_compra() -- rejeita sem itens, atende necessidade vinculada, trava edição após enviada");
+  {
+    const { data: scVaziaId } = await admTenant.client.rpc("criar_solicitacao_compra", { p_setor: null, p_prioridade: "normal", p_justificativa: null });
+    const { error: errVazia } = await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: scVaziaId });
+    check("rejeita enviar SC sem itens", !!errVazia);
+
+    const { error } = await admTenant.client.rpc("enviar_solicitacao_compra", { p_id: solicitacaoId });
+    check("envia a SC com sucesso", !error);
+    const { data: sc } = await admin.from("solicitacoes_compra").select("status").eq("id", solicitacaoId).single();
+    check("SC fica aberta", sc.status === "aberta");
+    const { data: nec } = await admin.from("necessidades_compra").select("status").eq("id", necessidadeVinculadaId).single();
+    check("necessidade vinculada fica atendida automaticamente (convergência com Suprimentos)", nec.status === "atendida");
+
+    const { error: errAddDepois } = await admTenant.client.rpc("adicionar_item_solicitacao", { p_solicitacao_compra_id: solicitacaoId, p_item_id: itemScId, p_quantidade: 1 });
+    check("não permite adicionar item após enviada", !!errAddDepois);
+    const { error: errRemoveDepois } = await admTenant.client.rpc("remover_item_solicitacao", { p_id: itemScLinhaId });
+    check("não permite remover item após enviada", !!errRemoveDepois);
+  }
+
+  console.log("\n30. cancelar_solicitacao_compra() -- funciona de rascunho e de aberta, não reexecuta");
+  {
+    const { error: errCancelaAberta } = await admTenant.client.rpc("cancelar_solicitacao_compra", { p_id: solicitacaoId, p_motivo: "cancelamento pós-envio" });
+    check("cancela SC já aberta (enviada)", !errCancelaAberta);
+    const { error: errRecancela } = await admTenant.client.rpc("cancelar_solicitacao_compra", { p_id: solicitacaoId, p_motivo: null });
+    check("rejeita cancelar SC já cancelada", !!errRecancela);
+  }
+
+  console.log("\n31. criar_compra_direta() -- valida motivo/justificativa, atende necessidade vinculada na hora");
+  let compraDiretaId;
+  {
+    const { error: errMotivo } = await admTenant.client.rpc("criar_compra_direta", { p_item_id: itemScId, p_quantidade: 1, p_motivo: "motivo_qualquer", p_justificativa: "teste" });
+    check("rejeita motivo fora da lista fixa", !!errMotivo);
+    const { error: errJustificativa } = await admTenant.client.rpc("criar_compra_direta", { p_item_id: itemScId, p_quantidade: 1, p_motivo: "urgencia", p_justificativa: "" });
+    check("rejeita justificativa vazia", !!errJustificativa);
+
+    const { data: necDiretaId } = await admTenant.client.rpc("criar_necessidade_compra", { p_item_id: itemScId, p_quantidade: 4, p_origem: "manual" });
+    const { data, error } = await admTenant.client.rpc("criar_compra_direta", {
+      p_item_id: itemScId, p_quantidade: 4, p_motivo: "urgencia", p_justificativa: "quebra de equipamento", p_necessidade_compra_id: necDiretaId,
+    });
+    check("registra compra direta vinculada a necessidade", !error);
+    compraDiretaId = data;
+    const { data: nec } = await admin.from("necessidades_compra").select("status").eq("id", necDiretaId).single();
+    check("necessidade vinculada atende imediatamente (sem etapa de rascunho)", nec.status === "atendida");
+
+    const { error: errReuso } = await admTenant.client.rpc("criar_compra_direta", { p_item_id: itemScId, p_quantidade: 1, p_motivo: "outro", p_justificativa: "reuso", p_necessidade_compra_id: necDiretaId });
+    check("rejeita reusar necessidade já atendida", !!errReuso);
+  }
+
+  console.log("\n32. cancelar_compra_direta() -- funciona uma vez, rejeita repetir");
+  {
+    const { error } = await admTenant.client.rpc("cancelar_compra_direta", { p_id: compraDiretaId, p_motivo: "pedido duplicado" });
+    check("cancela compra direta registrada", !error);
+    const { error: errRepete } = await admTenant.client.rpc("cancelar_compra_direta", { p_id: compraDiretaId, p_motivo: null });
+    check("rejeita cancelar de novo", !!errRepete);
+  }
+
+  console.log("\n33. Deny -- usuário sem compras.manage (papel QUALIDADE)");
+  {
+    const { error: e1 } = await noPermTenant.client.rpc("criar_solicitacao_compra", { p_setor: null, p_prioridade: "normal", p_justificativa: null });
+    check("criar_solicitacao_compra negado sem compras.manage", !!e1);
+    const { error: e2 } = await noPermTenant.client.rpc("criar_compra_direta", { p_item_id: itemScId, p_quantidade: 1, p_motivo: "outro", p_justificativa: "teste" });
+    check("criar_compra_direta negado sem compras.manage", !!e2);
+    const { data: still } = await noPermTenant.client.from("solicitacoes_compra").select("id").eq("id", solicitacaoId);
+    check("SELECT direto continua liberado (RLS por company_id)", (still ?? []).length === 1);
+  }
+
+  console.log("\n34. Isolamento cross-tenant -- tenant B não vê nem altera SC/compra direta do tenant A");
+  {
+    const { data: scOutro } = await otherTenant.client.from("solicitacoes_compra").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê solicitações do tenant A", (scOutro ?? []).length === 0);
+    const { data: cdOutro } = await otherTenant.client.from("compras_diretas").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não vê compras diretas do tenant A", (cdOutro ?? []).length === 0);
+
+    const { error: e1 } = await otherTenant.client.rpc("cancelar_solicitacao_compra", { p_id: solicitacaoId, p_motivo: null });
+    check("tenant B não consegue cancelar SC do tenant A", !!e1);
+    const { error: e2 } = await otherTenant.client.rpc("criar_compra_direta", { p_item_id: itemScId, p_quantidade: 1, p_motivo: "outro", p_justificativa: "teste isolamento" });
+    check("tenant B não consegue registrar compra direta em item do tenant A", !!e2);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
