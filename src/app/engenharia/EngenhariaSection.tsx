@@ -1,11 +1,35 @@
 "use client";
 
-import { criarItemProducaoAction, registrarMedicaoAction, confirmarMedicaoAction } from "./actions";
+import { criarItemProducaoAction, registrarMedicaoAction, confirmarMedicaoAction, definirValorCaracteristicaAction } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Table, Th, Td } from "@/components/ui/Table";
+import BomPedidoItem from "./BomPedidoItem";
+
+type Caracteristica = {
+  peca_caracteristica_id: string;
+  nome: string;
+  tipo: string;
+  unidade: string | null;
+  obrigatoria: boolean;
+  valor_numero: number | null;
+  valor_texto: string | null;
+};
+
+type BomLinha = {
+  pedido_item_bom_id: string;
+  status: string;
+  aprovado_por: string | null;
+  aprovado_em: string | null;
+  pedido_item_bom_item_id: string | null;
+  material_item_id: string | null;
+  material_codigo: string | null;
+  material_descricao: string | null;
+  quantidade_por_unidade: number | null;
+  origem: string | null;
+};
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -36,6 +60,9 @@ export default function EngenhariaSection({
   pessoas,
   obras,
   itens,
+  caracteristicasPorPedidoItem,
+  bomPorPedidoItem,
+  pecaIdPorItemId,
   canManage,
 }: {
   pedidos: Pedido[];
@@ -44,6 +71,9 @@ export default function EngenhariaSection({
   pessoas: Pessoa[];
   obras: Obra[];
   itens: Item[];
+  caracteristicasPorPedidoItem: Map<string, Caracteristica[]>;
+  bomPorPedidoItem: Map<string, BomLinha[]>;
+  pecaIdPorItemId: Map<string, string>;
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -88,6 +118,10 @@ export default function EngenhariaSection({
                         pedidoItem={pi}
                         producao={producao}
                         itemLabel={itemLabel(pi.item_id)}
+                        caracteristicas={caracteristicasPorPedidoItem.get(pi.id) ?? []}
+                        bomLinhas={bomPorPedidoItem.get(pi.id) ?? []}
+                        ehPecaConfiguravel={pecaIdPorItemId.has(pi.item_id)}
+                        itens={itens}
                         canManage={canManage}
                       />
                     );
@@ -112,11 +146,19 @@ function ItemProducaoRow({
   pedidoItem,
   producao,
   itemLabel,
+  caracteristicas,
+  bomLinhas,
+  ehPecaConfiguravel,
+  itens,
   canManage,
 }: {
   pedidoItem: PedidoItem;
   producao: ItemProducao | undefined;
   itemLabel: string;
+  caracteristicas: Caracteristica[];
+  bomLinhas: BomLinha[];
+  ehPecaConfiguravel: boolean;
+  itens: Item[];
   canManage: boolean;
 }) {
   if (!producao) {
@@ -142,62 +184,116 @@ function ItemProducaoRow({
   }
 
   return (
-    <tr>
-      <Td>{itemLabel}</Td>
-      <Td>{pedidoItem.quantidade}</Td>
-      {canManage ? (
-        <Td colSpan={4}>
-          <form action={registrarMedicaoAction} className="flex flex-wrap items-center gap-1.5">
-            <input type="hidden" name="id" value={producao.id} />
-            <Input name="ambiente" placeholder="ambiente" defaultValue={producao.ambiente ?? ""} className="w-28" />
-            <Input
-              name="largura_mm"
-              type="number"
-              step="0.1"
-              min="0.1"
-              placeholder="largura (mm)"
-              defaultValue={producao.largura_mm ?? ""}
-              required
-              className="w-[90px]"
-            />
-            <Input
-              name="altura_mm"
-              type="number"
-              step="0.1"
-              min="0.1"
-              placeholder="altura (mm)"
-              defaultValue={producao.altura_mm ?? ""}
-              required
-              className="w-[90px]"
-            />
-            <Button type="submit" variant="primary">
-              {producao.largura_mm ? "Corrigir medida" : "Registrar medida"}
-            </Button>
-            <Badge variant={producao.medida_confirmada ? "success" : "warning"}>
-              {producao.medida_confirmada ? "Confirmada" : "Não confirmada"}
-            </Badge>
-          </form>
-          {!producao.medida_confirmada && producao.largura_mm != null && (
-            <form action={confirmarMedicaoAction} className="mt-1">
+    <>
+      <tr>
+        <Td>{itemLabel}</Td>
+        <Td>{pedidoItem.quantidade}</Td>
+        {canManage ? (
+          <Td colSpan={4}>
+            <form action={registrarMedicaoAction} className="flex flex-wrap items-center gap-1.5">
               <input type="hidden" name="id" value={producao.id} />
+              <Input name="ambiente" placeholder="ambiente" defaultValue={producao.ambiente ?? ""} className="w-28" />
+              <Input
+                name="largura_mm"
+                type="number"
+                step="0.1"
+                min="0.1"
+                placeholder="largura (mm)"
+                defaultValue={producao.largura_mm ?? ""}
+                required
+                className="w-[90px]"
+              />
+              <Input
+                name="altura_mm"
+                type="number"
+                step="0.1"
+                min="0.1"
+                placeholder="altura (mm)"
+                defaultValue={producao.altura_mm ?? ""}
+                required
+                className="w-[90px]"
+              />
               <Button type="submit" variant="primary">
-                Confirmar medida
+                {producao.largura_mm ? "Corrigir medida" : "Registrar medida"}
               </Button>
+              <Badge variant={producao.medida_confirmada ? "success" : "warning"}>
+                {producao.medida_confirmada ? "Confirmada" : "Não confirmada"}
+              </Badge>
             </form>
-          )}
-        </Td>
-      ) : (
-        <>
-          <Td>{producao.ambiente ?? "—"}</Td>
-          <Td>{producao.largura_mm ?? "—"}</Td>
-          <Td>{producao.altura_mm ?? "—"}</Td>
-          <Td>
-            <Badge variant={producao.medida_confirmada ? "success" : "warning"}>
-              {producao.medida_confirmada ? "Confirmada" : "Não confirmada"}
-            </Badge>
+            {!producao.medida_confirmada && producao.largura_mm != null && (
+              <form action={confirmarMedicaoAction} className="mt-1">
+                <input type="hidden" name="id" value={producao.id} />
+                <Button type="submit" variant="primary">
+                  Confirmar medida
+                </Button>
+              </form>
+            )}
           </Td>
-        </>
+        ) : (
+          <>
+            <Td>{producao.ambiente ?? "—"}</Td>
+            <Td>{producao.largura_mm ?? "—"}</Td>
+            <Td>{producao.altura_mm ?? "—"}</Td>
+            <Td>
+              <Badge variant={producao.medida_confirmada ? "success" : "warning"}>
+                {producao.medida_confirmada ? "Confirmada" : "Não confirmada"}
+              </Badge>
+            </Td>
+          </>
+        )}
+      </tr>
+      {caracteristicas.length > 0 && (
+        <tr>
+          <Td colSpan={canManage ? 7 : 6}>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+              <span className="font-medium text-text">Características (configurador):</span>
+              {caracteristicas.map((c) => (
+                <CaracteristicaValor key={c.peca_caracteristica_id} pedidoItemId={pedidoItem.id} caracteristica={c} canManage={canManage} />
+              ))}
+            </div>
+          </Td>
+        </tr>
       )}
-    </tr>
+      <BomPedidoItem
+        pedidoItemId={pedidoItem.id}
+        ehPecaConfiguravel={ehPecaConfiguravel}
+        linhas={bomLinhas}
+        itens={itens}
+        canManage={canManage}
+      />
+    </>
+  );
+}
+
+function CaracteristicaValor({
+  pedidoItemId,
+  caracteristica,
+  canManage,
+}: {
+  pedidoItemId: string;
+  caracteristica: Caracteristica;
+  canManage: boolean;
+}) {
+  const valorAtual = caracteristica.valor_numero ?? caracteristica.valor_texto ?? "";
+
+  if (!canManage) {
+    return (
+      <span>
+        {caracteristica.nome}: {valorAtual || "—"} {caracteristica.unidade ?? ""}
+      </span>
+    );
+  }
+
+  return (
+    <form action={definirValorCaracteristicaAction} className="flex items-center gap-1">
+      <input type="hidden" name="pedido_item_id" value={pedidoItemId} />
+      <input type="hidden" name="peca_caracteristica_id" value={caracteristica.peca_caracteristica_id} />
+      <input type="hidden" name="tipo" value={caracteristica.tipo} />
+      <span>{caracteristica.nome}:</span>
+      <Input name="valor" defaultValue={valorAtual} placeholder={caracteristica.unidade ?? "valor"} className="w-24" />
+      <Button type="submit" variant="primary">
+        Salvar
+      </Button>
+    </form>
   );
 }

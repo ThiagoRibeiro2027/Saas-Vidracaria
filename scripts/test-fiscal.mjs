@@ -1,6 +1,7 @@
-// Testes automatizados do ADR-004 — Estratégia Fiscal, recorte mínimo do
-// MVP (§9.2): só estrutura/registro/rastreabilidade de documento fiscal,
-// sem emissão, cancelamento fiscal real, inutilização ou transmissão
+// Testes automatizados do ADR-004 — Estratégia Fiscal, completo:
+// estrutura/registro/rastreabilidade de documento fiscal (§9.2) mais
+// conferência/aprovação/rejeição/pendência no nível do documento (§6).
+// Sem emissão, cancelamento fiscal real, inutilização ou transmissão
 // (§9.3, fora do piloto da JR Box — §9.1).
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-fiscal.mjs
@@ -82,6 +83,7 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 }
 
 async function main() {
+  const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de fiscal, outro tenant)...");
   const admTenant = await createTenant("fiscal-test-admin", "Fiscal Admin Teste", "adr4f01", "ADMIN");
   const noPermTenant = await createTenant("fiscal-test-admin", "Fiscal SemPerm Teste", "adr4f02", "QUALIDADE", admTenant.company);
@@ -208,6 +210,9 @@ async function main() {
 
     const { error } = await otherTenant.client.rpc("cancelar_documento_fiscal", { p_id: docSemVinculoId, p_motivo: "cross-tenant" });
     check("tenant B não consegue cancelar documento do tenant A", !!error);
+
+    const { error: e2 } = await otherTenant.client.rpc("vincular_documento_fiscal", { p_id: docSemVinculoId, p_entity_type: "necessidade_compra", p_entity_id: necessidadeId });
+    check("tenant B não consegue vincular documento do tenant A", !!e2);
   }
 
   console.log("\n15. SELECT liberado sem fiscal.manage (papel QUALIDADE lê normalmente)");
@@ -221,9 +226,105 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", ["fiscal.documento_registrado", "fiscal.documento_vinculado", "fiscal.documento_cancelado"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     for (const action of ["fiscal.documento_registrado", "fiscal.documento_vinculado", "fiscal.documento_cancelado"]) {
+      check(`${action} registrado`, actions.has(action));
+    }
+  }
+
+  console.log("\n17. Massa de dados — documento fresco pra testar o fluxo de avaliação (§6)");
+  const { data: docAvaliacaoId } = await admTenant.client.rpc("registrar_documento_fiscal", {
+    p_tipo: "nfe", p_numero: "777777", p_chave_acesso: "35270912345678000199550010000007770000000077",
+  });
+  check("documento fresco criado", !!docAvaliacaoId);
+
+  console.log("\n18. avaliar_documento_fiscal() exige fiscal.manage e rejeita decisão inválida");
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("avaliar_documento_fiscal", { p_id: docAvaliacaoId, p_decisao: "aprovado" });
+    check("sem fiscal.manage não avalia documento", !!eNoPerm);
+
+    const { error: eDecisao } = await admTenant.client.rpc("avaliar_documento_fiscal", { p_id: docAvaliacaoId, p_decisao: "invalida" });
+    check("decisão inválida é rejeitada", !!eDecisao);
+  }
+
+  console.log("\n19. avaliar_documento_fiscal() sucesso — direto de 'recebido' pra 'aprovado' (§6, passo de conferência é opcional)");
+  {
+    const { error } = await admTenant.client.rpc("avaliar_documento_fiscal", { p_id: docAvaliacaoId, p_decisao: "aprovado", p_motivo: "conferido e ok" });
+    check("ADMIN aprova documento direto de 'recebido'", !error);
+    const { data: doc } = await admin.from("documentos_fiscais").select("status, decidido_por, decidido_em, motivo_decisao").eq("id", docAvaliacaoId).single();
+    check("status vira 'aprovado' com decidido_por/decidido_em/motivo salvos", doc?.status === "aprovado" && !!doc?.decidido_por && !!doc?.decidido_em && doc?.motivo_decisao === "conferido e ok");
+  }
+
+  console.log("\n20. avaliar_documento_fiscal() rejeita reavaliação de documento já aprovado (fora de recebido/em_conferencia)");
+  {
+    const { error } = await admTenant.client.rpc("avaliar_documento_fiscal", { p_id: docAvaliacaoId, p_decisao: "rejeitado" });
+    check("avaliar documento aprovado é rejeitado", !!error);
+  }
+
+  console.log("\n21. iniciar_conferencia_documento_fiscal() — permissão, sucesso, rejeita status errado");
+  const { data: docConferenciaId } = await admTenant.client.rpc("registrar_documento_fiscal", {
+    p_tipo: "nfse", p_numero: "888888",
+  });
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("iniciar_conferencia_documento_fiscal", { p_id: docConferenciaId });
+    check("sem fiscal.manage não inicia conferência", !!eNoPerm);
+
+    const { error } = await admTenant.client.rpc("iniciar_conferencia_documento_fiscal", { p_id: docConferenciaId });
+    check("ADMIN inicia conferência de documento recebido", !error);
+    const { data: doc } = await admin.from("documentos_fiscais").select("status").eq("id", docConferenciaId).single();
+    check("status vira 'em_conferencia'", doc?.status === "em_conferencia");
+
+    const { error: eDeNovo } = await admTenant.client.rpc("iniciar_conferencia_documento_fiscal", { p_id: docConferenciaId });
+    check("iniciar conferência de novo (já em conferência) é rejeitado", !!eDeNovo);
+  }
+
+  console.log("\n22. avaliar_documento_fiscal() sucesso a partir de 'em_conferencia' — rejeitado");
+  {
+    const { error } = await admTenant.client.rpc("avaliar_documento_fiscal", { p_id: docConferenciaId, p_decisao: "rejeitado", p_motivo: "divergência de valor" });
+    check("ADMIN rejeita documento em conferência", !error);
+    const { data: doc } = await admin.from("documentos_fiscais").select("status, motivo_decisao").eq("id", docConferenciaId).single();
+    check("status vira 'rejeitado' com motivo salvo", doc?.status === "rejeitado" && doc?.motivo_decisao === "divergência de valor");
+  }
+
+  console.log("\n23. reavaliar_documento_fiscal() — permissão, sucesso (reprocessamento controlado, §7), rejeita status errado");
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("reavaliar_documento_fiscal", { p_id: docConferenciaId });
+    check("sem fiscal.manage não reavalia documento", !!eNoPerm);
+
+    const { error: eStatusErrado } = await admTenant.client.rpc("reavaliar_documento_fiscal", { p_id: docAvaliacaoId });
+    check("reavaliar documento aprovado (não rejeitado/pendente) é rejeitado", !!eStatusErrado);
+
+    const { error } = await admTenant.client.rpc("reavaliar_documento_fiscal", { p_id: docConferenciaId });
+    check("ADMIN reavalia documento rejeitado", !error);
+    const { data: doc } = await admin.from("documentos_fiscais").select("status, decidido_por, motivo_decisao").eq("id", docConferenciaId).single();
+    check("volta pra 'em_conferencia', decisão anterior limpa (histórico fica em activity_logs)", doc?.status === "em_conferencia" && doc?.decidido_por === null && doc?.motivo_decisao === null);
+  }
+
+  console.log("\n24. Isolamento cross-tenant nos novos RPCs de avaliação");
+  {
+    const { error: e1 } = await otherTenant.client.rpc("avaliar_documento_fiscal", { p_id: docConferenciaId, p_decisao: "aprovado" });
+    check("tenant B não consegue avaliar documento do tenant A", !!e1);
+
+    const { error: e2 } = await otherTenant.client.rpc("iniciar_conferencia_documento_fiscal", { p_id: docSemVinculoId });
+    check("tenant B não consegue iniciar conferência de documento do tenant A", !!e2);
+
+    const { error: e3 } = await otherTenant.client.rpc("reavaliar_documento_fiscal", { p_id: docConferenciaId });
+    check("tenant B não consegue reavaliar documento do tenant A", !!e3);
+  }
+
+  console.log("\n25. Cada ação de avaliação grava a própria linha de auditoria");
+  {
+    const { data: events } = await admin
+      .from("activity_logs")
+      .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
+      .in("action", ["fiscal.documento_em_conferencia", "fiscal.documento_avaliado", "fiscal.documento_reavaliado"]);
+    const actions = new Set((events ?? []).map((e) => e.action));
+    for (const action of ["fiscal.documento_em_conferencia", "fiscal.documento_avaliado", "fiscal.documento_reavaliado"]) {
       check(`${action} registrado`, actions.has(action));
     }
   }

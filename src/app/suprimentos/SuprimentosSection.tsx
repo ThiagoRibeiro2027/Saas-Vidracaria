@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { atenderNecessidadeCompraAction, cancelarNecessidadeCompraAction, criarNecessidadeCompraAction } from "./actions";
+import {
+  atenderNecessidadeCompraAction,
+  cancelarNecessidadeCompraAction,
+  criarNecessidadeCompraAction,
+  gerarNecessidadesDePedidoAction,
+  gerarNecessidadesDeOrdemProducaoAction,
+  registrarRecebimentoNecessidadeAction,
+} from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 
 const ORIGENS = [
@@ -14,6 +21,7 @@ const STATUS_LABEL: Record<string, string> = {
   aberta: "Aberta",
   atendida: "Atendida",
   cancelada: "Cancelada",
+  recebida: "Recebida",
 };
 
 type Item = { id: string; codigo: string; descricao: string; unidade_principal: string };
@@ -23,32 +31,46 @@ type Necessidade = {
   quantidade: number;
   data_necessaria: string | null;
   origem: string;
-  status: "aberta" | "atendida" | "cancelada";
+  status: "aberta" | "atendida" | "cancelada" | "recebida";
   observacoes: string | null;
   motivo_cancelamento: string | null;
+  quantidade_recebida: number | null;
+  data_recebimento: string | null;
   created_at: string;
 };
+
+type Pedido = { id: string; numero: string };
+type OrdemProducao = { id: string; numero: string; pedido_id: string };
 
 export default function SuprimentosSection({
   rows,
   itens,
+  pedidos,
+  ordensProducao,
   canManage,
 }: {
   rows: Necessidade[];
   itens: Item[];
+  pedidos: Pedido[];
+  ordensProducao: OrdemProducao[];
   canManage: boolean;
 }) {
   const itemPorId = new Map(itens.map((i) => [i.id, i]));
+  const pedidoPorId = new Map(pedidos.map((p) => [p.id, p]));
 
   return (
     <section>
       <h2 style={sectionTitleStyle}>Necessidades de compra</h2>
       <p style={hintStyle}>
         Recorte mínimo do MVP (ADR-002 §4.18): registrar a necessidade, o material e a quantidade,
-        e acompanhar até ser atendida ou cancelada. Sem fornecedor, cotação, pedido de compra ou
-        recebimento — a efetivação da compra acontece fora do sistema neste recorte.
+        e acompanhar até ser atendida, cancelada ou recebida. Sem fornecedor, cotação ou pedido de
+        compra — a negociação/efetivação da compra acontece fora do sistema. Recebimento (ADR-002
+        §4.18 v2.7, Fase D) é só o passo a mais que fecha o ciclo: marcar como recebida com a
+        quantidade recebida dá entrada física no estoque — sem nota fiscal, conferência ou
+        recebimento parcial rastreado por remessa.
       </p>
 
+      {canManage && <GerarNecessidadesForm pedidos={pedidos} ordensProducao={ordensProducao} pedidoPorId={pedidoPorId} />}
       {canManage && <NovaNecessidadeForm itens={itens} />}
 
       <div style={{ overflowX: "auto", marginTop: "12px" }}>
@@ -76,9 +98,19 @@ export default function SuprimentosSection({
                   <td style={tdStyle}>{row.data_necessaria ? new Date(`${row.data_necessaria}T00:00:00`).toLocaleDateString("pt-BR") : "—"}</td>
                   <td style={tdStyle}>{ORIGENS.find(([v]) => v === row.origem)?.[1] ?? row.origem}</td>
                   <td style={tdStyle}>{STATUS_LABEL[row.status]}</td>
-                  <td style={tdStyle}>{row.status === "cancelada" ? row.motivo_cancelamento : row.observacoes}</td>
+                  <td style={tdStyle}>
+                    {row.status === "cancelada" && row.motivo_cancelamento}
+                    {row.status === "recebida" &&
+                      `Recebido: ${row.quantidade_recebida} ${item?.unidade_principal ?? ""} em ${
+                        row.data_recebimento ? new Date(row.data_recebimento).toLocaleDateString("pt-BR") : "—"
+                      }`}
+                    {row.status !== "cancelada" && row.status !== "recebida" && row.observacoes}
+                  </td>
                   {canManage && (
-                    <td style={tdStyle}>{row.status === "aberta" && <AcoesNecessidade id={row.id} />}</td>
+                    <td style={tdStyle}>
+                      {row.status === "aberta" && <AcoesNecessidade id={row.id} />}
+                      {row.status === "atendida" && <RegistrarRecebimentoForm id={row.id} unidade={item?.unidade_principal ?? ""} />}
+                    </td>
                   )}
                 </tr>
               );
@@ -87,6 +119,59 @@ export default function SuprimentosSection({
         </table>
       </div>
     </section>
+  );
+}
+
+function GerarNecessidadesForm({
+  pedidos,
+  ordensProducao,
+  pedidoPorId,
+}: {
+  pedidos: Pedido[];
+  ordensProducao: OrdemProducao[];
+  pedidoPorId: Map<string, Pedido>;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "16px",
+        alignItems: "center",
+        marginBottom: "12px",
+        padding: "8px 10px",
+        background: "#f5f7f5",
+        borderRadius: "6px",
+      }}
+    >
+      <form action={gerarNecessidadesDePedidoAction} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        <select name="pedido_id" required style={{ ...inputStyle, width: "160px" }}>
+          <option value="">Gerar do pedido…</option>
+          {pedidos.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.numero}
+            </option>
+          ))}
+        </select>
+        <button type="submit" style={buttonStyle}>
+          Gerar necessidades
+        </button>
+      </form>
+
+      <form action={gerarNecessidadesDeOrdemProducaoAction} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        <select name="ordem_producao_id" required style={{ ...inputStyle, width: "220px" }}>
+          <option value="">Gerar da ordem de produção…</option>
+          {ordensProducao.map((op) => (
+            <option key={op.id} value={op.id}>
+              {op.numero} ({pedidoPorId.get(op.pedido_id)?.numero ?? op.pedido_id})
+            </option>
+          ))}
+        </select>
+        <button type="submit" style={buttonStyle}>
+          Gerar necessidades
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -113,6 +198,44 @@ function NovaNecessidadeForm({ itens }: { itens: Item[] }) {
       <input name="observacoes" placeholder="observações (opcional)" style={{ ...inputStyle, width: "180px" }} />
       <button type="submit" style={buttonStyle}>
         Registrar necessidade
+      </button>
+    </form>
+  );
+}
+
+function RegistrarRecebimentoForm({ id, unidade }: { id: string; unidade: string }) {
+  const [recebendo, setRecebendo] = useState(false);
+
+  if (!recebendo) {
+    return (
+      <button onClick={() => setRecebendo(true)} style={buttonStyle}>
+        Registrar recebimento
+      </button>
+    );
+  }
+
+  return (
+    <form
+      action={registrarRecebimentoNecessidadeAction}
+      style={{ display: "flex", gap: "4px", alignItems: "center" }}
+      onSubmit={() => setRecebendo(false)}
+    >
+      <input type="hidden" name="id" value={id} />
+      <input
+        name="quantidade_recebida"
+        type="number"
+        min="0.001"
+        step="0.001"
+        placeholder={`qtd. recebida (${unidade})`}
+        required
+        style={{ ...inputStyle, width: "110px" }}
+      />
+      <input name="observacao" placeholder="observação (opcional)" style={{ ...inputStyle, width: "120px" }} />
+      <button type="submit" style={buttonStyle}>
+        Confirmar
+      </button>
+      <button type="button" onClick={() => setRecebendo(false)} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+        Voltar
       </button>
     </form>
   );

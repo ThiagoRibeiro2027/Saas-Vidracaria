@@ -59,8 +59,24 @@ insert into public.permissions (resource, action, description) values
   ('rh', 'manage', 'Admitir, editar e desligar funcionários, incluindo revogar o acesso do usuário vinculado (TÓPICO 17)'),
   ('bi', 'view', 'Consultar o dashboard de indicadores operacionais básicos da empresa (TÓPICO 12)'),
   ('fiscal', 'view', 'Visualizar documentos fiscais registrados da empresa (ADR-004 §9.2)'),
-  ('fiscal', 'manage', 'Registrar, vincular e cancelar (correção interna) documentos fiscais (ADR-004 §9.2)')
+  ('fiscal', 'manage', 'Registrar, vincular e cancelar (correção interna) documentos fiscais (ADR-004 §9.2)'),
+  ('integracoes', 'view', 'Visualizar a Central de Integrações, catálogo, fonte oficial e operações da empresa (TÓPICO 13, ADR-002 v2.5)'),
+  ('integracoes', 'manage', 'Configurar, ativar/desativar integrações, definir fonte oficial e gerenciar operações da fila (TÓPICO 13, ADR-002 v2.5)'),
+  ('contratos', 'view', 'Visualizar contratos com clientes, fornecedores e funcionários/prestadores da empresa — mistura dado sensível de RH (TÓPICO 18)'),
+  ('contratos', 'manage', 'Criar/editar contrato em rascunho, ativar e encerrar contratos da empresa (TÓPICO 18)'),
+  ('pecas', 'view', 'Visualizar peças fabricadas e sua composição de materiais da empresa (Fase A, plano de 23/09/2026)'),
+  ('pecas', 'manage', 'Criar/inativar peça e gerir a composição de materiais (Fase A, plano de 23/09/2026)'),
+  ('compras', 'view', 'Visualizar fornecedores, materiais alternativos e políticas de abastecimento da empresa (TÓPICO 7, ADR-011)'),
+  ('compras', 'manage', 'Cadastrar fornecedor, definir fornecedor principal/alternativo, material alternativo e política de abastecimento (TÓPICO 7, ADR-011)'),
+  ('financeiro', 'pagar', 'Registrar pagamento (integral ou parcial) de título a pagar de Compras (TÓPICO 7 §33, ADR-011)')
 on conflict (resource, action) do nothing;
+
+-- Catálogo global de integrações (TÓPICO 13 §3) — Fase 1 só semeia os
+-- "ganchos vazios" aprovados (ADR-002 v2.5 §4.17): nenhum conector real.
+insert into public.integracoes_catalogo (key, nome, categoria, finalidade, disponivel) values
+  ('erp_generico', 'ERP genérico', 'erp', 'Sincronização de clientes, fornecedores, produtos, estoque, pedidos e financeiro com um ERP externo (TÓPICO 13 §8) — estrutura preparada, nenhum provedor real integrado nesta fase.', false),
+  ('nfe_provedor', 'Provedor de NF-e', 'fiscal', 'Captura e processamento de Notas Fiscais Eletrônicas de fornecedores (TÓPICO 13 §5) — estrutura preparada; o registro do documento em si já existe em documentos_fiscais (ADR-004 §9.2), este catálogo só referencia o gancho de integração externa.', false)
+on conflict (key) do nothing;
 
 -- Templates de papel por tenant (company_id nulo = seed reutilizável).
 -- Nomenclatura alinhada ao Prompt Mestre de Segurança, mas SUPER_ADMIN fica

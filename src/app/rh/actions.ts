@@ -53,3 +53,92 @@ export async function desligarFuncionarioAction(formData: FormData) {
 
   revalidatePath("/rh");
 }
+
+export async function registrarDocumentoFuncionarioAction(formData: FormData) {
+  const funcionarioId = String(formData.get("funcionario_id") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "");
+  const nome = String(formData.get("nome") ?? "").trim();
+  const dataReferencia = String(formData.get("data_referencia") ?? "").trim() || null;
+  const validade = String(formData.get("validade") ?? "").trim() || null;
+  const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
+
+  if (!funcionarioId) throw new Error("Funcionário é obrigatório.");
+  if (!tipo) throw new Error("Tipo de documento é obrigatório.");
+  if (!nome) throw new Error("Nome do documento é obrigatório.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("registrar_documento_funcionario", {
+    p_funcionario_id: funcionarioId,
+    p_tipo: tipo,
+    p_nome: nome,
+    p_data_referencia: dataReferencia,
+    p_validade: validade,
+    p_observacoes: observacoes,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/rh");
+}
+
+export async function cancelarDocumentoFuncionarioAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!id) throw new Error("Documento inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancelar_documento_funcionario", { p_id: id, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/rh");
+}
+
+export async function registrarAfastamentoAction(formData: FormData) {
+  const funcionarioId = String(formData.get("funcionario_id") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "");
+  const dataInicio = String(formData.get("data_inicio") ?? "").trim() || null;
+  const dataFim = String(formData.get("data_fim") ?? "").trim() || null;
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
+
+  if (!funcionarioId) throw new Error("Funcionário é obrigatório.");
+  if (!tipo) throw new Error("Tipo de período é obrigatório.");
+  if (!dataInicio) throw new Error("Data de início é obrigatória.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("registrar_afastamento", {
+    p_funcionario_id: funcionarioId,
+    p_tipo: tipo,
+    p_data_inicio: dataInicio,
+    p_data_fim: dataFim,
+    p_motivo: motivo,
+    p_observacoes: observacoes,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/rh");
+}
+
+export async function encerrarAfastamentoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const dataFim = String(formData.get("data_fim") ?? "").trim() || null;
+  if (!id) throw new Error("Período inválido.");
+  if (!dataFim) throw new Error("Data de fim é obrigatória.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("encerrar_afastamento", { p_id: id, p_data_fim: dataFim });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/rh");
+}
+
+export async function cancelarAfastamentoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!id) throw new Error("Período inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancelar_afastamento", { p_id: id, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/rh");
+}

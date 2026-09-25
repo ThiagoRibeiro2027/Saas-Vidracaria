@@ -56,3 +56,39 @@ export async function cancelarDocumentoFiscalAction(formData: FormData) {
 
   revalidatePath("/fiscal");
 }
+
+export async function iniciarConferenciaDocumentoFiscalAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Documento inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("iniciar_conferencia_documento_fiscal", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/fiscal");
+}
+
+export async function avaliarDocumentoFiscalAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const decisao = String(formData.get("decisao") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!id) throw new Error("Documento inválido.");
+  if (!decisao) throw new Error("Decisão é obrigatória.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("avaliar_documento_fiscal", { p_id: id, p_decisao: decisao, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/fiscal");
+}
+
+export async function reavaliarDocumentoFiscalAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Documento inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("reavaliar_documento_fiscal", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/fiscal");
+}

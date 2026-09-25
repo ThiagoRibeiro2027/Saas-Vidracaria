@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { cancelarDocumentoFiscalAction, registrarDocumentoFiscalAction, vincularDocumentoFiscalAction } from "./actions";
+import {
+  avaliarDocumentoFiscalAction,
+  cancelarDocumentoFiscalAction,
+  iniciarConferenciaDocumentoFiscalAction,
+  reavaliarDocumentoFiscalAction,
+  registrarDocumentoFiscalAction,
+  vincularDocumentoFiscalAction,
+} from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 
 const TIPOS = [
@@ -10,6 +17,15 @@ const TIPOS = [
   ["outro", "Outro"],
 ] as const;
 
+const STATUS_LABEL: Record<Documento["status"], string> = {
+  recebido: "Recebido",
+  em_conferencia: "Em conferência",
+  aprovado: "Aprovado",
+  rejeitado: "Rejeitado",
+  pendente: "Pendente",
+  cancelado: "Cancelado",
+};
+
 type Documento = {
   id: string;
   tipo: "nfe" | "nfse" | "outro";
@@ -17,8 +33,9 @@ type Documento = {
   chave_acesso: string | null;
   entity_type: string | null;
   entity_id: string | null;
-  status: "recebido" | "cancelado";
+  status: "recebido" | "em_conferencia" | "aprovado" | "rejeitado" | "pendente" | "cancelado";
   motivo_cancelamento: string | null;
+  motivo_decisao: string | null;
   observacoes: string | null;
 };
 
@@ -27,10 +44,10 @@ export default function FiscalSection({ rows, canManage }: { rows: Documento[]; 
     <section>
       <h2 style={sectionTitleStyle}>Documentos fiscais</h2>
       <p style={hintStyle}>
-        Recorte mínimo do MVP (ADR-004 §9.2): registro e rastreabilidade de documentos fiscais
-        recebidos, com vínculo operacional opcional (independente de Pedido de Compra). Sem
-        emissão, cancelamento fiscal real, inutilização ou transmissão — durante o piloto, o
-        faturamento permanece no sistema atual da empresa (§9.1).
+        Registro, rastreabilidade e avaliação (conferência/aprovação/rejeição/pendência) de
+        documentos fiscais recebidos, com vínculo operacional opcional (independente de Pedido de
+        Compra). Sem emissão, cancelamento fiscal real, inutilização ou transmissão — durante o
+        piloto, o faturamento permanece no sistema atual da empresa (ADR-004 §9.1).
       </p>
 
       {canManage && <NovoDocumentoForm />}
@@ -55,11 +72,13 @@ export default function FiscalSection({ rows, canManage }: { rows: Documento[]; 
                 <td style={tdStyle}>{row.chave_acesso ?? "—"}</td>
                 <td style={tdStyle}>{row.entity_type ? `${row.entity_type} (${row.entity_id?.slice(0, 8)}…)` : "sem vínculo"}</td>
                 <td style={tdStyle}>
-                  {row.status === "cancelado" ? `Cancelado — ${row.motivo_cancelamento ?? ""}` : "Recebido"}
+                  {STATUS_LABEL[row.status]}
+                  {row.status === "cancelado" && row.motivo_cancelamento && ` — ${row.motivo_cancelamento}`}
+                  {(row.status === "rejeitado" || row.status === "pendente") && row.motivo_decisao && ` — ${row.motivo_decisao}`}
                 </td>
                 {canManage && (
                   <td style={tdStyle}>
-                    {row.status === "recebido" && <AcoesDocumento row={row} />}
+                    {row.status !== "cancelado" && <AcoesDocumento row={row} />}
                   </td>
                 )}
               </tr>
@@ -92,7 +111,7 @@ function NovoDocumentoForm() {
 }
 
 function AcoesDocumento({ row }: { row: Documento }) {
-  const [modo, setModo] = useState<"nenhum" | "vincular" | "cancelar">("nenhum");
+  const [modo, setModo] = useState<"nenhum" | "vincular" | "cancelar" | "avaliar">("nenhum");
 
   if (modo === "vincular") {
     return (
@@ -125,8 +144,54 @@ function AcoesDocumento({ row }: { row: Documento }) {
     );
   }
 
+  if (modo === "avaliar") {
+    return (
+      <form action={avaliarDocumentoFiscalAction} style={{ display: "flex", gap: "4px" }} onSubmit={() => setModo("nenhum")}>
+        <input type="hidden" name="id" value={row.id} />
+        <select name="decisao" required style={inputStyle}>
+          <option value="">decisão…</option>
+          <option value="aprovado">Aprovar</option>
+          <option value="rejeitado">Rejeitar</option>
+          <option value="pendente">Marcar pendente</option>
+        </select>
+        <input name="motivo" placeholder="motivo/observação (opcional)" style={{ ...inputStyle, width: "140px" }} />
+        <button type="submit" style={buttonStyle}>
+          Confirmar
+        </button>
+        <button type="button" onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+          Voltar
+        </button>
+      </form>
+    );
+  }
+
+  const podeIniciarConferencia = row.status === "recebido";
+  const podeAvaliar = row.status === "recebido" || row.status === "em_conferencia";
+  const podeReavaliar = row.status === "rejeitado" || row.status === "pendente";
+
   return (
-    <div style={{ display: "flex", gap: "4px" }}>
+    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+      {podeIniciarConferencia && (
+        <form action={iniciarConferenciaDocumentoFiscalAction}>
+          <input type="hidden" name="id" value={row.id} />
+          <button type="submit" style={buttonStyle}>
+            Iniciar conferência
+          </button>
+        </form>
+      )}
+      {podeAvaliar && (
+        <button onClick={() => setModo("avaliar")} style={buttonStyle}>
+          Avaliar
+        </button>
+      )}
+      {podeReavaliar && (
+        <form action={reavaliarDocumentoFiscalAction}>
+          <input type="hidden" name="id" value={row.id} />
+          <button type="submit" style={buttonStyle}>
+            Reavaliar
+          </button>
+        </form>
+      )}
       <button onClick={() => setModo("vincular")} style={buttonStyle}>
         Vincular
       </button>

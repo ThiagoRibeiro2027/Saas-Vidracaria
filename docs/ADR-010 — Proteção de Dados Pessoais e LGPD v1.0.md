@@ -313,10 +313,13 @@ inventário de dados pessoais preenchido — **ainda pendente**, não tratado
 nas decisões de 12–13/09/2026;
 
 relação de suboperadores — **inventário levantado em 19/09/2026**, ver
-`docs/RUNBOOK-SUBOPERADORES-LGPD.md` (Supabase, Vercel, Resend). Duas
-pendências técnicas identificadas ali (região da Vercel não fixada;
-região de processamento do Resend não confirmada) e a **publicação**
-formal à empresa-cliente continuam em aberto.
+`docs/RUNBOOK-SUBOPERADORES-LGPD.md` (Supabase, Vercel, Resend). Das
+duas pendências técnicas identificadas ali, a região da Vercel foi
+fixada em `gru1` em 23/09/2026 — **resolvida**; a região de
+processamento do Resend **continua não confirmada**, e a **publicação**
+formal à empresa-cliente continua em aberto (rascunho pronto em
+`docs/RELAÇÃO DE SUBOPERADORES — Versão para a Empresa-Cliente v1.0.md`,
+falta só o envio).
 
 **16. Dependências**
 

@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import RHSection from "./RHSection";
 
-// TÓPICO 17 — RH, recorte mínimo do MVP (Prompt TÓPICO 17 §11): cadastro
-// de funcionários, vínculo com usuário, desligamento com revogação de
-// acesso. "Cadastro de equipes" já foi antecipado no TÓPICO 16
-// (equipes_instalacao) — ver cabeçalho da migration 20260916050000.
+// TÓPICO 17 — RH completo: cadastro de funcionários, vínculo com usuário,
+// desligamento com revogação de acesso (recorte mínimo, migration
+// 20260916050000), mais documentos/EPI/habilitações e afastamentos/
+// férias (§6-7, migration 20261006000000). "Cadastro de equipes" já foi
+// antecipado no TÓPICO 16 (equipes_instalacao).
 export default async function RHPage() {
   const supabase = await createClient();
 
@@ -25,10 +26,12 @@ export default async function RHPage() {
     );
   }
 
-  const [{ data: funcionarios }, { data: unidades }, { data: profiles }] = await Promise.all([
+  const [{ data: funcionarios }, { data: unidades }, { data: profiles }, { data: documentos }, { data: afastamentos }] = await Promise.all([
     supabase.from("funcionarios").select("*").order("nome"),
     supabase.from("company_units").select("id, name").eq("active", true).order("name"),
     supabase.from("profiles").select("id, display_name, login_identifier").eq("active", true).order("display_name"),
+    supabase.from("funcionario_documentos").select("*").order("created_at", { ascending: false }),
+    supabase.from("funcionario_afastamentos").select("*").order("data_inicio", { ascending: false }),
   ]);
 
   return (
@@ -41,7 +44,14 @@ export default async function RHPage() {
           Dados pessoais sensíveis (LGPD) — visível só a quem tem permissão explícita.
         </p>
 
-        <RHSection rows={funcionarios ?? []} unidades={unidades ?? []} profiles={profiles ?? []} canManage={!!canManage} />
+        <RHSection
+          rows={funcionarios ?? []}
+          unidades={unidades ?? []}
+          profiles={profiles ?? []}
+          documentos={documentos ?? []}
+          afastamentos={afastamentos ?? []}
+          canManage={!!canManage}
+        />
       </div>
     </main>
   );

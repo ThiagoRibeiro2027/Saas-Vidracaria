@@ -1,14 +1,21 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.4\
+**Versão:** 2.9\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
 resolvida, ver nota no próprio §4.7; §4.3 revisado em 2026-09-19 —
-ampliação de escopo do TÓPICO 10)\
+ampliação de escopo do TÓPICO 10; §4.17 revisado em 2026-09-23 —
+recorte mínimo do TÓPICO 13, Fase 1; §4.16 revisado em 2026-09-23 —
+Fase 2, ainda básica, do TÓPICO 12; §4.18 revisado em 2026-09-23 —
+recebimento leve de material, Fase D do plano de fila de
+produção/peças/suprimentos; §4.5 revisado em 2026-09-23 — motor de
+regras básico, Fase G do mesmo plano; §4.6 e §4.18 revisados em
+2026-09-23 — escopo completo do módulo de Compras, ver ADR-011)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
-**Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007 e ADR-008
+**Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
+ADR-011
 
 **1. Contexto**
 
@@ -364,6 +371,46 @@ Não fazem parte do MVP:
 
 - otimização matemática avançada.
 
+**Ampliação de escopo — motor de regras básico, Fase G (23/09/2026 —
+decisão do responsável do produto via chat).** O Prompt TÓPICO 5 (54
+seções) chama de "MVP" (§50) um PDM/PLM completo — Produto×Projeto,
+biblioteca técnica como módulo próprio, configurador de produto,
+motor de regras, BOM sugerida→definitiva com workflow de aprovação
+separado, versionamento de regras, "Solicitação de Engenharia" como
+fluxo à parte, CMV técnico, fila de Engenharia. Nada disso é aprovado
+por este parágrafo — o texto acima desta seção (composição,
+componentes, materiais, quantidades, características técnicas,
+necessidades de produção/materiais, revisões, histórico) continua
+sendo o real corte de MVP da Engenharia, e é isso que já foi
+implementado nas Fases A/E/F do plano de evolução da BOM leve
+(peças/composição hierárquica com revisão básica, e configurador de
+características por peça).
+
+O que passa a fazer parte do MVP, de forma simplificada, é só um
+**motor de regras básico**: regra = 1 condição (uma característica já
+configurada na peça, um operador de comparação, um valor) → 1 ação
+sobre a composição da peça (ajustar quantidade de um material,
+adicionar material, ou remover material). Regras são dados
+configuráveis (tabela, não código), cada regra é imutável uma vez
+criada — "editar" uma regra cria uma nova, vinculada à anterior, que é
+desativada; nada é sobrescrito, preservando o princípio do Prompt
+TÓPICO 5 §14 ("nova versão de regra não altera projetos históricos").
+Uma função de simulação mostra o que as regras ativas sugeririam para
+um pedido_item específico, comparando com a composição base — **o
+sistema sugere, a Engenharia decide** (Prompt TÓPICO 5 §13, princípio
+adotado integralmente): nenhuma regra escreve na composição real da
+peça automaticamente nesta fase.
+
+Continua fora do MVP após esta ampliação, exatamente como antes: mais
+de uma condição combinada por regra (E/OU), motor avançado de regras,
+configurador de produto como tela própria além dos campos já cobertos
+pela Fase F, Produto×Projeto, biblioteca técnica como módulo dedicado,
+workflow de aprovação/liberação separado do que já existe em Pedidos/
+Produção, "Solicitação de Engenharia", CMV técnico, fila de
+Engenharia, e a aplicação automática da sugestão na composição real
+(BOM sugerida→definitiva com workflow de revisão — fase futura
+distinta, mediante nova aprovação).
+
 **4.6 Estoque**
 
 Incluído:
@@ -396,6 +443,37 @@ Incluído:
 
 O estoque deverá refletir as necessidades do fluxo operacional e
 preservar a integridade das quantidades.
+
+**Ampliação de escopo — estoque dimensional e conversão de unidade
+completa, Fase 0 da ADR-011 (23/09/2026 — decisão do responsável do
+produto via chat).** T6 modela saldo como **escalar** por decisão
+original (TÓPICO 6: "saldo é ESCALAR... não peça física individual") —
+decisão que continua valendo, sem alteração de comportamento, para todo
+item que não pedir o contrário.
+
+Esta emenda autoriza, de forma aditiva, dois mecanismos exigidos pelo
+módulo de Compras completo (ADR-011, TÓPICO 7 §5/§6/§9): controle de
+estoque por **peça física individual** (barra, chapa, bobina — com
+comprimento/área/peso restante e sobra reaproveitável) e as
+**propriedades físicas de item** (densidade, espessura, peso por
+metro/por área) necessárias a uma conversão de unidade **dimensional
+completa** (ex.: metro linear → kg via densidade linear, área → peso) —
+não um fator de conversão fixo.
+
+Nada disso se aplica a item que não optar por controle por peça: o
+modelo escalar de `estoque_saldos` continua servindo, sem alteração de
+comportamento, todo item e todo módulo que já o consome hoje (Estoque,
+Produção, Suprimentos, Fila de Produção). O controle dimensional é
+aditivo — não substitui, não migra e não obriga a migração de
+`estoque_saldos`.
+
+Continua fora desta emenda: rastreamento de lote/série/certificado de
+qualidade por peça (isso é Recebimento, escopo da ADR-011, não deste
+controle de saldo) e qualquer forma de otimização de corte/nesting sobre
+as peças e sobras controladas por esta emenda — a vedação do TÓPICO 4
+§54/deste ADR §4.7/§5 à otimização matemática de corte permanece
+integralmente; o controle dimensional de estoque autorizado aqui é só
+saldo/posição/sobra, nunca decisão de corte.
 
 **4.7 PCP / Produção**
 
@@ -869,12 +947,103 @@ Não fazem parte do MVP:
 
 - indicadores avançados de desempenho.
 
+**Ampliação de escopo — Fase 2, ainda básica (23/09/2026 — decisão do
+responsável do produto via chat).** O Prompt TÓPICO 12 (49 seções) é,
+do início ao fim, uma plataforma analítica completa — KPI versionado,
+drill-down, construtor de dashboards, alertas, Cockpit Executivo,
+benchmark, Assistente Analítico em linguagem natural — e continua
+integralmente fora do MVP por este parágrafo: nada disso é aprovado
+agora.
+
+O que passa a fazer parte do MVP, de forma simplificada, é só:
+
+- **Quatro indicadores calculados simples**, direto sobre o schema que
+  já existe, sem nenhuma tabela nova: ticket médio (TÓPICO 12 §14 —
+  valor liberado ÷ pedidos liberados), taxa de conversão orçamento→
+  pedido (§14 "Cotações", simplificada para contagem de orçamentos com
+  pedido vinculado ÷ total de orçamentos no período), taxa de não
+  conformidade (§18 — inspeções reprovadas ÷ total de inspeções no
+  período), e OTIF básico (§19 — só "no prazo" e "integral", comparando
+  `pedidos.previsao_entrega` com a data em que a expedição saiu;
+  simplificado — sem separar por transportadora/região/rota).
+
+- **Filtro de período** (§6, só o recorte "período personalizado" via
+  data de início/fim) aplicado ao dashboard operacional inteiro
+  (recorte mínimo e os quatro indicadores acima) — sem os períodos
+  pré-definidos do §6 (hoje/semana/mês/trimestre/etc.), sem comparação
+  com período anterior, meta, orçamento ou média histórica (isso seria
+  "análise temporal", §8, que continua fora).
+
+Continuam fora do MVP após esta ampliação, exatamente como antes: KPI
+versionado com definição centralizada (§4), os demais filtros e
+períodos pré-definidos (§5-7 além do que foi listado acima), análise
+temporal/tendência/sazonalidade (§8), drill-down (§9), análise de
+desvios e de impacto (§10-11), saúde dos processos (§12), rentabilidade
+(§13 — exigiria custo de produção que não existe no schema), os
+dashboards completos de cada área além dos quatro indicadores acima
+(§14-20), Cockpit Executivo (§21), prioridades/oportunidades/riscos
+(§22-25), metas (§26), construtor de dashboards (§27-28), alertas
+(§29-30), notificações de BI (§31), relatórios agendados/exportação
+(§32-33), compartilhamento (§34), benchmark entre unidades (§35),
+snapshots históricos (§36), comentários gerenciais (§37), e o
+Assistente Analítico em linguagem natural (§38-39). Governança de
+permissão continua só `bi.view` — a separação de três níveis do §41
+(visualizar/configurar/administrar) só faz sentido quando houver algo
+para configurar ou administrar (dashboards, metas, alertas), que
+continua fora.
+
 **4.17 Integrações**
 
 Somente integrações indispensáveis ao funcionamento do MVP serão
 incluídas.
 
 Integrações não essenciais ficam para fases posteriores.
+
+**Recorte mínimo — Fase 1 (23/09/2026 — decisão do responsável do
+produto via chat).** O TÓPICO 13 tem 40 seções e nenhum recorte de MVP
+próprio como o TÓPICO 18 tem em seu §12; esta é a primeira fase
+aprovada, cobrindo só a espinha dorsal técnica de integrações, sem
+nenhum conector externo real ligado:
+
+- **Central de Integrações (TÓPICO 13 §2):** registro de integrações
+  por empresa, catálogo interno (nome, categoria, status
+  ativo/inativo, ambiente), ativar/desativar sem apagar dados ou
+  histórico existente; acesso via `has_permission()`.
+
+- **Catálogo de integrações (§3):** categorias do próprio doc
+  (ERP, bancos, fiscal, pagamentos, transportadoras, logística, BI,
+  e-commerce, marketplaces, APIs, outros), mas sem nenhum conector
+  implementado — constar no catálogo não ativa nada para a empresa.
+
+- **Eventos internos entre módulos (§4),** apenas nível **Informativo**
+  (§15): detectar → registrar → informar. Sem execução automática de
+  efeitos operacionais/financeiros nesta fase — isso é nível
+  Automático, fora de escopo.
+
+- **Infraestrutura técnica genérica:** fila assíncrona simples (§16),
+  idempotência (§18), retry com backoff para falha temporária e "erro
+  permanente → intervenção necessária" (§17), logs com identificador
+  de correlação (§19), auditoria diferenciando ação automática de
+  decisão do operador (§20).
+
+- **Fonte oficial configurável por tipo de informação/processo (§9):**
+  só o registro da configuração por empresa; reconciliação automática
+  entre sistemas (§11) fica fora.
+
+- **Estrutura vazia (tabelas/hooks preparatórios, sem processar nada
+  de verdade)** para documentos fiscais (NF-e, §5) e ERP externo (§8):
+  prepara o "gancho" sem nenhum conector real ligado, sem captura
+  automática de XML, sem sincronização de fato — mesmo padrão já usado
+  para o gancho do otimizador de corte externo (§40).
+
+Fica fora desta fase, entrando depois dentro do próprio TÓPICO 13
+mediante nova aprovação: processamento real de NF-e/fiscal (captura,
+conferência, status por item — §5.1 a §5.7), bancos/PIX/boletos (§6),
+cartões e meios de pagamento (§7), APIs de terceiros com autenticação
+real (§13), Webhooks recebidos/enviados (§14), certificados digitais
+(§22), reconciliação automática entre sistemas (§11), importação/
+exportação genérica (§29-30, além do que já existe em §4.2.1), e o
+gancho do otimizador de corte externo (§40).
 
 **4.18 Abastecimento / Compras**
 
@@ -893,11 +1062,71 @@ MVP, o sistema deverá:
 
 A efetivação da compra poderá ocorrer fora do SaaS durante o MVP.
 
+**Ampliação de escopo — recebimento leve, Fase D (23/09/2026 — decisão
+do responsável do produto via chat).** O módulo completo de Compras
+continua integralmente fora do MVP, sem nenhuma exceção: continuam fora
+cadastro de fornecedor com dados/condições de compra, cotação e
+comparação de preço, negociação, pedido de compra formal com termos
+comerciais, aprovação por alçada de compra, compra recorrente/contrato,
+orçado×comprometido×realizado, mapa de compras futuras, avaliação de
+fornecedor e o próprio conceito de Pedido de Compra como documento —
+nada disso é aprovado agora.
+
+O que passa a fazer parte do MVP, de forma simplificada, é só fechar o
+ciclo que o parágrafo acima já abre ("permitir acompanhamento da
+necessidade") com um passo a mais depois de "atendida": registrar que o
+material referente a uma necessidade de compra foi efetivamente
+recebido, com a quantidade recebida, e dar entrada física no estoque a
+partir disso — reaproveitando o mecanismo de ajuste de saldo que já
+existe (TÓPICO 6, `ajustar_saldo()`), sem criar um mecanismo de entrada
+de estoque novo.
+
+Continua fora desta ampliação, ficando para uma fase futura do próprio
+TÓPICO 7 mediante nova aprovação: nota fiscal de entrada vinculada
+automaticamente ao recebimento (isso é TÓPICO 13, captura/conferência
+fiscal, ADR-004), conferência de qualidade do material recebido,
+recebimento parcial em múltiplas remessas com rastreamento individual
+por remessa, divergência entre pedido/nota/recebido, devolução ao
+fornecedor, controle de lote/série no recebimento, e quarentena. O
+recebimento aqui é só "a necessidade virou material disponível em
+estoque" — um estado a mais no ciclo de vida da necessidade, não um
+processo de recebimento com conferência.
+
+**Ampliação de escopo — módulo completo de Compras, ADR-011 (23/09/2026
+— decisão do responsável do produto via chat).** As duas ampliações
+acima deste parágrafo (recebimento leve, Fase D) permanecem válidas e
+implementadas — não são revogadas por esta ampliação.
+
+Esta nova ampliação as supera em abrangência: a frase "o módulo completo
+de Compras continua integralmente fora do MVP... nada disso é aprovado
+agora", registrada na ampliação de recebimento leve acima, deixa de
+valer a partir desta data. Você aprovou explicitamente o **escopo
+literal completo** do `docs/Prompt TÓPICO 7 - SUPRIMENTOS E COMPRAS.md`
+(39 seções — cadastro de fornecedor com dados/condições de compra,
+cotação e comparação de preço, negociação, pedido de compra formal com
+termos comerciais, aprovação por alçada de compra, compra
+recorrente/contrato, orçado×comprometido×realizado, mapa de compras
+futuras, avaliação de fornecedor, recebimento completo com
+conferência/lote/divergência/devolução, e o próprio conceito de Pedido
+de Compra como documento).
+
+O detalhamento completo de escopo, as fases de entrega e o que cada fase
+inclui/exclui estão registrados em **ADR-011 — Compras**, que passa a
+governar este módulo — este §4.18 fica, a partir de agora, só com a
+remissão. `necessidades_compra` e o ciclo leve (`aberta→atendida→
+recebida/cancelada`) das duas ampliações acima continuam existindo e em
+produção; a ADR-011 define como esse ciclo se encaixa no fluxo completo
+novo (convergem no mesmo registro — uma Solicitação de Compra consome a
+necessidade via `atender_necessidade_compra()` já existente, sem
+transição paralela).
+
+Continua fora, mesmo com o escopo completo aprovado, por pertencer a
+outro ADR: nota fiscal de entrada vinculada automaticamente ao
+recebimento (TÓPICO 13, captura/conferência fiscal — ADR-004).
+
 **5. Funcionalidades explicitamente fora do MVP**
 
 Ficam fora do MVP:
-
-- Compras completas;
 
 - Qualidade avançada;
 
@@ -922,6 +1151,12 @@ Ficam fora do MVP:
   mesmo após a ampliação de escopo de 2026-09-16 registrada no §4.7);
 
 - OEE (não previsto no TÓPICO 4 e não incluído por esta revisão).
+
+**Revisado em 2026-09-23:** "Compras completas" deixa de constar nesta
+lista — passa a ser escopo aprovado por decisão do responsável do
+produto, registrada no §4.18 e detalhada na ADR-011. Nenhuma regra de
+negócio nova é criada por esta revisão em si; a autorização e o
+detalhamento estão nas emendas ao §4.6/§4.18 e na ADR-011.
 
 **Revisado em 2026-09-16:** PCP avançado, sequenciamento avançado,
 simulação de capacidade e manutenção deixam de constar nesta lista —
