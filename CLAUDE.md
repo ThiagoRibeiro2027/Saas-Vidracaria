@@ -52,3 +52,28 @@ que foi corrigido no Security Gate P0:
     autorização — nunca só o MIME informado pelo cliente.
 13. Nenhuma feature é considerada pronta para produção antes dos seus
     testes de segurança passarem.
+
+## Banco e ambiente de trabalho
+
+O projeto é desenvolvido em mais de uma máquina, contra **um único banco**:
+o projeto Supabase na nuvem, ref `kisjfapdbyhgszvxyugc`. O código se
+sincroniza pelo git; o banco, pelas migrations. Só funciona se as duas
+pontas andarem juntas.
+
+1. **Migration só existe quando está aplicada.** Ao criar migration em
+   `supabase/migrations/`, rodar `npx supabase db push` antes de encerrar a
+   sessão — no mesmo fôlego do commit, não depois. Migration commitada e
+   não aplicada quebra a outra máquina, e isso já aconteceu duas vezes
+   (a `20261028000000`, um fix de RLS, e as quatro do TÓPICO 13/18).
+2. **Ao começar a trabalhar**, rodar `npx supabase migration list` e avisar
+   se houver pendência antes de escrever qualquer código — o banco pode ter
+   ficado atrás do que a outra máquina commitou.
+3. **Nunca alterar estrutura pelo painel do Supabase.** Toda mudança vira
+   migration versionada. Alteração feita na mão não existe para a outra
+   máquina e aparece como drift (`remote` sem `local`), que é o caso difícil
+   de desfazer.
+4. **Não usar `supabase start`** (banco local em Docker). Com duas máquinas,
+   bancos locais divergem em silêncio. O banco é o da nuvem, sempre.
+5. `.env.local` não é versionado e é configurado à mão em cada máquina — as
+   variáveis estão documentadas em `.env.example`. A `SUPABASE_SERVICE_ROLE_KEY`
+   ignora o RLS: nunca em commit, nunca em log, nunca no browser.
