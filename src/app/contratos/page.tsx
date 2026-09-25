@@ -1,17 +1,21 @@
 import { createClient } from "@/lib/supabase/server";
 import ContratosSection from "./ContratosSection";
 
-// TÓPICO 18 — Contratos, recorte mínimo do MVP (§12): estrutura genérica
-// única com os três tipos (cliente/fornecedor/funcionário), vigência e
-// ciclo de vida básico (rascunho → vigente → encerrado). Sem aprovação
-// por alçada, garantia, vínculo financeiro detalhado, anexos ou alertas
-// de vencimento nesta fase (ver cabeçalho da migration 20261005000000).
+// TÓPICO 18 — Contratos completo (§4-6): estrutura genérica única com os
+// três tipos (cliente/fornecedor/funcionário), ciclo de vida completo
+// (rascunho → em aprovação → vigente → suspenso → encerrado/cancelado)
+// com alçada de aprovação, garantia (só cliente) e vínculo financeiro
+// detalhado (contrato → título financeiro, só cliente vigente). Anexos e
+// alertas de vencimento seguem fora desta fase (ver cabeçalho da migration
+// 20261029000000).
 export default async function ContratosPage() {
   const supabase = await createClient();
 
-  const [{ data: canView }, { data: canManage }] = await Promise.all([
+  const [{ data: canView }, { data: canManage }, { data: canAprovar }, { data: canGerarTitulos }] = await Promise.all([
     supabase.rpc("has_permission", { p_resource: "contratos", p_action: "view" }),
     supabase.rpc("has_permission", { p_resource: "contratos", p_action: "manage" }),
+    supabase.rpc("has_permission", { p_resource: "contratos", p_action: "aprovar" }),
+    supabase.rpc("has_permission", { p_resource: "financeiro", p_action: "manage" }),
   ]);
 
   if (!canView) {
@@ -26,7 +30,7 @@ export default async function ContratosPage() {
     );
   }
 
-  const [{ data: contratos }, { data: pessoas }, { data: papeis }, { data: obras }, { data: pedidos }, { data: funcionarios }] =
+  const [{ data: contratos }, { data: pessoas }, { data: papeis }, { data: obras }, { data: pedidos }, { data: funcionarios }, { data: titulos }] =
     await Promise.all([
       supabase.from("contratos").select("*").order("created_at", { ascending: false }),
       supabase.from("pessoas").select("id, nome").order("nome"),
@@ -34,12 +38,14 @@ export default async function ContratosPage() {
       supabase.from("obras").select("id, nome, pessoa_id").order("nome"),
       supabase.from("pedidos").select("id, numero, pessoa_id").order("numero"),
       supabase.from("funcionarios").select("id, nome").order("nome"),
+      supabase.from("titulos_financeiros").select("contrato_id").not("contrato_id", "is", null),
     ]);
 
   const clienteIds = new Set((papeis ?? []).filter((pp) => pp.papel === "CLIENTE" && pp.ativo).map((pp) => pp.pessoa_id));
   const fornecedorIds = new Set((papeis ?? []).filter((pp) => pp.papel === "FORNECEDOR" && pp.ativo).map((pp) => pp.pessoa_id));
   const clientes = (pessoas ?? []).filter((p) => clienteIds.has(p.id));
   const fornecedores = (pessoas ?? []).filter((p) => fornecedorIds.has(p.id));
+  const contratoIdsComTitulo = new Set((titulos ?? []).map((t) => t.contrato_id as string));
 
   return (
     <main style={pageStyle}>
@@ -47,9 +53,9 @@ export default async function ContratosPage() {
         <p style={eyebrowStyle}>TÓPICO 18 — CONTRATOS</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Contratos</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do MVP: estrutura genérica para contratos com cliente, fornecedor e
-          funcionário/prestador, vigência e ciclo de vida básico (rascunho → vigente → encerrado).
-          Sem aprovação por alçada, garantia ou vínculo financeiro detalhado nesta fase.
+          Estrutura genérica para contratos com cliente, fornecedor e funcionário/prestador. Ciclo
+          de vida completo com alçada de aprovação, garantia (só cliente) e vínculo financeiro
+          detalhado (título financeiro gerado a partir de contrato vigente com cliente).
         </p>
 
         <ContratosSection
@@ -60,7 +66,10 @@ export default async function ContratosPage() {
           obras={obras ?? []}
           pedidos={pedidos ?? []}
           funcionarios={funcionarios ?? []}
+          contratoIdsComTitulo={contratoIdsComTitulo}
           canManage={!!canManage}
+          canAprovar={!!canAprovar}
+          canGerarTitulos={!!canGerarTitulos}
         />
       </div>
     </main>

@@ -19,6 +19,12 @@ export async function upsertContratoAction(formData: FormData) {
   if (valor !== null && !Number.isFinite(valor)) throw new Error("Valor inválido.");
   const formaPagamento = String(formData.get("forma_pagamento") ?? "").trim() || null;
   const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
+  const garantiaInicio = String(formData.get("garantia_inicio") ?? "").trim() || null;
+  const garantiaFim = String(formData.get("garantia_fim") ?? "").trim() || null;
+  const parcelasRaw = String(formData.get("parcelas") ?? "").trim();
+  const parcelas = parcelasRaw ? Number(parcelasRaw) : null;
+  if (parcelas !== null && !Number.isFinite(parcelas)) throw new Error("Número de parcelas inválido.");
+  const reajustePrevisto = String(formData.get("reajuste_previsto") ?? "").trim() || null;
 
   if (!tipo) throw new Error("Tipo de contrato é obrigatório.");
   if (!objeto) throw new Error("Objeto do contrato é obrigatório.");
@@ -38,18 +44,80 @@ export async function upsertContratoAction(formData: FormData) {
     p_valor: valor,
     p_forma_pagamento: formaPagamento,
     p_observacoes: observacoes,
+    p_garantia_inicio: garantiaInicio,
+    p_garantia_fim: garantiaFim,
+    p_parcelas: parcelas,
+    p_reajuste_previsto: reajustePrevisto,
   });
   if (error) throw new Error(error.message);
 
   revalidatePath("/contratos");
 }
 
-export async function ativarContratoAction(formData: FormData) {
+export async function enviarContratoParaAprovacaoAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) throw new Error("Contrato inválido.");
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("ativar_contrato", { p_id: id });
+  const { error } = await supabase.rpc("enviar_contrato_para_aprovacao", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/contratos");
+}
+
+export async function aprovarContratoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Contrato inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("aprovar_contrato", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/contratos");
+}
+
+export async function reprovarContratoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!id) throw new Error("Contrato inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("reprovar_contrato", { p_id: id, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/contratos");
+}
+
+export async function suspenderContratoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!id) throw new Error("Contrato inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("suspender_contrato", { p_id: id, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/contratos");
+}
+
+export async function retomarContratoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Contrato inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("retomar_contrato", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/contratos");
+}
+
+export async function cancelarContratoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!id) throw new Error("Contrato inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancelar_contrato", { p_id: id, p_motivo: motivo });
   if (error) throw new Error(error.message);
 
   revalidatePath("/contratos");
@@ -65,4 +133,31 @@ export async function encerrarContratoAction(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/contratos");
+}
+
+export async function gerarTitulosContratoAction(formData: FormData) {
+  const contratoId = String(formData.get("contrato_id") ?? "");
+  const valores = formData.getAll("parcela_valor").map((v) => Number(v));
+  const vencimentos = formData.getAll("parcela_vencimento").map((v) => String(v));
+  const condicoes = formData.getAll("parcela_condicao").map((v) => String(v).trim() || null);
+
+  if (!contratoId || valores.length === 0 || valores.length !== vencimentos.length) {
+    throw new Error("Contrato e ao menos uma parcela (valor + vencimento) são obrigatórios.");
+  }
+
+  const parcelas = valores.map((valor, i) => ({
+    valor,
+    vencimento: vencimentos[i],
+    condicao_pagamento: condicoes[i],
+  }));
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("gerar_titulos_contrato", {
+    p_contrato_id: contratoId,
+    p_parcelas: parcelas,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/contratos");
+  revalidatePath("/financeiro");
 }
