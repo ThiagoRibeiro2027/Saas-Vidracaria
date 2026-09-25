@@ -23,9 +23,11 @@ export default async function SuprimentosPage() {
     );
   }
 
-  const [{ data: necessidades }, { data: itens }] = await Promise.all([
+  const [{ data: necessidades }, { data: itens }, { data: pedidos }, { data: ordensProducao }] = await Promise.all([
     supabase.from("necessidades_compra").select("*").order("created_at", { ascending: false }),
     supabase.from("itens").select("id, codigo, descricao, unidade_principal").eq("situacao", "ativo").order("codigo"),
+    supabase.from("pedidos").select("id, numero").eq("status", "liberado").order("numero"),
+    supabase.from("ordens_producao").select("id, numero, pedido_id").order("numero"),
   ]);
 
   return (
@@ -34,11 +36,19 @@ export default async function SuprimentosPage() {
       <h1 className="mt-1 text-lg font-semibold text-text">Suprimentos e Compras</h1>
       <p className="mt-1 text-sm text-text">
         Recorte mínimo do MVP: registrar necessidade de material e acompanhar até atendida ou
-        cancelada. Sem cotação, pedido de compra ou recebimento.
+        cancelada. Sem cotação, pedido de compra ou recebimento. Necessidades também podem ser
+        geradas automaticamente a partir de um pedido ou ordem de produção com peças cadastradas
+        (Fase C, plano de 23/09/2026) — item sem peça associada fica de fora, siga lançando manual.
       </p>
 
       <div className="mt-6">
-        <SuprimentosSection rows={necessidades ?? []} itens={itens ?? []} canManage={!!canManage} />
+        <SuprimentosSection
+          rows={necessidades ?? []}
+          itens={itens ?? []}
+          pedidos={pedidos ?? []}
+          ordensProducao={ordensProducao ?? []}
+          canManage={!!canManage}
+        />
       </div>
     </div>
   );

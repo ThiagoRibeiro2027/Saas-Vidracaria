@@ -1,9 +1,11 @@
 // Testes automatizados do TÓPICO 17 — RH: cadastro de funcionários,
 // vínculo com usuário, desligamento com revogação de acesso (recorte
-// mínimo, 20260916050000) e, a partir daqui, certificações/treinamentos,
-// EPI, habilitações e afastamentos/férias (recorte completo,
-// 20261004000000_topico17_rh_completo.sql). Sem folha/encargos/rescisão/
-// escala/ponto (§8, fora de escopo do módulo).
+// mínimo, 20260916050000) e, a partir daqui, documento genérico
+// (admissão/certificação/EPI/habilitação) e afastamentos/férias (recorte
+// completo, 20261006000000_topico17_rh_completo.sql), com vínculo
+// opcional de habilitação a um recurso produtivo (complemento,
+// 20261029000000). Sem folha/encargos/rescisão/escala/ponto (§8, fora de
+// escopo do módulo).
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-rh.mjs
 
@@ -16,6 +18,14 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+// PNG 1x1 válido — mesma fixture de test-storage-rls.mjs, pra testar o
+// gate de rh.manage/rh.view em cima de anexo de arquivo (entity_type=
+// 'funcionario_documento').
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 let passed = 0;
 let failed = 0;
@@ -84,6 +94,7 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 }
 
 async function main() {
+  const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de rh, outro tenant)...");
   const admTenant = await createTenant("rh-test-admin", "RH Admin Teste", "17r01", "ADMIN");
   // QUALIDADE administra Qualidade, não RH — prova a autoridade separada
@@ -230,6 +241,8 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", ["rh.funcionario_admitido", "rh.funcionario_atualizado", "rh.funcionario_desligado"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     for (const action of ["rh.funcionario_admitido", "rh.funcionario_atualizado", "rh.funcionario_desligado"]) {
@@ -237,14 +250,9 @@ async function main() {
     }
   }
 
-  console.log("\n18. Massa de dados p/ recorte completo — funcionário ativo e recurso produtivo");
-  let funcionarioAtivoId;
+  console.log("\n18. Massa de dados — funcionário ativo e recurso produtivo pra testar documentos/afastamentos (§6-7)");
   let recursoId;
   {
-    const { data } = await admTenant.client.rpc("upsert_funcionario", { p_id: null, p_nome: "Funcionário Ativo Teste" });
-    funcionarioAtivoId = data;
-    check("funcionário ativo criado", !!funcionarioAtivoId);
-
     const { data: recurso } = await admin
       .from("recursos_produtivos")
       .insert({ company_id: admTenant.company.id, codigo: "FORNO-TEMPLE-01", nome: "Forno de têmpera", tipo: "maquina" })
@@ -253,177 +261,278 @@ async function main() {
     recursoId = recurso?.id;
     check("recurso produtivo (máquina) criado", !!recursoId);
 
-    const { data: recursoNaoEquip } = await admin
-      .from("recursos_produtivos")
-      .insert({ company_id: admTenant.company.id, codigo: "EQUIPE-01", nome: "Equipe de corte", tipo: "equipe" })
-      .select("id")
-      .single();
-    var recursoEquipeId = recursoNaoEquip?.id;
+    var recursoEquipeId = (
+      await admin
+        .from("recursos_produtivos")
+        .insert({ company_id: admTenant.company.id, codigo: "EQUIPE-01", nome: "Equipe de corte", tipo: "equipe" })
+        .select("id")
+        .single()
+    ).data?.id;
   }
 
-  console.log("\n19. funcionario_certificacoes — permissão, validação e ciclo completo");
-  let certificacaoId;
+  const { data: funcionarioAtivoId } = await admTenant.client.rpc("upsert_funcionario", { p_id: null, p_nome: "Funcionário Ativo Teste" });
+  check("funcionário ativo criado", !!funcionarioAtivoId);
+
+  console.log("\n19. registrar_documento_funcionario() — permissão, validação, sucesso");
+  let documentoId;
   {
-    const { error: e1 } = await noPermTenant.client.rpc("upsert_funcionario_certificacao", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo: "treinamento_seguranca",
-      p_nome: "NR-12", p_data_conclusao: "2027-01-01",
+    const { error: eNoPerm } = await noPermTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "Óculos de proteção",
     });
-    check("sem rh.manage não registra certificação", !!e1);
+    check("sem rh.manage não registra documento", !!eNoPerm);
 
-    const { error: e2 } = await admTenant.client.rpc("upsert_funcionario_certificacao", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo: "invalido",
-      p_nome: "X", p_data_conclusao: "2027-01-01",
-    });
-    check("tipo inválido é rejeitado", !!e2);
-
-    const { error: e3 } = await admTenant.client.rpc("upsert_funcionario_certificacao", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo: "certificacao",
-      p_nome: "X", p_data_conclusao: "2027-01-10", p_data_validade: "2027-01-01",
-    });
-    check("data_validade anterior à data_conclusao é rejeitada", !!e3);
-
-    const { data, error } = await admTenant.client.rpc("upsert_funcionario_certificacao", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo: "treinamento_seguranca",
-      p_nome: "NR-12 — Segurança em máquinas", p_data_conclusao: "2027-01-01", p_data_validade: "2029-01-01",
-    });
-    check("cria certificação/treinamento com sucesso", !error && !!data);
-    certificacaoId = data;
-
-    const { error: eEdit } = await admTenant.client.rpc("upsert_funcionario_certificacao", {
-      p_id: certificacaoId, p_funcionario_id: funcionarioAtivoId, p_tipo: "treinamento_seguranca",
-      p_nome: "NR-12 — Segurança em máquinas (revalidado)", p_data_conclusao: "2027-01-01", p_data_validade: "2030-01-01",
-    });
-    check("edita certificação existente", !eEdit);
-
-    const { error: eDesligado } = await admTenant.client.rpc("upsert_funcionario_certificacao", {
-      p_id: null, p_funcionario_id: funcionarioId, p_tipo: "certificacao",
-      p_nome: "Não deveria entrar", p_data_conclusao: "2027-01-01",
-    });
-    check("funcionário desligado não recebe nova certificação", !!eDesligado);
-  }
-
-  console.log("\n20. funcionario_epis — validação e ciclo completo");
-  let epiId;
-  {
-    const { error: eSemData } = await admTenant.client.rpc("upsert_funcionario_epi", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo_epi: "Óculos de proteção", p_data_entrega: null,
-    });
-    check("EPI sem data de entrega é rejeitado", !!eSemData);
-
-    const { data, error } = await admTenant.client.rpc("upsert_funcionario_epi", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo_epi: "Óculos de proteção",
-      p_data_entrega: "2027-01-05", p_ca: "12345", p_data_validade: "2028-01-05",
-    });
-    check("cria EPI com sucesso", !error && !!data);
-    epiId = data;
-
-    const { error: eRemove } = await admTenant.client.rpc("remover_funcionario_epi", { p_id: epiId });
-    check("remove EPI", !eRemove);
-    const { data: apagado } = await admin.from("funcionario_epis").select("id").eq("id", epiId).maybeSingle();
-    check("EPI removido não existe mais", !apagado);
-  }
-
-  console.log("\n21. funcionario_habilitacoes — recurso precisa ser máquina/equipamento, dono do tenant, sem duplicidade");
-  let habilitacaoId;
-  {
-    const { error: eOutroTenant } = await admTenant.client.rpc("upsert_funcionario_habilitacao", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_recurso_produtivo_id: "00000000-0000-0000-0000-000000000000", p_data_obtencao: "2027-01-01",
-    });
-    check("recurso inexistente é rejeitado", !!eOutroTenant);
-
-    const { error: eTipoErrado } = await admTenant.client.rpc("upsert_funcionario_habilitacao", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_recurso_produtivo_id: recursoEquipeId, p_data_obtencao: "2027-01-01",
-    });
-    check("recurso do tipo 'equipe' (não máquina/equipamento) é rejeitado", !!eTipoErrado);
-
-    const { data, error } = await admTenant.client.rpc("upsert_funcionario_habilitacao", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_recurso_produtivo_id: recursoId, p_data_obtencao: "2027-01-01", p_data_validade: "2029-01-01",
-    });
-    check("cria habilitação para máquina com sucesso", !error && !!data);
-    habilitacaoId = data;
-
-    const { error: eDuplicado } = await admTenant.client.rpc("upsert_funcionario_habilitacao", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_recurso_produtivo_id: recursoId, p_data_obtencao: "2027-02-01",
-    });
-    check("habilitação duplicada (mesmo funcionário+recurso) é rejeitada", !!eDuplicado);
-  }
-
-  console.log("\n22. funcionario_afastamentos — tipo, datas e ciclo completo (férias em curso)");
-  let afastamentoId;
-  {
-    const { error: eTipo } = await admTenant.client.rpc("upsert_funcionario_afastamento", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo: "licenca", p_data_inicio: "2027-03-01",
+    const { error: eTipo } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "invalido", p_nome: "x",
     });
     check("tipo inválido é rejeitado", !!eTipo);
 
-    const { error: eDatas } = await admTenant.client.rpc("upsert_funcionario_afastamento", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo: "afastamento", p_data_inicio: "2027-03-10", p_data_fim: "2027-03-01", p_motivo: "atestado",
+    const { error: eNome } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "",
+    });
+    check("nome vazio é rejeitado", !!eNome);
+
+    const { error: eValidade } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "Luvas", p_data_referencia: "2027-06-01", p_validade: "2027-01-01",
+    });
+    check("validade anterior à data de referência é rejeitada", !!eValidade);
+
+    const { error: eOutroFunc } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: "00000000-0000-0000-0000-000000000000", p_tipo: "epi", p_nome: "x",
+    });
+    check("funcionário inexistente é rejeitado", !!eOutroFunc);
+
+    const { error: eDesligado } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioId, p_tipo: "epi", p_nome: "x",
+    });
+    check("registrar documento para funcionário desligado é rejeitado", !!eDesligado);
+
+    const { data, error } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "Óculos de proteção",
+      p_data_referencia: "2027-01-10", p_validade: "2027-07-10", p_observacoes: "entregue no almoxarifado",
+    });
+    check("ADMIN registra documento (EPI)", !error && !!data);
+    documentoId = data;
+
+    const { data: row } = await admin.from("funcionario_documentos").select("*").eq("id", documentoId).single();
+    check("nasce 'ativo' com os dados corretos", row?.status === "ativo" && row?.tipo === "epi" && row?.nome === "Óculos de proteção");
+  }
+
+  console.log("\n20. cancelar_documento_funcionario() — permissão, sucesso, rejeita cancelar de novo");
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("cancelar_documento_funcionario", { p_id: documentoId });
+    check("sem rh.manage não cancela documento", !!eNoPerm);
+
+    const { error } = await admTenant.client.rpc("cancelar_documento_funcionario", { p_id: documentoId, p_motivo: "registrado errado" });
+    check("ADMIN cancela documento", !error);
+    const { data: row } = await admin.from("funcionario_documentos").select("status, motivo_cancelamento").eq("id", documentoId).single();
+    check("status vira cancelado com motivo salvo", row?.status === "cancelado" && row?.motivo_cancelamento === "registrado errado");
+
+    const { error: eDeNovo } = await admTenant.client.rpc("cancelar_documento_funcionario", { p_id: documentoId });
+    check("cancelar documento já cancelado é rejeitado", !!eDeNovo);
+  }
+
+  console.log("\n21. registrar_afastamento() — permissão, validação, sucesso (período em aberto)");
+  let afastamentoId;
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "afastamento", p_data_inicio: "2027-03-01",
+    });
+    check("sem rh.manage não registra afastamento", !!eNoPerm);
+
+    const { error: eTipo } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "invalido", p_data_inicio: "2027-03-01",
+    });
+    check("tipo inválido é rejeitado", !!eTipo);
+
+    const { error: eDatas } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "ferias", p_data_inicio: "2027-03-10", p_data_fim: "2027-03-01",
     });
     check("data_fim anterior à data_inicio é rejeitada", !!eDatas);
 
-    const { data, error } = await admTenant.client.rpc("upsert_funcionario_afastamento", {
-      p_id: null, p_funcionario_id: funcionarioAtivoId, p_tipo: "ferias", p_data_inicio: "2027-03-01",
+    const { error: eDesligado } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioId, p_tipo: "afastamento", p_data_inicio: "2027-03-01",
     });
-    check("registra férias em curso (sem data_fim)", !error && !!data);
+    check("registrar período para funcionário desligado é rejeitado", !!eDesligado);
+
+    const { data, error } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "afastamento", p_data_inicio: "2027-03-01", p_motivo: "atestado médico",
+    });
+    check("ADMIN registra afastamento em aberto", !error && !!data);
     afastamentoId = data;
 
-    const { error: eEncerra } = await admTenant.client.rpc("upsert_funcionario_afastamento", {
-      p_id: afastamentoId, p_funcionario_id: funcionarioAtivoId, p_tipo: "ferias", p_data_inicio: "2027-03-01", p_data_fim: "2027-03-30",
+    const { data: row } = await admin.from("funcionario_afastamentos").select("*").eq("id", afastamentoId).single();
+    check("nasce 'ativo', sem data_fim (em aberto)", row?.status === "ativo" && row?.data_fim === null && row?.tipo === "afastamento");
+  }
+
+  console.log("\n22. encerrar_afastamento() — permissão, sucesso, rejeita encerrar de novo");
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-03-15" });
+    check("sem rh.manage não encerra afastamento", !!eNoPerm);
+
+    const { error: eDataInvalida } = await admTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-02-01" });
+    check("encerrar com data_fim anterior à data_inicio é rejeitado", !!eDataInvalida);
+
+    const { error } = await admTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-03-15" });
+    check("ADMIN encerra período em aberto", !error);
+    const { data: row } = await admin.from("funcionario_afastamentos").select("data_fim").eq("id", afastamentoId).single();
+    check("data_fim preenchida", row?.data_fim === "2027-03-15");
+
+    const { error: eDeNovo } = await admTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-03-20" });
+    check("encerrar período que já tem data_fim é rejeitado", !!eDeNovo);
+  }
+
+  console.log("\n23. cancelar_afastamento() — permissão e sucesso");
+  {
+    const { data: feriasId } = await admTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "ferias", p_data_inicio: "2027-05-01", p_data_fim: "2027-05-20",
     });
-    check("encerra férias preenchendo data_fim", !eEncerra);
+
+    const { error: eNoPerm } = await noPermTenant.client.rpc("cancelar_afastamento", { p_id: feriasId });
+    check("sem rh.manage não cancela afastamento", !!eNoPerm);
+
+    const { error } = await admTenant.client.rpc("cancelar_afastamento", { p_id: feriasId, p_motivo: "cadastrado em duplicidade" });
+    check("ADMIN cancela período", !error);
+    const { data: row } = await admin.from("funcionario_afastamentos").select("status, motivo_cancelamento").eq("id", feriasId).single();
+    check("status vira cancelado com motivo salvo", row?.status === "cancelado" && row?.motivo_cancelamento === "cadastrado em duplicidade");
   }
 
-  console.log("\n23. SELECT das 4 tabelas novas exige rh.view (LGPD)");
+  console.log("\n24. SELECT em funcionario_documentos/funcionario_afastamentos exige rh.view + isolamento cross-tenant");
   {
-    for (const table of ["funcionario_certificacoes", "funcionario_epis", "funcionario_habilitacoes", "funcionario_afastamentos"]) {
-      const { data } = await noPermTenant.client.from(table).select("id");
-      check(`papel sem rh.view não lê ${table}`, (data ?? []).length === 0);
-    }
+    const { data: dSemPerm } = await noPermTenant.client.from("funcionario_documentos").select("id");
+    check("papel QUALIDADE não lê funcionario_documentos", (dSemPerm ?? []).length === 0);
+
+    const { data: aSemPerm } = await noPermTenant.client.from("funcionario_afastamentos").select("id");
+    check("papel QUALIDADE não lê funcionario_afastamentos", (aSemPerm ?? []).length === 0);
+
+    const { data: crossDoc } = await otherTenant.client.from("funcionario_documentos").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga documentos do tenant A", (crossDoc ?? []).length === 0);
+
+    const { data: crossAf } = await otherTenant.client.from("funcionario_afastamentos").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga afastamentos do tenant A", (crossAf ?? []).length === 0);
+
+    const { error } = await otherTenant.client.rpc("cancelar_afastamento", { p_id: afastamentoId });
+    check("tenant B não consegue cancelar afastamento do tenant A", !!error);
+
+    const { error: e2 } = await otherTenant.client.rpc("cancelar_documento_funcionario", { p_id: documentoId });
+    check("tenant B não consegue cancelar documento do tenant A", !!e2);
+
+    const { error: e3 } = await otherTenant.client.rpc("encerrar_afastamento", { p_id: afastamentoId, p_data_fim: "2027-04-01" });
+    check("tenant B não consegue encerrar afastamento do tenant A", !!e3);
+
+    // Injeção de referência cross-tenant: tenant B tenta registrar
+    // documento/afastamento apontando pra um funcionário do tenant A.
+    const { error: e4 } = await otherTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "hack",
+    });
+    check("tenant B não consegue registrar documento pro funcionário do tenant A", !!e4);
+
+    const { error: e5 } = await otherTenant.client.rpc("registrar_afastamento", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "afastamento", p_data_inicio: "2027-04-01",
+    });
+    check("tenant B não consegue registrar afastamento pro funcionário do tenant A", !!e5);
   }
 
-  console.log("\n24. Isolamento cross-tenant nas 4 tabelas novas");
-  {
-    const { data: crossCert } = await otherTenant.client.from("funcionario_certificacoes").select("id").eq("id", certificacaoId);
-    check("tenant B não enxerga certificação do tenant A", (crossCert ?? []).length === 0);
-
-    const { error: eCrossHabilitacao } = await otherTenant.client.rpc("remover_funcionario_habilitacao", { p_id: habilitacaoId });
-    check("tenant B não remove habilitação do tenant A", !!eCrossHabilitacao);
-
-    const { data: aindaLa } = await admin.from("funcionario_habilitacoes").select("id").eq("id", habilitacaoId).maybeSingle();
-    check("habilitação do tenant A continua existindo", !!aindaLa);
-  }
-
-  console.log("\n25. Cada ação nova grava a própria linha de auditoria");
+  console.log("\n25. Cada ação de documentos/afastamentos grava a própria linha de auditoria");
   {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
+      .gte("created_at", testStartedAt)
       .in("action", [
-        "rh.certificacao_registrada", "rh.certificacao_atualizada",
-        "rh.epi_registrado", "rh.epi_removido",
-        "rh.habilitacao_registrada",
-        "rh.afastamento_registrado", "rh.afastamento_atualizado",
+        "rh.documento_registrado", "rh.documento_cancelado",
+        "rh.afastamento_registrado", "rh.afastamento_encerrado", "rh.afastamento_cancelado",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     for (const action of [
-      "rh.certificacao_registrada", "rh.certificacao_atualizada",
-      "rh.epi_registrado", "rh.epi_removido",
-      "rh.habilitacao_registrada",
-      "rh.afastamento_registrado", "rh.afastamento_atualizado",
+      "rh.documento_registrado", "rh.documento_cancelado",
+      "rh.afastamento_registrado", "rh.afastamento_encerrado", "rh.afastamento_cancelado",
     ]) {
       check(`${action} registrado`, actions.has(action));
     }
   }
 
-  console.log("\n26. remover_funcionario_certificacao() exige rh.manage e remove de fato");
+  console.log("\n26. registrar_documento_funcionario() com recurso_produtivo_id — vínculo habilitação↔máquina (complemento)");
   {
-    const { error: eSemPerm } = await noPermTenant.client.rpc("remover_funcionario_certificacao", { p_id: certificacaoId });
-    check("sem rh.manage não remove certificação", !!eSemPerm);
+    const { error: eOutraEmpresa } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "habilitacao", p_nome: "Forno de têmpera",
+      p_recurso_produtivo_id: "00000000-0000-0000-0000-000000000000",
+    });
+    check("recurso inexistente é rejeitado", !!eOutraEmpresa);
 
-    const { error } = await admTenant.client.rpc("remover_funcionario_certificacao", { p_id: certificacaoId });
-    check("remove certificação", !error);
-    const { data: apagada } = await admin.from("funcionario_certificacoes").select("id").eq("id", certificacaoId).maybeSingle();
-    check("certificação removida não existe mais", !apagada);
+    const { error: eTipoErrado } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "habilitacao", p_nome: "Equipe de corte",
+      p_recurso_produtivo_id: recursoEquipeId,
+    });
+    check("recurso do tipo 'equipe' (não máquina/equipamento) é rejeitado", !!eTipoErrado);
+
+    const { error: eRecursoEmOutroTipo } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "Óculos",
+      p_recurso_produtivo_id: recursoId,
+    });
+    check("vínculo com recurso fora de tipo='habilitacao' é rejeitado", !!eRecursoEmOutroTipo);
+
+    const { data, error } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "habilitacao", p_nome: "Forno de têmpera",
+      p_data_referencia: "2027-01-01", p_recurso_produtivo_id: recursoId,
+    });
+    check("cria habilitação vinculada a recurso produtivo com sucesso", !error && !!data);
+    const { data: row } = await admin.from("funcionario_documentos").select("recurso_produtivo_id").eq("id", data).single();
+    check("recurso_produtivo_id persistido", row?.recurso_produtivo_id === recursoId);
+
+    const { data: semRecurso, error: eSemRecurso } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "habilitacao", p_nome: "Mesa de corte (sem cadastro)",
+    });
+    check("habilitação sem recurso vinculado (nome livre) continua válida", !eSemRecurso && !!semRecurso);
+  }
+
+  console.log("\n27. register_file()/files_select — anexo de RH exige rh.manage/rh.view, não só a permissão genérica de Arquivos");
+  {
+    // Papel com files.upload/files.read mas SEM nenhuma permissão de rh —
+    // prova que a permissão genérica de Arquivos não basta mais pra
+    // entity_type='funcionario_documento' (achado do code review: antes
+    // disso, qualquer papel com files.upload/files.read conseguia anexar/
+    // ler documento de RH de qualquer funcionário da empresa).
+    const filesOnlyRole = await admin.from("roles").insert({ company_id: admTenant.company.id, key: "RH_FILES_SO", name: "Só Arquivos" }).select().single();
+    const { data: uploadPerm } = await admin.from("permissions").select("id").eq("resource", "files").eq("action", "upload").single();
+    const { data: readPerm } = await admin.from("permissions").select("id").eq("resource", "files").eq("action", "read").single();
+    await admin.from("role_permissions").insert([
+      { role_id: filesOnlyRole.data.id, permission_id: uploadPerm.id },
+      { role_id: filesOnlyRole.data.id, permission_id: readPerm.id },
+    ]);
+
+    const email = "17r05.rh-test-admin@users.internal";
+    const { data: created } = await admin.auth.admin.createUser({ email, password: "senha-de-teste-123456", email_confirm: true });
+    let userId = created?.user?.id;
+    if (!userId) {
+      const { data: list } = await admin.auth.admin.listUsers();
+      userId = list.users.find((u) => u.email === email)?.id;
+    }
+    await admin.from("profiles").upsert({ id: userId, company_id: admTenant.company.id, login_identifier: "17r05", display_name: "Só Arquivos" }, { onConflict: "id" });
+    await admin.from("user_roles").insert({ profile_id: userId, role_id: filesOnlyRole.data.id });
+    const filesOnlyClient = createClient(url, anonKey);
+    await filesOnlyClient.auth.signInWithPassword({ email, password: "senha-de-teste-123456" });
+
+    const path = `${admTenant.company.id}/funcionario_documento/${funcionarioAtivoId}/atestado.png`;
+    await admin.storage.from("company-files").upload(path, PNG_1X1, { contentType: "image/png", upsert: true });
+
+    const { error: eUpload } = await filesOnlyClient.rpc("register_file", {
+      p_entity_type: "funcionario_documento", p_entity_id: funcionarioAtivoId, p_storage_path: path,
+      p_original_name: "atestado.png", p_mime_type: "image/png", p_size_bytes: PNG_1X1.byteLength,
+    });
+    check("papel só com files.upload (sem rh.manage) não anexa documento de RH", !!eUpload);
+
+    const { data: fileId, error: eUploadAdmin } = await admTenant.client.rpc("register_file", {
+      p_entity_type: "funcionario_documento", p_entity_id: funcionarioAtivoId, p_storage_path: path,
+      p_original_name: "atestado.png", p_mime_type: "image/png", p_size_bytes: PNG_1X1.byteLength,
+    });
+    check("ADMIN (com rh.manage) anexa documento de RH", !eUploadAdmin && !!fileId);
+
+    const { data: readSemRh, error: eReadNoRh } = await filesOnlyClient.from("files").select("id").eq("id", fileId);
+    check("papel só com files.read (sem rh.view) não lê metadado do arquivo de RH", !eReadNoRh && (readSemRh ?? []).length === 0);
+
+    const { data: readAdm } = await admTenant.client.from("files").select("id").eq("id", fileId);
+    check("ADMIN (com rh.view) lê metadado do arquivo de RH", (readAdm ?? []).length === 1);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

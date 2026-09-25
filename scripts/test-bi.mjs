@@ -1,7 +1,9 @@
-// Testes automatizados do TÓPICO 12 — BI, recorte mínimo do MVP
-// (ADR-002 §4.16): só indicadores operacionais básicos (contagens/somas
-// por status, direto sobre o schema existente), sem KPI versionado,
-// drill-down, DRE ou assistente analítico.
+// Testes automatizados do TÓPICO 12 — BI, Fase 2 ainda básica
+// (ADR-002 v2.6 §4.16): indicadores operacionais básicos (contagens/somas
+// por status) + filtro de período + quatro indicadores calculados
+// (ticket médio, conversão orçamento→pedido, taxa de não conformidade,
+// OTIF básico). Sem KPI versionado, drill-down, DRE ou assistente
+// analítico.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-bi.mjs
 
@@ -236,6 +238,52 @@ async function main() {
 
     const { data, error } = await soViewClient.rpc("dashboard_operacional");
     check("papel só com bi.view (sem pedidos.view/producao.view/etc.) consegue ler o dashboard inteiro", !error && data?.pedidos?.por_status?.liberado === 1);
+  }
+
+  console.log("\n5. Indicadores calculados (Fase 2, ADR-002 v2.6 §4.16) batem com o pipeline");
+  {
+    const { data, error } = await admTenant.client.rpc("dashboard_operacional");
+    check("ADMIN consulta o dashboard sem erro", !error && !!data);
+
+    check("ticket_medio == 1000 (1 pedido liberado de 1000)", Number(data?.indicadores?.ticket_medio) === 1000);
+    check("pedidos_liberados_amostra == 1", data?.indicadores?.pedidos_liberados_amostra === 1);
+
+    check("taxa_conversao_orcamento_pedido == 100 (1 orçamento, 1 convertido)", Number(data?.indicadores?.taxa_conversao_orcamento_pedido) === 100);
+    check("orcamentos_amostra == 1", data?.indicadores?.orcamentos_amostra === 1);
+
+    check("taxa_nao_conformidade == 0 (1 inspeção aprovada, 0 reprovada)", Number(data?.indicadores?.taxa_nao_conformidade) === 0);
+    check("inspecoes_amostra == 1", data?.indicadores?.inspecoes_amostra === 1);
+
+    // pedidos.previsao_entrega nunca é preenchido por nenhuma função do
+    // sistema (gap pré-existente, fora do escopo desta fase) — "no prazo"
+    // não deve afirmar um percentual sem dado pra sustentar (§10), mas
+    // "integral" não depende disso e deve fechar em 100% (entrega total).
+    check("otif.amostra_com_previsao == 0 (previsao_entrega nunca é preenchida)", data?.indicadores?.otif?.amostra_com_previsao === 0);
+    check("otif.no_prazo_pct é null (sem dado pra sustentar)", data?.indicadores?.otif?.no_prazo_pct === null);
+    check("otif.integral_pct == 100 (entrega total, sem pendência)", Number(data?.indicadores?.otif?.integral_pct) === 100);
+    check("otif.amostra == 1 (1 expedição expedida)", data?.indicadores?.otif?.amostra === 1);
+  }
+
+  console.log("\n6. Filtro de período (p_data_inicio/p_data_fim)");
+  {
+    const { data: dataFuturo, error: e1 } = await admTenant.client.rpc("dashboard_operacional", {
+      p_data_inicio: "2099-01-01", p_data_fim: "2099-12-31",
+    });
+    check("período no futuro não dá erro", !e1);
+    check("período no futuro não enxerga o pedido liberado do pipeline", (dataFuturo?.pedidos?.por_status?.liberado ?? 0) === 0);
+    check("período no futuro devolve indicadores como 'sem dados' (amostra 0)", dataFuturo?.indicadores?.ticket_medio === null && dataFuturo?.indicadores?.pedidos_liberados_amostra === 0);
+
+    const { data: dataAmplo, error: e2 } = await admTenant.client.rpc("dashboard_operacional", {
+      p_data_inicio: "2020-01-01", p_data_fim: "2099-12-31",
+    });
+    check("período amplo não dá erro", !e2);
+    check("período amplo enxerga o mesmo pedido liberado do recorte sem filtro", dataAmplo?.pedidos?.por_status?.liberado === 1);
+
+    const { error: e3 } = await admTenant.client.rpc("dashboard_operacional", { p_data_inicio: "2027-06-01", p_data_fim: "2027-01-01" });
+    check("data_fim anterior à data_inicio é rejeitada", !!e3);
+
+    const { data: dataEcoa } = await admTenant.client.rpc("dashboard_operacional", { p_data_inicio: "2020-01-01", p_data_fim: "2099-12-31" });
+    check("retorno ecoa o período recebido (§44)", dataEcoa?.periodo?.data_inicio === "2020-01-01" && dataEcoa?.periodo?.data_fim === "2099-12-31");
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

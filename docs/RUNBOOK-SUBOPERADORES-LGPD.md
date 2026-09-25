@@ -17,7 +17,7 @@ aspiracional, é o que o sistema de fato usa hoje.
 | Suboperador | Função | Dado pessoal envolvido | Região confirmada | Observação |
 |---|---|---|---|---|
 | **Supabase** | Banco de dados (Postgres), autenticação (Auth/GoTrue), armazenamento de arquivos (Storage) | Todo dado pessoal do sistema: perfis, documentos anexados, credenciais de autenticação | **sa-east-1 (São Paulo, Brasil)** — confirmado no provisionamento do projeto (13/09/2026, ver ADR-010 §15) | Projeto atual é **Free**, provisório — não é o ambiente de produção definitivo (ADR-010 §15) |
-| **Vercel** | Hospedagem da aplicação (Next.js: páginas, Server Actions, API routes, cron jobs) | Todo dado pessoal em trânsito durante o processamento de cada requisição (a aplicação não persiste nada fora do Supabase, mas processa em memória) | ⚠️ **Não confirmada** — `vercel.json` não fixa `regions`; sem essa configuração, a Vercel escolhe a região de execução por padrão, que pode não ser Brasil | **Pendência**: definir e fixar `regions` (ex.: `gru1`, São Paulo) antes de produção com dado real, ou registrar exceção formal com validação jurídica (ADR-010 §9) |
+| **Vercel** | Hospedagem da aplicação (Next.js: páginas, Server Actions, API routes, cron jobs) | Todo dado pessoal em trânsito durante o processamento de cada requisição (a aplicação não persiste nada fora do Supabase, mas processa em memória) | **gru1 (São Paulo, Brasil)** — fixado em `vercel.json` em 23/09/2026 (confirmado por Thiago via chat) | Resolvido — nenhuma pendência de região aqui |
 | **Resend** | Envio de e-mail (alerta de segurança interno e, a partir do ADR-007, notificação crítica de negócio) | Nome/e-mail do destinatário; conteúdo da notificação pode referenciar dado operacional (ex.: número de pedido, descrição de pendência) | ⚠️ **Não confirmada** — nenhuma configuração de região de processamento foi feita; empresa sediada nos EUA | **Pendência**: verificar política de residência de dados do Resend e se atende ADR-010 §9, ou tratar como transferência internacional formalmente registrada |
 
 ## 2. Suboperadores previstos, ainda não integrados
@@ -45,8 +45,8 @@ não tratam dado real:
 
 ## 4. Pendências abertas (para o responsável do produto/jurídico)
 
-1. Fixar região de execução da Vercel em `gru1` (ou equivalente
-   brasileiro) — mudança de configuração, sem impacto funcional esperado.
+1. ~~Fixar região de execução da Vercel em `gru1`~~ — **resolvido em
+   23/09/2026** (`regions: ["gru1"]` em `vercel.json`).
 2. Confirmar política de residência de dados do Resend; se não houver
    opção de região brasileira, registrar a exceção formalmente com
    validação jurídica (ADR-010 §9) em vez de manter a transferência
@@ -54,4 +54,5 @@ não tratam dado real:
 3. Publicar esta relação de forma acessível à empresa-cliente (ADR-010
    §10 — "disponível à controladora"), possivelmente como anexo do
    contrato de tratamento de dados (ADR-010 §12, TÓPICO 18 quando esse
-   módulo existir).
+   módulo existir). Ver `docs/RELAÇÃO DE SUBOPERADORES — Versão para a
+   Empresa-Cliente v1.0.md` para uma versão já pronta para anexar.

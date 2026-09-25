@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import {
+  avaliarDocumentoFiscalAction,
   cancelarDocumentoFiscalAction,
+  iniciarConferenciaDocumentoFiscalAction,
+  reavaliarDocumentoFiscalAction,
   registrarDocumentoFiscalAction,
   registrarTentativaProcessamentoAction,
   reprocessarDocumentoFiscalAction,
@@ -19,6 +22,28 @@ const TIPOS = [
   ["nfse", "NFS-e"],
   ["outro", "Outro"],
 ] as const;
+
+// Status = fluxo humano de conferência/aprovação (ADR-004 §6, avaliação).
+// Status_processamento = resultado técnico de tentativas de processamento
+// (ADR-004 §7-8, reprocessamento) — são dois eixos independentes do mesmo
+// documento, não uma substituição um do outro.
+const STATUS_LABEL: Record<Documento["status"], string> = {
+  recebido: "Recebido",
+  em_conferencia: "Em conferência",
+  aprovado: "Aprovado",
+  rejeitado: "Rejeitado",
+  pendente: "Pendente",
+  cancelado: "Cancelado",
+};
+
+const STATUS_TONE: Record<Documento["status"], "neutral" | "success" | "danger"> = {
+  recebido: "neutral",
+  em_conferencia: "neutral",
+  aprovado: "success",
+  rejeitado: "danger",
+  pendente: "danger",
+  cancelado: "danger",
+};
 
 const STATUS_PROCESSAMENTO_LABEL: Record<string, string> = {
   nao_processado: "Não processado",
@@ -45,9 +70,10 @@ type Documento = {
   chave_acesso: string | null;
   entity_type: string | null;
   entity_id: string | null;
-  status: "recebido" | "cancelado";
+  status: "recebido" | "em_conferencia" | "aprovado" | "rejeitado" | "pendente" | "cancelado";
   status_processamento: "nao_processado" | "processado" | "com_erro";
   motivo_cancelamento: string | null;
+  motivo_decisao: string | null;
   observacoes: string | null;
 };
 
@@ -81,10 +107,11 @@ export default function FiscalSection({
     <section>
       <h2 className="text-sm font-semibold text-text">Documentos fiscais</h2>
       <p className="mt-1 text-xs text-text-muted">
-        Registro e rastreabilidade de documentos fiscais recebidos, com vínculo operacional
-        opcional (independente de Pedido de Compra) e histórico de tentativas de processamento
-        (ADR-004 §9.2, §7-8). Sem emissão, cancelamento fiscal real, inutilização ou transmissão —
-        durante o piloto, o faturamento permanece no sistema atual da empresa (§9.1).
+        Registro, rastreabilidade, avaliação (conferência/aprovação/rejeição/pendência, ADR-004
+        §6) e histórico de tentativas de processamento (§7-8) de documentos fiscais recebidos, com
+        vínculo operacional opcional (independente de Pedido de Compra). Sem emissão, cancelamento
+        fiscal real, inutilização ou transmissão — durante o piloto, o faturamento permanece no
+        sistema atual da empresa (§9.1).
       </p>
 
       {canManage && (
@@ -133,9 +160,13 @@ function LinhaDocumento({ row, tentativas, canManage }: { row: Documento; tentat
         <Td>{row.chave_acesso ?? "—"}</Td>
         <Td>{row.entity_type ? `${row.entity_type} (${row.entity_id?.slice(0, 8)}…)` : "sem vínculo"}</Td>
         <Td>
-          <Badge variant={row.status === "recebido" ? "success" : "danger"}>
-            {row.status === "cancelado" ? `Cancelado — ${row.motivo_cancelamento ?? ""}` : "Recebido"}
-          </Badge>
+          <Badge variant={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
+          {row.status === "cancelado" && row.motivo_cancelamento && (
+            <p className="mt-0.5 text-[11px] text-text-muted">{row.motivo_cancelamento}</p>
+          )}
+          {(row.status === "rejeitado" || row.status === "pendente") && row.motivo_decisao && (
+            <p className="mt-0.5 text-[11px] text-text-muted">{row.motivo_decisao}</p>
+          )}
         </Td>
         <Td>
           <Badge variant={STATUS_PROCESSAMENTO_TONE[row.status_processamento]}>
@@ -151,7 +182,7 @@ function LinhaDocumento({ row, tentativas, canManage }: { row: Documento; tentat
             </button>
           )}
         </Td>
-        {canManage && <Td>{row.status === "recebido" && <AcoesDocumento row={row} />}</Td>}
+        {canManage && <Td>{row.status !== "cancelado" && <AcoesDocumento row={row} />}</Td>}
       </tr>
       {verHistorico && tentativas.length > 0 && (
         <tr>
@@ -198,7 +229,7 @@ function NovoDocumentoForm() {
 }
 
 function AcoesDocumento({ row }: { row: Documento }) {
-  const [modo, setModo] = useState<"nenhum" | "vincular" | "cancelar" | "tentativa">("nenhum");
+  const [modo, setModo] = useState<"nenhum" | "vincular" | "cancelar" | "tentativa" | "avaliar">("nenhum");
 
   if (modo === "vincular") {
     return (
@@ -256,8 +287,54 @@ function AcoesDocumento({ row }: { row: Documento }) {
     );
   }
 
+  if (modo === "avaliar") {
+    return (
+      <form action={avaliarDocumentoFiscalAction} className="flex items-center gap-1" onSubmit={() => setModo("nenhum")}>
+        <input type="hidden" name="id" value={row.id} />
+        <Select name="decisao" required defaultValue="">
+          <option value="">decisão…</option>
+          <option value="aprovado">Aprovar</option>
+          <option value="rejeitado">Rejeitar</option>
+          <option value="pendente">Marcar pendente</option>
+        </Select>
+        <Input name="motivo" placeholder="motivo/observação (opcional)" className="w-36" />
+        <Button type="submit" variant="primary">
+          Confirmar
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setModo("nenhum")}>
+          Voltar
+        </Button>
+      </form>
+    );
+  }
+
+  const podeIniciarConferencia = row.status === "recebido";
+  const podeAvaliar = row.status === "recebido" || row.status === "em_conferencia";
+  const podeReavaliar = row.status === "rejeitado" || row.status === "pendente";
+
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
+      {podeIniciarConferencia && (
+        <form action={iniciarConferenciaDocumentoFiscalAction}>
+          <input type="hidden" name="id" value={row.id} />
+          <Button type="submit" variant="secondary">
+            Iniciar conferência
+          </Button>
+        </form>
+      )}
+      {podeAvaliar && (
+        <Button type="button" variant="secondary" onClick={() => setModo("avaliar")}>
+          Avaliar
+        </Button>
+      )}
+      {podeReavaliar && (
+        <form action={reavaliarDocumentoFiscalAction}>
+          <input type="hidden" name="id" value={row.id} />
+          <Button type="submit" variant="secondary">
+            Reavaliar
+          </Button>
+        </form>
+      )}
       <Button type="button" variant="primary" onClick={() => setModo("vincular")}>
         Vincular
       </Button>

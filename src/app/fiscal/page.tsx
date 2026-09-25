@@ -2,10 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import FiscalSection from "./FiscalSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
-// ADR-004 — Estratégia Fiscal, recorte mínimo do MVP (§9.2): estrutura de
-// registro/rastreabilidade de documento fiscal, sem emissão, cancelamento
-// fiscal real, inutilização ou transmissão (§9.3 — fora do piloto da JR
-// Box, §9.1: o faturamento permanece no sistema atual da empresa).
+// ADR-004 — Estratégia Fiscal, completo: estrutura de registro/
+// rastreabilidade do documento (§9.2) mais conferência/aprovação/
+// rejeição/pendência no nível do documento (§6, migration
+// 20261007000000). Sem emissão, cancelamento fiscal real, inutilização
+// ou transmissão (§9.3 — fora do piloto da JR Box, §9.1: o faturamento
+// permanece no sistema atual da empresa).
 export default async function FiscalPage() {
   const supabase = await createClient();
 
@@ -32,10 +34,10 @@ export default async function FiscalPage() {
       <p className="font-mono text-[11px] text-primary">ADR-004 — Fiscal</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Fiscal</h1>
       <p className="mt-1 text-sm text-text">
-        Registro e rastreabilidade de documentos fiscais, com histórico de tentativas de
-        processamento e reprocessamento controlado (§7-8). Sem emissão real, cancelamento fiscal
-        real, inutilização ou transmissão neste piloto (§9.1/§9.3) — nenhuma tentativa aqui chama
-        um provedor de verdade.
+        Registro, rastreabilidade e avaliação (conferência/aprovação/rejeição/pendência, §6) de
+        documentos fiscais, com histórico de tentativas de processamento e reprocessamento
+        controlado (§7-8). Sem emissão real, cancelamento fiscal real, inutilização ou transmissão
+        neste piloto (§9.1/§9.3) — nenhuma tentativa aqui chama um provedor de verdade.
       </p>
 
       <div className="mt-6">

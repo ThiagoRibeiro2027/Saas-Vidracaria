@@ -49,3 +49,45 @@ export async function cancelarNecessidadeCompraAction(formData: FormData) {
 
   revalidatePath("/suprimentos");
 }
+
+export async function registrarRecebimentoNecessidadeAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const quantidadeRaw = String(formData.get("quantidade_recebida") ?? "").trim();
+  const observacao = String(formData.get("observacao") ?? "").trim() || null;
+  if (!id) throw new Error("Necessidade inválida.");
+
+  const quantidade = Number(quantidadeRaw);
+  if (!Number.isFinite(quantidade) || quantidade <= 0) throw new Error("Quantidade recebida inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("registrar_recebimento_necessidade", {
+    p_id: id,
+    p_quantidade_recebida: quantidade,
+    p_observacao: observacao,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/suprimentos");
+}
+
+export async function gerarNecessidadesDePedidoAction(formData: FormData) {
+  const pedidoId = String(formData.get("pedido_id") ?? "");
+  if (!pedidoId) throw new Error("Pedido inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("gerar_necessidades_de_pedido", { p_pedido_id: pedidoId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/suprimentos");
+}
+
+export async function gerarNecessidadesDeOrdemProducaoAction(formData: FormData) {
+  const ordemProducaoId = String(formData.get("ordem_producao_id") ?? "");
+  if (!ordemProducaoId) throw new Error("Ordem de produção inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("gerar_necessidades_de_ordem_producao", { p_ordem_producao_id: ordemProducaoId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/suprimentos");
+}

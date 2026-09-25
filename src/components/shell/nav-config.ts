@@ -2,6 +2,8 @@ import {
   LayoutDashboard,
   ShoppingCart,
   ClipboardList,
+  ListOrdered,
+  Puzzle,
   Ruler,
   Factory,
   BadgeCheck,
@@ -21,6 +23,9 @@ import {
   History,
   FileStack,
   Download,
+  Plug,
+  FileSignature,
+  Handshake,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,12 +56,15 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Operação",
     items: [
       { label: "Produção", href: "/producao", icon: Factory },
+      { label: "Fila de Produção", href: "/fila-producao", icon: ListOrdered },
+      { label: "Peças Fabricadas", href: "/pecas", icon: Puzzle },
       { label: "Qualidade", href: "/qualidade", icon: BadgeCheck },
       { label: "Estoque", href: "/estoque", icon: Boxes },
       { label: "Expedição", href: "/expedicao", icon: Truck },
       { label: "Instalação", href: "/instalacao", icon: Wrench },
       { label: "Instalação — Campo (PWA)", href: "/campo", icon: Smartphone },
       { label: "Suprimentos", href: "/suprimentos", icon: PackageSearch },
+      { label: "Compras", href: "/compras", icon: Handshake },
     ],
   },
   {
@@ -65,6 +73,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Financeiro", href: "/financeiro", icon: Wallet },
       { label: "Fiscal", href: "/fiscal", icon: Receipt },
       { label: "RH", href: "/rh", icon: Users },
+      { label: "Contratos", href: "/contratos", icon: FileSignature },
       { label: "BI (Indicadores)", href: "/bi", icon: BarChart3 },
     ],
   },
@@ -73,6 +82,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Usuários e Permissões", href: "/usuarios", icon: UserCog },
       { label: "Cadastros", href: "/cadastros", icon: BookUser },
+      { label: "Integrações", href: "/integracoes", icon: Plug },
       { label: "Governança", href: "/governance", icon: ShieldCheck },
       { label: "Configurações", href: "/configuracoes", icon: Settings },
     ],
