@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.9\
+**Versão:** 2.13\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -12,7 +12,13 @@ Fase 2, ainda básica, do TÓPICO 12; §4.18 revisado em 2026-09-23 —
 recebimento leve de material, Fase D do plano de fila de
 produção/peças/suprimentos; §4.5 revisado em 2026-09-23 — motor de
 regras básico, Fase G do mesmo plano; §4.6 e §4.18 revisados em
-2026-09-23 — escopo completo do módulo de Compras, ver ADR-011)\
+2026-09-23 — escopo completo do módulo de Compras, ver ADR-011; §4.17
+revisado em 2026-09-25 — Fase 2 do TÓPICO 13, UI da fila técnica; §4.17
+revisado novamente em 2026-09-25 — Fase 3 do TÓPICO 13, webhooks
+recebidos de terceiros; §4.17 revisado uma terceira vez em 2026-09-25 —
+Fase 4 do TÓPICO 13, webhooks enviados + motor de automação; §4.14 e
+§4.17 revisados em 2026-09-25 — Fase 5 do TÓPICO 13, bancos/boletos/PIX
+com contas a pagar/cobrança/conciliação)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
 ADR-011
@@ -926,6 +932,36 @@ Não fazem parte do MVP:
 O objetivo é evitar a criação de um <span dir="rtl">“</span>mini módulo
 financeiro completo” dentro do MVP.
 
+**Ampliação de escopo — contas a pagar, cobrança, conciliação e conta
+bancária (25/09/2026 — decisão do responsável do produto via chat, TÓPICO
+13 §6, Fase 5).** Dos itens listados acima como fora do MVP, quatro
+passam a fazer parte, com recorte deliberado:
+
+- **contas a pagar**: já havia sido aberto antes desta data pela ADR-011
+  (Compras, Fase 6) — `titulos_pagar`, gêmeo estrutural de
+  `titulos_financeiros`, sem plano de contas/centro de custo/juros/
+  multas. Esta emenda acrescenta por cima o fluxo de aprovação do TÓPICO
+  13 §6.2 (submeter → aprovar por alçada → pagar), sem alterar o
+  comportamento de quem nunca configurar alçada;
+
+- **cobrança**: só sobre título a RECEBER (T11) — registro de boleto/PIX
+  sem provedor bancário real conectado (sem linha digitável/QR Code de
+  verdade), marcar como paga sempre chama `registrar_recebimento_
+  titulo()` já existente, nunca duplica o estado do recebimento;
+
+- **conciliação**: só manual (§6.1) — lançamento de movimentação
+  bancária e vínculo à mão com título a receber/pagar ou cobrança.
+  Conciliação automática/sugerida fica de fora: sem provedor real
+  conectado não há extrato de verdade pra comparar;
+
+- **conta bancária**: cadastro simples (banco/agência/conta/tipo/PIX) da
+  empresa, sem nenhuma integração real com instituição financeira.
+
+Continuam fora do MVP, sem mudança: fluxo de caixa completo, DRE, centros
+de custo avançados, relatórios financeiros avançados, plano de contas, e
+qualquer integração bancária real (nenhum provedor de fato conectado —
+mesmo espírito do catálogo de integrações da Fase 1 de T13).
+
 **4.15 Fiscal**
 
 O escopo fiscal do MVP será condicionado às decisões do ADR-004.
@@ -1044,6 +1080,140 @@ real (§13), Webhooks recebidos/enviados (§14), certificados digitais
 (§22), reconciliação automática entre sistemas (§11), importação/
 exportação genérica (§29-30, além do que já existe em §4.2.1), e o
 gancho do otimizador de corte externo (§40).
+
+**Ampliação de escopo — Fase 2, UI da fila (25/09/2026 — decisão do
+responsável do produto via chat).** A infraestrutura técnica genérica
+aprovada na Fase 1 (fila assíncrona, idempotência, retry — §16-18) já
+existia inteiramente no banco, incluindo teste de isolamento
+cross-tenant e teste negativo (deny), mas sem nenhuma tela própria. Esta
+fase só dá visualização e controle manual ao que já existia — não cria
+capacidade nova de processamento nem liga nenhum conector real:
+
+- listagem das operações da fila (integração, tipo, status, tentativas,
+  próxima tentativa, erro), com destaque visual para erro permanente
+  (§17: "intervenção necessária" nunca fica escondida);
+
+- reprocessamento manual de operação em erro (temporário ou permanente)
+  e cancelamento de operação pendente ou em erro, ambos reaproveitando
+  as funções `reprocessar_operacao()`/`cancelar_operacao()` já existentes
+  desde a Fase 1 — nenhuma função nova de banco foi criada.
+
+Continuam fora, nos mesmos termos da Fase 1: tudo o que dependeria de um
+conector real (nenhuma tela "testa conexão" ou "sincroniza", porque não
+há o que testar/sincronizar ainda) e todo o restante listado no
+parágrafo anterior.
+
+**Ampliação de escopo — Fase 3, webhooks recebidos (25/09/2026 — decisão
+do responsável do produto via chat).** Do §14 ("Webhooks e Eventos"), só
+a metade "recebidos de terceiros" entra agora — webhooks enviados por
+este sistema e o motor de automação "Evento → Condição → Ação" descrito
+no mesmo parágrafo do doc (condições/ações configuráveis, ex.: "NF-e
+recebida → valor acima do limite → solicitar aprovação") continuam
+inteiramente fora, por serem um recorte maior e distinto que exigiria
+sua própria aprovação:
+
+- endpoint de entrada por integração (`/api/webhooks/integracoes/
+  [token]`), gerado/rotacionado/desativado pelo tenant com permissão
+  `integracoes.manage`, exigindo a integração ativa;
+
+- autenticação por assinatura HMAC-SHA256 (segredo mostrado uma única
+  vez, na geração/rotação — nunca mais legível depois, nem pelo próprio
+  tenant) — cobre a exigência do §14 de proteger contra **origem
+  inválida**;
+
+- proteção contra **reutilização indevida** (replay): a assinatura cobre
+  timestamp + corpo, e requisições fora de uma janela de 5 minutos são
+  rejeitadas mesmo com assinatura correta;
+
+- proteção contra **duplicidade**: o evento recebido cai na mesma fila da
+  Fase 2, reaproveitando a idempotência já existente — reenviar o mesmo
+  evento (`X-Webhook-Id`) nunca cria uma segunda operação;
+
+- proteção contra **eventos inválidos**: corpo precisa ser JSON válido
+  com um campo `tipo`, senão é rejeitado antes de chegar à fila.
+
+O caminho de recepção roda sem sessão de usuário (é uma chamada de
+servidor para servidor, de um terceiro) — por isso a função que grava na
+fila (`registrar_operacao_webhook()`) é a única do módulo que não segue
+o padrão geral de "nunca aceitar company_id do cliente, sempre validar
+via `current_company_id()`": aqui não existe `current_company_id()`
+possível (não há usuário autenticado), então o company_id é derivado da
+própria integração (chave estrangeira imutável), nunca de um parâmetro,
+e a função só é executável por `service_role` — nenhum grant a
+`authenticated`, testado como caso de negação explícito.
+
+Continua fora, sem mudança: tudo o que já estava fora da Fase 1 (NF-e/
+fiscal real, bancos/PIX/boletos, cartões, APIs de terceiros com
+autenticação real, certificados digitais, reconciliação automática,
+importação/exportação genérica, gancho do otimizador de corte externo),
+mais webhooks **enviados** por este sistema e o motor de automação
+condição→ação do §14.
+
+**Ampliação de escopo — Fase 4, webhooks enviados + motor de automação
+(25/09/2026 — decisão do responsável do produto via chat).** Fecha o
+§14 ("Webhooks e Eventos") e o §15 ("Níveis de Automação"), com um
+recorte deliberado nos três pontos abaixo, cada um decidido explicitamente
+antes de codar:
+
+- **Só níveis Informativo e Assistido (§15).** Nível Automático
+  ("detectar → executar" sem decisão humana) fica de fora — o próprio
+  §15 exige autorização própria pra esse nível, que não foi dada agora.
+  Por causa disso, o modelo trava a combinação nível×ação: Informativo só
+  aceita a ação "notificar" (nunca efeito externo, coerente com "detectar
+  → informar → registrar"); Assistido só aceita "webhook_saida" (a única
+  ação com efeito externo, e por isso a única que passa por confirmação
+  humana antes de executar). Isso torna o motor estruturalmente à prova
+  de loop: a única ação que gera uma nova linha na fila nunca dispara
+  sozinha.
+
+- **Entrega real do webhook de saída via Vercel Cron, 1x/dia** — mesma
+  limitação de plano Hobby já aceita pros crons de security-alerts e
+  notificacoes-email (RUNBOOK-GOVERNANCA-DE-SEGURANCA.md §3). O evento
+  fica na fila (mesma infraestrutura de idempotência/retry da Fase 1)
+  até a próxima execução.
+
+- **Condição da regra aceita múltiplas condições combinadas por um único
+  operador E/OU** (sem agrupamento aninhado nesta fase) — cobre o
+  exemplo do próprio §14 ("NF-e recebida → valor acima do limite →
+  solicitar aprovação") e vai além do mínimo de uma condição só.
+
+Mecanismo: "Evento" reaproveita a mesma fila de operações da Fase 1/3
+(`integracao_operacoes`) — um trigger avalia toda linha nova contra as
+regras ativas da empresa (casando por `tipo`), sem precisar de um
+barramento de eventos separado. Proteções do §14 (origem inválida,
+duplicidade, reutilização indevida, eventos inválidos) resolvidas do lado
+do webhook de saída com o mesmo esquema HMAC-SHA256 (timestamp + corpo)
+já usado nos webhooks recebidos (Fase 3).
+
+O caminho de entrega (cron) roda sem sessão de usuário, mesma exceção
+documentada na Fase 3 para `registrar_operacao_webhook()`: três funções
+`sistema_iniciar_processamento_operacao/concluir_operacao/falhar_operacao`
+espelham as tenant-facing da Fase 1 sem o gate de `assert_tenant_write()`
+(que exige `auth.uid()`, inexistente num cron), restritas a `service_role`
+— nunca `authenticated`.
+
+Continua fora: tudo o que já estava fora da Fase 1/3 (NF-e/fiscal real,
+bancos/PIX/boletos, cartões, APIs de terceiros com autenticação real,
+certificados digitais, reconciliação automática, importação/exportação
+genérica, gancho do otimizador de corte externo) e, dentro do próprio
+§14-15, o nível Automático e condições agrupadas/aninhadas.
+
+**Ampliação de escopo — Fase 5, bancos/boletos/PIX (25/09/2026 — decisão
+do responsável do produto via chat).** Abre §6 (Bancos, Boletos e PIX),
+com título a pagar + fluxo de aprovação (§6.2) e conciliação manual
+(§6.1) — ver o detalhamento completo na emenda ao §4.14 (Financeiro)
+acima, que é onde as tabelas/regras de negócio deste recorte realmente
+vivem (`contas_bancarias`, `financeiro_alcada_etapas`/`financeiro_
+aprovacoes`/`financeiro_aprovacao_etapas`, `cobrancas`,
+`movimentacoes_bancarias`). Fica registrado aqui só porque a decisão de
+abrir esse escopo nasceu de uma pergunta sobre T13, não sobre Financeiro
+em si — a ADR-011 (Compras) já tinha aberto contas a pagar antes desta
+data, sem esperar por T13.
+
+Continua fora, sem mudança: NF-e/fiscal real (bloqueado pelo ADR-004,
+não por este ADR), cartões e meios de pagamento (§7), extrato/
+conciliação automática, DRE, plano de contas, e qualquer conector
+bancário real (nenhum provedor de fato conectado).
 
 **4.18 Abastecimento / Compras**
 

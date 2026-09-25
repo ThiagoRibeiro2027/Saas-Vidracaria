@@ -69,7 +69,8 @@ insert into public.permissions (resource, action, description) values
   ('pecas', 'manage', 'Criar/inativar peça e gerir a composição de materiais (Fase A, plano de 23/09/2026)'),
   ('compras', 'view', 'Visualizar fornecedores, materiais alternativos e políticas de abastecimento da empresa (TÓPICO 7, ADR-011)'),
   ('compras', 'manage', 'Cadastrar fornecedor, definir fornecedor principal/alternativo, material alternativo e política de abastecimento (TÓPICO 7, ADR-011)'),
-  ('financeiro', 'pagar', 'Registrar pagamento (integral ou parcial) de título a pagar de Compras (TÓPICO 7 §33, ADR-011)')
+  ('financeiro', 'pagar', 'Registrar pagamento (integral ou parcial) de título a pagar de Compras (TÓPICO 7 §33, ADR-011)'),
+  ('financeiro', 'aprovar', 'Decidir etapa de alçada de pagamento de título a pagar — efetivando a aprovação antes do pagamento (TÓPICO 13 §6.2)')
 on conflict (resource, action) do nothing;
 
 -- Catálogo global de integrações (TÓPICO 13 §3) — Fase 1 só semeia os
