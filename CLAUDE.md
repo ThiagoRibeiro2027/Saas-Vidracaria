@@ -77,3 +77,16 @@ pontas andarem juntas.
 5. `.env.local` não é versionado e é configurado à mão em cada máquina — as
    variáveis estão documentadas em `.env.example`. A `SUPABASE_SERVICE_ROLE_KEY`
    ignora o RLS: nunca em commit, nunca em log, nunca no browser.
+6. **`supabase/seed.sql` não chega mais ao banco sozinho.** Ele só roda
+   junto de `supabase db reset` (banco local) — proibido pela regra 4. Toda
+   permissão nova em `public.permissions` precisa de um `insert` idempotente
+   (`on conflict do nothing`) numa migration própria, além de (ou em vez de)
+   entrar em `seed.sql` — do contrário ela existe só no arquivo, nunca no
+   banco real, e toda função que a exige falha silenciosamente pra todo
+   mundo, incluindo ADMIN. Achado em 26/09/2026: `contratos.aprovar` e
+   `financeiro.aprovar` ficaram só em `seed.sql` por semanas sem ninguém notar,
+   quebrando os dois fluxos de alçada em produção (corrigido em
+   `20261103030000_fix_permissoes_ausentes_aprovar.sql`). Ao adicionar
+   permissão nova, conferir se ela já existe no banco (`select * from
+   permissions where resource=... and action=...` via `psql`/`db push` de
+   uma migration, nunca supondo que `seed.sql` sozinho basta).

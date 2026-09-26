@@ -3,6 +3,14 @@
 -- funcionar (empresa, usuários, papéis, auditoria, arquivos). Nenhuma
 -- permissão de módulo operacional (Tópicos 2-14) é inventada aqui — isso
 -- pertence às fases futuras, quando cada módulo for implementado.
+--
+-- ATENÇÃO (26/09/2026, CLAUDE.md "Banco e ambiente de trabalho" §6): desde
+-- que o projeto passou a usar um único banco na nuvem compartilhado entre
+-- duas máquinas, este arquivo só é aplicado por `supabase db reset`
+-- (banco local) — nunca por `db push`. Toda permissão nova precisa de um
+-- `insert` idempotente numa migration própria pra chegar no banco real;
+-- só adicionar aqui não basta mais (foi assim que `contratos.aprovar` e
+-- `financeiro.aprovar` ficaram quebrados em produção sem ninguém notar).
 
 insert into public.permissions (resource, action, description) values
   ('company', 'view', 'Visualizar dados da própria empresa'),
