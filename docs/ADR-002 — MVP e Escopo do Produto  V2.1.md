@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.13\
+**Versão:** 2.14\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -18,7 +18,8 @@ revisado novamente em 2026-09-25 — Fase 3 do TÓPICO 13, webhooks
 recebidos de terceiros; §4.17 revisado uma terceira vez em 2026-09-25 —
 Fase 4 do TÓPICO 13, webhooks enviados + motor de automação; §4.14 e
 §4.17 revisados em 2026-09-25 — Fase 5 do TÓPICO 13, bancos/boletos/PIX
-com contas a pagar/cobrança/conciliação)\
+com contas a pagar/cobrança/conciliação; §4.16 revisado em 2026-09-26 —
+Fase 3 do TÓPICO 12, dashboards por área com dados já existentes)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
 ADR-011
@@ -1027,6 +1028,90 @@ permissão continua só `bi.view` — a separação de três níveis do §41
 (visualizar/configurar/administrar) só faz sentido quando houver algo
 para configurar ou administrar (dashboards, metas, alertas), que
 continua fora.
+
+**Ampliação de escopo — Fase 3, dashboards por área com dados já
+existentes (26/09/2026 — decisão do responsável do produto via chat).**
+Abre os §14-20 (dashboards por área), mas só o subconjunto de cada seção
+que o schema atual sustenta sem inventar dado novo — nenhuma tabela
+nova é criada nesta fase, tudo é leitura agregada sobre o que os módulos
+já registram. Filtro de período (§6) continua só "personalizado"
+(`p_data_inicio`/`p_data_fim`); os períodos pré-definidos (hoje, semana,
+mês, trimestre, ano) são calculados na tela a partir da data corrente e
+passados como personalizado — não é lógica nova de banco.
+
+- **Comercial (§14):** faturamento e ticket médio já existiam como
+  indicador; passam a ganhar ranking de clientes por faturamento (top
+  10, via `pedidos`/`pedido_itens`) e ranking de produtos por
+  quantidade/valor vendido (top 10, via `pedido_itens`/`itens`, com
+  agrupamento por `itens.classificacao` como proxy de família). Ficam
+  fora: vendedores (não existe `vendedor_id` em `pedidos`/`orcamentos`,
+  só `responsavel_id`, que não necessariamente é o vendedor — não
+  presumo essa equivalência), margem/rentabilidade, crescimento/
+  comparação com período anterior (é análise temporal, §8, que continua
+  fora), ABC formal.
+
+- **PCP/Produção (§15):** ganha taxa de perda (perdida ÷ planejada) e
+  contagem de OPs concluídas vs. em andamento. Fora: paradas e setup
+  (não existe tabela dedicada a isso — `manutencoes_corretivas` registra
+  manutenção, não parada de produção), produtividade por método
+  configurável, custo e rentabilidade industrial, cumprimento de prazo
+  por OP (não existe campo de previsão de conclusão em
+  `ordens_producao`).
+
+- **Estoque (§16, seção nova no dashboard):** saldo físico, reservado e
+  disponível por item (`estoque_saldos`), ruptura (saldo físico ≤
+  `politicas_abastecimento.estoque_minimo`, só para item com política
+  cadastrada) e estoque parado (sem nenhuma linha em
+  `estoque_movimentacoes` nos últimos N dias, N configurável entre os
+  valores do §16 — 30/60/90/180/365 — default 90). Fora: valor
+  monetário do estoque (não existe custo de item cadastrado de forma
+  confiável), giro, cobertura por consumo/previsão, curva ABC, excesso
+  (não existe `estoque_maximo` na política, só mínimo/segurança/ponto de
+  reposição), estoque em trânsito (não modelado).
+
+- **Suprimentos (§17):** ganha pedidos de compra por status, ranking de
+  fornecedores pela avaliação mais recente já calculada
+  (`fornecedor_avaliacoes.score`, existente desde a ADR-011 Fase 8),
+  lead time médio (`recebimentos_pedido_compra.data_recebimento` −
+  `pedidos_compra.created_at`, em dias), compras emergenciais (contagem
+  de `compras_diretas` com `motivo = 'urgencia'`) e concentração de
+  compras por fornecedor (participação % do maior fornecedor no valor
+  total de pedidos de compra do período). Pontualidade (§17) fica fora
+  desta fase: exigiria casar cada recebimento com a programação de
+  entrega específica que ele atende (`pedido_compra_programacoes`), e
+  nem todo Pedido de Compra tem programação (é recurso da Fase 6, só
+  para compra recorrente) — calcular sem esse vínculo direto afirmaria
+  uma comparação que o dado não sustenta. Fora também: matriz de decisão
+  ponderada configurável, economia potencial, risco.
+
+- **Qualidade (§18):** ganha não conformidades por `disposicao` (proxy
+  de "motivo" — `nao_conformidades` não tem campo de motivo
+  categorizado, só `descricao` em texto livre, que não dá pra agrupar
+  de forma confiável; `disposicao` é o campo categórico real que existe)
+  e contagem de retrabalho (`disposicao = 'retrabalho'` com
+  `retrabalho_executado_em` preenchido). Fora: Pareto real por motivo
+  (seria só sobre `disposicao`, que já é pouco granular pra chamar de
+  Pareto), severidade (não modelada), custo da não qualidade,
+  reclamações/devoluções de cliente (não existe nesse módulo).
+
+- **Expedição (§19):** ganha contagem de entregas parciais (expedição
+  com pelo menos um item com `quantidade_pendente > 0`) exposta
+  diretamente, além do que já existia. Fora: transportadora, frete,
+  região, rota (nada disso é modelado — `ocorrencias_expedicao` só tem
+  `descricao` livre, sem campo de tipo/causa), rentabilidade logística.
+
+- **Financeiro (§20):** ganha o espelho de contas a pagar do que já
+  existe para contas a receber — `titulos_pagar` por status, valor
+  total, valor pago, saldo pendente e vencidos — e taxa de inadimplência
+  simples (vencidos ÷ total) separada para receber e pagar. Fora: DRE,
+  margem, break-even, fluxo de caixa projetado, orçado × comprometido ×
+  realizado consolidado (existe granular em Compras, não agregado aqui).
+
+Continuam fora, sem mudança, todos os itens já listados no parágrafo da
+Fase 2 (KPI versionado, Cockpit Executivo, metas, construtor de
+dashboards, alertas, benchmark, Assistente Analítico, análise temporal/
+desvios/impacto, rentabilidade em geral) — esta fase não abre nada
+disso, só aprofunda §14-20 dentro do que o schema atual já sustenta.
 
 **4.17 Integrações**
 

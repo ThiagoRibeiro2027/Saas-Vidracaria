@@ -8,12 +8,42 @@ type PorStatus = Record<string, number>;
 type Dashboard = {
   periodo: { data_inicio: string | null; data_fim: string | null };
   pedidos: { por_status: PorStatus; valor_liberado: number };
-  producao: { por_status: PorStatus; quantidade_planejada: number; quantidade_produzida: number; quantidade_perdida: number };
-  qualidade: { inspecoes_por_resultado: PorStatus; nao_conformidades_por_status: PorStatus };
-  expedicao: { por_status: PorStatus; itens_com_pendencia: number };
+  comercial: {
+    faturamento_liberado: number;
+    top_clientes: { cliente: string; faturamento: number }[];
+    top_produtos: { produto: string; classificacao: string | null; quantidade_vendida: number; valor_vendido: number }[];
+    concentracao_top_cliente_pct: number | null;
+  };
+  producao: { por_status: PorStatus; quantidade_planejada: number; quantidade_produzida: number; quantidade_perdida: number; taxa_perda_pct: number | null };
+  estoque: {
+    totais: { quantidade_fisica: number; quantidade_reservada: number; quantidade_disponivel: number };
+    ruptura: { quantidade_itens: number; itens: { codigo: string; descricao: string; quantidade_fisica: number; estoque_minimo: number }[] };
+    parados: { dias: number; quantidade_itens: number; itens: { codigo: string; descricao: string; ultima_movimentacao: string | null }[] };
+  };
+  qualidade: {
+    inspecoes_por_resultado: PorStatus;
+    nao_conformidades_por_status: PorStatus;
+    nao_conformidades_por_disposicao: PorStatus;
+    retrabalho_executado: number;
+  };
+  expedicao: { por_status: PorStatus; itens_com_pendencia: number; entregas_parciais: number };
   instalacao: { por_status: PorStatus; danos_por_causa: PorStatus };
-  suprimentos: { necessidades_por_status: PorStatus };
-  financeiro: { titulos_por_status: PorStatus; valor_total: number; valor_recebido: number; titulos_vencidos: number };
+  suprimentos: {
+    necessidades_por_status: PorStatus;
+    pedidos_compra_por_status: PorStatus;
+    top_fornecedores_avaliacao: { fornecedor: string; score: number; periodo_fim: string }[];
+    lead_time_medio_dias: number | null;
+    compras_emergenciais: number;
+    concentracao_top_fornecedor_pct: number | null;
+  };
+  financeiro: {
+    titulos_por_status: PorStatus;
+    valor_total: number;
+    valor_recebido: number;
+    titulos_vencidos: number;
+    taxa_inadimplencia_receber_pct: number | null;
+    titulos_pagar: { por_status: PorStatus; valor_total: number; valor_pago: number; vencidos: number; taxa_inadimplencia_pct: number | null };
+  };
   indicadores: {
     ticket_medio: number | null;
     pedidos_liberados_amostra: number;
@@ -32,10 +62,6 @@ type Dashboard = {
 };
 
 export default function BIDashboard({ data }: { data: Dashboard }) {
-  const percentPerda = data.producao.quantidade_produzida > 0
-    ? (data.producao.quantidade_perdida / data.producao.quantidade_produzida) * 100
-    : 0;
-
   return (
     <section>
       <h2 className="text-sm font-semibold text-text">Indicadores operacionais</h2>
@@ -72,23 +98,96 @@ export default function BIDashboard({ data }: { data: Dashboard }) {
           <Metrica label="Valor liberado" valor={currency(data.pedidos.valor_liberado)} />
         </Bloco>
 
+        <Bloco titulo="Comercial">
+          <Metrica label="Faturamento (liberado)" valor={currency(data.comercial.faturamento_liberado)} />
+          <Metrica label="Concentração do maior cliente" valor={pct(data.comercial.concentracao_top_cliente_pct)} />
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Top clientes</p>
+          {data.comercial.top_clientes.length === 0 ? (
+            <p className="text-xs text-text-muted">sem faturamento no período</p>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {data.comercial.top_clientes.map((c) => (
+                <div key={c.cliente} className="flex justify-between text-xs">
+                  <span className="text-text">{c.cliente}</span>
+                  <strong>{currency(c.faturamento)}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Top produtos</p>
+          {data.comercial.top_produtos.length === 0 ? (
+            <p className="text-xs text-text-muted">sem venda no período</p>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {data.comercial.top_produtos.map((p) => (
+                <div key={p.produto} className="flex justify-between text-xs">
+                  <span className="text-text">{p.produto} ({p.quantidade_vendida})</span>
+                  <strong>{currency(p.valor_vendido)}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </Bloco>
+
         <Bloco titulo="Produção">
           <PorStatusList porStatus={data.producao.por_status} />
           <Metrica label="Planejado" valor={data.producao.quantidade_planejada} />
           <Metrica label="Produzido" valor={data.producao.quantidade_produzida} />
-          <Metrica label="Perdido" valor={`${data.producao.quantidade_perdida} (${percentPerda.toFixed(1)}%)`} />
+          <Metrica
+            label="Perdido"
+            valor={`${data.producao.quantidade_perdida} (${pct(data.producao.taxa_perda_pct)})`}
+            destaque={(data.producao.taxa_perda_pct ?? 0) > 5}
+          />
+        </Bloco>
+
+        <Bloco titulo="Estoque">
+          <Metrica label="Físico" valor={data.estoque.totais.quantidade_fisica} />
+          <Metrica label="Reservado" valor={data.estoque.totais.quantidade_reservada} />
+          <Metrica label="Disponível" valor={data.estoque.totais.quantidade_disponivel} />
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Em ruptura (≤ mínimo)</p>
+          {data.estoque.ruptura.itens.length === 0 ? (
+            <p className="text-xs text-text-muted">nenhum item em ruptura</p>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {data.estoque.ruptura.itens.map((i) => (
+                <div key={i.codigo} className="flex justify-between text-xs text-danger">
+                  <span>{i.codigo}</span>
+                  <strong>{i.quantidade_fisica} / mín. {i.estoque_minimo}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">
+            Parados há mais de {data.estoque.parados.dias} dias ({data.estoque.parados.quantidade_itens})
+          </p>
+          {data.estoque.parados.itens.length === 0 ? (
+            <p className="text-xs text-text-muted">nenhum item parado</p>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {data.estoque.parados.itens.map((i) => (
+                <div key={i.codigo} className="flex justify-between text-xs">
+                  <span className="text-text">{i.codigo}</span>
+                  <span className="text-text-muted">{i.ultima_movimentacao ? new Date(i.ultima_movimentacao).toLocaleDateString("pt-BR") : "nunca movimentado"}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </Bloco>
 
         <Bloco titulo="Qualidade">
           <p className="mb-0.5 text-[11px] text-text-muted">Inspeções por resultado</p>
           <PorStatusList porStatus={data.qualidade.inspecoes_por_resultado} />
-          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Não conformidades</p>
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Não conformidades por status</p>
           <PorStatusList porStatus={data.qualidade.nao_conformidades_por_status} />
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Não conformidades por disposição</p>
+          <PorStatusList porStatus={data.qualidade.nao_conformidades_por_disposicao} />
+          <Metrica label="Retrabalho executado" valor={data.qualidade.retrabalho_executado} />
         </Bloco>
 
         <Bloco titulo="Expedição">
           <PorStatusList porStatus={data.expedicao.por_status} />
           <Metrica label="Itens com pendência" valor={data.expedicao.itens_com_pendencia} />
+          <Metrica label="Entregas parciais" valor={data.expedicao.entregas_parciais} destaque={data.expedicao.entregas_parciais > 0} />
         </Bloco>
 
         <Bloco titulo="Instalação">
@@ -98,14 +197,41 @@ export default function BIDashboard({ data }: { data: Dashboard }) {
         </Bloco>
 
         <Bloco titulo="Suprimentos">
+          <p className="mb-0.5 text-[11px] text-text-muted">Necessidades por status</p>
           <PorStatusList porStatus={data.suprimentos.necessidades_por_status} />
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Pedidos de compra por status</p>
+          <PorStatusList porStatus={data.suprimentos.pedidos_compra_por_status} />
+          <Metrica label="Lead time médio" valor={data.suprimentos.lead_time_medio_dias === null ? "sem dados suficientes" : `${data.suprimentos.lead_time_medio_dias} dias`} />
+          <Metrica label="Compras emergenciais" valor={data.suprimentos.compras_emergenciais} />
+          <Metrica label="Concentração do maior fornecedor" valor={pct(data.suprimentos.concentracao_top_fornecedor_pct)} />
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Top fornecedores (avaliação)</p>
+          {data.suprimentos.top_fornecedores_avaliacao.length === 0 ? (
+            <p className="text-xs text-text-muted">sem avaliação registrada</p>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {data.suprimentos.top_fornecedores_avaliacao.map((f) => (
+                <div key={f.fornecedor} className="flex justify-between text-xs">
+                  <span className="text-text">{f.fornecedor}</span>
+                  <strong>{f.score}</strong>
+                </div>
+              ))}
+            </div>
+          )}
         </Bloco>
 
         <Bloco titulo="Financeiro">
+          <p className="mb-0.5 text-[11px] text-text-muted">Contas a receber</p>
           <PorStatusList porStatus={data.financeiro.titulos_por_status} />
           <Metrica label="Valor total" valor={currency(data.financeiro.valor_total)} />
           <Metrica label="Valor recebido" valor={currency(data.financeiro.valor_recebido)} />
           <Metrica label="Títulos vencidos" valor={data.financeiro.titulos_vencidos} destaque={data.financeiro.titulos_vencidos > 0} />
+          <Metrica label="Taxa de inadimplência" valor={pct(data.financeiro.taxa_inadimplencia_receber_pct)} />
+          <p className="mb-0.5 mt-2 text-[11px] text-text-muted">Contas a pagar</p>
+          <PorStatusList porStatus={data.financeiro.titulos_pagar.por_status} />
+          <Metrica label="Valor total" valor={currency(data.financeiro.titulos_pagar.valor_total)} />
+          <Metrica label="Valor pago" valor={currency(data.financeiro.titulos_pagar.valor_pago)} />
+          <Metrica label="Vencidos" valor={data.financeiro.titulos_pagar.vencidos} destaque={data.financeiro.titulos_pagar.vencidos > 0} />
+          <Metrica label="Taxa de inadimplência" valor={pct(data.financeiro.titulos_pagar.taxa_inadimplencia_pct)} />
         </Bloco>
       </div>
     </section>

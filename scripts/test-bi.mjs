@@ -1,9 +1,10 @@
-// Testes automatizados do TÓPICO 12 — BI, Fase 2 ainda básica
-// (ADR-002 v2.6 §4.16): indicadores operacionais básicos (contagens/somas
+// Testes automatizados do TÓPICO 12 — BI, Fases 2 e 3
+// (ADR-002 v2.14 §4.16): indicadores operacionais básicos (contagens/somas
 // por status) + filtro de período + quatro indicadores calculados
 // (ticket médio, conversão orçamento→pedido, taxa de não conformidade,
-// OTIF básico). Sem KPI versionado, drill-down, DRE ou assistente
-// analítico.
+// OTIF básico), mais os dashboards por área da Fase 3 (comercial, estoque,
+// suprimentos, qualidade, expedição, financeiro) com dado já existente no
+// schema. Sem KPI versionado, drill-down, DRE ou assistente analítico.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-bi.mjs
 
@@ -284,6 +285,57 @@ async function main() {
 
     const { data: dataEcoa } = await admTenant.client.rpc("dashboard_operacional", { p_data_inicio: "2020-01-01", p_data_fim: "2099-12-31" });
     check("retorno ecoa o período recebido (§44)", dataEcoa?.periodo?.data_inicio === "2020-01-01" && dataEcoa?.periodo?.data_fim === "2099-12-31");
+  }
+
+  console.log("\n7. Fase 3 — dashboards por área (comercial, estoque, suprimentos, qualidade, expedição, financeiro)");
+  {
+    const { data, error } = await admTenant.client.rpc("dashboard_operacional");
+    check("ADMIN consulta o dashboard sem erro (Fase 3)", !error && !!data);
+
+    check("comercial.top_clientes[0] == JR Box Vidros / 1000", data?.comercial?.top_clientes?.[0]?.cliente === "JR Box Vidros" && Number(data?.comercial?.top_clientes?.[0]?.faturamento) === 1000);
+    check("comercial.top_produtos[0] == Vidro temperado 10mm, qtd 10, valor 1000", data?.comercial?.top_produtos?.[0]?.produto === "Vidro temperado 10mm" && Number(data?.comercial?.top_produtos?.[0]?.quantidade_vendida) === 10 && Number(data?.comercial?.top_produtos?.[0]?.valor_vendido) === 1000);
+    check("comercial.top_produtos[0].classificacao == vidro_temperado", data?.comercial?.top_produtos?.[0]?.classificacao === "vidro_temperado");
+    check("comercial.concentracao_top_cliente_pct == 100 (um único cliente no período)", Number(data?.comercial?.concentracao_top_cliente_pct) === 100);
+
+    check("producao.taxa_perda_pct == 10 (1 perdida / 10 planejada)", Number(data?.producao?.taxa_perda_pct) === 10);
+
+    check("estoque.totais existe e é numérico", typeof data?.estoque?.totais?.quantidade_fisica !== "undefined");
+    check("estoque.ruptura.quantidade_itens == 0 (sem política de abastecimento cadastrada)", data?.estoque?.ruptura?.quantidade_itens === 0);
+    check("estoque.parados aponta o item que nunca teve movimentação", (data?.estoque?.parados?.quantidade_itens ?? 0) >= 1);
+    check("estoque.parados.dias ecoa o default (90)", data?.estoque?.parados?.dias === 90);
+
+    check("qualidade.nao_conformidades_por_disposicao vazio (pipeline sem NC)", Object.keys(data?.qualidade?.nao_conformidades_por_disposicao ?? {}).length === 0);
+    check("qualidade.retrabalho_executado == 0", data?.qualidade?.retrabalho_executado === 0);
+
+    check("expedicao.entregas_parciais == 0 (entrega total)", data?.expedicao?.entregas_parciais === 0);
+
+    check("financeiro.taxa_inadimplencia_receber_pct == 100 (1 vencido de 1)", Number(data?.financeiro?.taxa_inadimplencia_receber_pct) === 100);
+    check("financeiro.titulos_pagar vazio (pipeline não gera contas a pagar)", Object.keys(data?.financeiro?.titulos_pagar?.por_status ?? {}).length === 0 && Number(data?.financeiro?.titulos_pagar?.valor_total) === 0);
+    check("financeiro.titulos_pagar.taxa_inadimplencia_pct é null (sem título a pagar no período)", data?.financeiro?.titulos_pagar?.taxa_inadimplencia_pct === null);
+
+    check("suprimentos.pedidos_compra_por_status vazio (pipeline não usa Compras completo)", Object.keys(data?.suprimentos?.pedidos_compra_por_status ?? {}).length === 0);
+    check("suprimentos.top_fornecedores_avaliacao vazio (nenhuma avaliação registrada)", Array.isArray(data?.suprimentos?.top_fornecedores_avaliacao) && data.suprimentos.top_fornecedores_avaliacao.length === 0);
+    check("suprimentos.lead_time_medio_dias é null (nenhum recebimento de PC)", data?.suprimentos?.lead_time_medio_dias === null);
+    check("suprimentos.compras_emergenciais == 0", data?.suprimentos?.compras_emergenciais === 0);
+    check("suprimentos.concentracao_top_fornecedor_pct é null (nenhum PC no período)", data?.suprimentos?.concentracao_top_fornecedor_pct === null);
+  }
+
+  console.log("\n8. Fase 3 — isolamento entre tenants nos novos agregados");
+  {
+    const { data: dataA } = await admTenant.client.rpc("dashboard_operacional");
+    const { data: dataB } = await otherTenant.client.rpc("dashboard_operacional");
+    check("faturamento do top cliente difere entre tenants (1000 x 200)", Number(dataA?.comercial?.top_clientes?.[0]?.faturamento) !== Number(dataB?.comercial?.top_clientes?.[0]?.faturamento));
+    check("tenant B enxerga só o próprio produto no ranking comercial", dataB?.comercial?.top_produtos?.length === 1);
+  }
+
+  console.log("\n9. Fase 3 — validação de p_dias_estoque_parado");
+  {
+    const { error: eZero } = await admTenant.client.rpc("dashboard_operacional", { p_dias_estoque_parado: 0 });
+    check("p_dias_estoque_parado == 0 é rejeitado", !!eZero);
+    const { error: eNeg } = await admTenant.client.rpc("dashboard_operacional", { p_dias_estoque_parado: -5 });
+    check("p_dias_estoque_parado negativo é rejeitado", !!eNeg);
+    const { data: data30, error: e30 } = await admTenant.client.rpc("dashboard_operacional", { p_dias_estoque_parado: 30 });
+    check("p_dias_estoque_parado == 30 é aceito e ecoado", !e30 && data30?.estoque?.parados?.dias === 30);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
