@@ -585,6 +585,88 @@ async function main() {
     check("gerar título de novo pro mesmo contrato é rejeitado", !!eDeNovo);
   }
 
+  console.log("\n26. §7 — sistema_notificar_vencimento_contrato() só service_role, nunca authenticated");
+  {
+    const { error } = await admTenant.client.rpc("sistema_notificar_vencimento_contrato", {
+      p_contrato_id: contratoId, p_tipo: "vigencia",
+    });
+    check("authenticated não pode chamar sistema_notificar_vencimento_contrato (sem grant)", !!error);
+  }
+
+  console.log("\n27. §7 — sistema_notificar_vencimento_contrato() notifica quem tem contratos.manage, marca e é idempotente");
+  {
+    // Pessoa própria, dedicada a este bloco — não reaproveita clienteId
+    // pra não depender do papel CLIENTE dele continuar ativo entre seções
+    // (achado: em reexecução da suíte contra banco persistente, o papel
+    // pode ficar desativado por outro teste que o desativa/reativa; aqui
+    // não corremos esse risco).
+    const { data: clienteVencendoId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CPF", p_documento: "98765432100", p_nome: "Cliente Vencimento Teste",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+      p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: clienteVencendoId, p_papel: "CLIENTE", p_ativo: true });
+
+    const dataFim = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const garantiaFim = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const { data: contratoVencendoId } = await admTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "cliente", p_pessoa_id: clienteVencendoId, p_obra_id: null, p_pedido_id: null,
+      p_funcionario_id: null, p_objeto: "Contrato vencendo em breve", p_data_inicio: "2026-01-01",
+      p_data_fim: dataFim, p_renovacao: "manual", p_valor: 1000, p_forma_pagamento: "à vista",
+      p_observacoes: null, p_garantia_inicio: "2026-01-01", p_garantia_fim: garantiaFim,
+      p_parcelas: null, p_reajuste_previsto: null,
+    });
+    const { error: eEnviar } = await admTenant.client.rpc("enviar_contrato_para_aprovacao", { p_id: contratoVencendoId });
+    check("contrato de teste enviado para aprovação", !eEnviar);
+    const { error: eAprovar } = await admTenant.client.rpc("aprovar_contrato", { p_id: contratoVencendoId });
+    check("contrato de teste aprovado (vigente)", !eAprovar);
+
+    const { error: eTipoInvalido } = await admin.rpc("sistema_notificar_vencimento_contrato", {
+      p_contrato_id: contratoVencendoId, p_tipo: "outro",
+    });
+    check("tipo de alerta inválido é rejeitado", !!eTipoInvalido);
+
+    const { error: eVigencia } = await admin.rpc("sistema_notificar_vencimento_contrato", {
+      p_contrato_id: contratoVencendoId, p_tipo: "vigencia",
+    });
+    check("service_role notifica vencimento de vigência sem erro", !eVigencia);
+
+    const { data: contratoRow } = await admin.from("contratos").select("alerta_vigencia_enviado_em, alerta_garantia_enviado_em").eq("id", contratoVencendoId).single();
+    check("marcador de vigência preenchido, garantia ainda não", !!contratoRow?.alerta_vigencia_enviado_em && !contratoRow?.alerta_garantia_enviado_em);
+
+    const { data: notifs } = await admin
+      .from("notificacoes")
+      .select("titulo, prioridade, tipo_evento, entity_type, entity_id, email_status")
+      .eq("entity_id", contratoVencendoId)
+      .eq("tipo_evento", "contrato.vigencia_vencendo");
+    check("notificação criada com prioridade atencao, entity correto e sem e-mail", (notifs ?? []).length > 0 && notifs.every((n) => n.prioridade === "atencao" && n.entity_type === "contrato" && n.email_status === "nao_aplicavel"));
+
+    const { data: notifsAntes } = await admin.from("notificacoes").select("id").eq("entity_id", contratoVencendoId).eq("tipo_evento", "contrato.vigencia_vencendo");
+    await admin.rpc("sistema_notificar_vencimento_contrato", { p_contrato_id: contratoVencendoId, p_tipo: "vigencia" });
+    const { data: notifsDepois } = await admin.from("notificacoes").select("id").eq("entity_id", contratoVencendoId).eq("tipo_evento", "contrato.vigencia_vencendo");
+    check("chamar de novo não duplica notificação (idempotente pelo marcador)", (notifsAntes ?? []).length === (notifsDepois ?? []).length);
+
+    const { error: eGarantia } = await admin.rpc("sistema_notificar_vencimento_contrato", {
+      p_contrato_id: contratoVencendoId, p_tipo: "garantia",
+    });
+    check("service_role notifica vencimento de garantia sem erro (marcador independente)", !eGarantia);
+    const { data: contratoRow2 } = await admin.from("contratos").select("alerta_garantia_enviado_em").eq("id", contratoVencendoId).single();
+    check("marcador de garantia agora preenchido", !!contratoRow2?.alerta_garantia_enviado_em);
+  }
+
+  console.log("\n28. §7 — sistema_notificar_vencimento_contrato() não faz nada em contrato não vigente");
+  {
+    const { data: contratoRascunhoId } = await admTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "fornecedor", p_pessoa_id: fornecedorId, p_obra_id: null, p_pedido_id: null,
+      p_funcionario_id: null, p_objeto: "Contrato ainda rascunho",
+    });
+    const { error } = await admin.rpc("sistema_notificar_vencimento_contrato", { p_contrato_id: contratoRascunhoId, p_tipo: "vigencia" });
+    check("contrato rascunho não gera erro (só não faz nada)", !error);
+    const { data: notifs } = await admin.from("notificacoes").select("id").eq("entity_id", contratoRascunhoId);
+    check("nenhuma notificação gerada para contrato não vigente", (notifs ?? []).length === 0);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
