@@ -1,8 +1,18 @@
-// Testes automatizados do TÓPICO 13 — Integrações, recorte mínimo do MVP
-// (Fase 1, ADR-002 v2.5 §4.17): Central de Integrações, catálogo global,
-// fila com idempotência/retry, fonte oficial e evento interno nível
-// Informativo. Nenhum conector externo real é testado aqui — não existe
-// nenhum.
+// Testes automatizados do TÓPICO 13 — Integrações (Fase 1, ADR-002 v2.5
+// §4.17): Central de Integrações, catálogo global, fila com idempotência/
+// retry, fonte oficial e evento interno nível Informativo. Fase 3 (ADR-002
+// §4.17, emenda de 25/09/2026): webhooks recebidos de terceiros — geração/
+// rotação/desativação do endpoint e a função que registra o evento na fila
+// (só chamável por service_role, nunca authenticated — a verificação de
+// assinatura HMAC em si é testada só implicitamente aqui, porque vive no
+// route handler HTTP, fora do escopo deste script). Nenhum conector
+// externo real é testado aqui — não existe nenhum. Fase 4 (ADR-002 §4.17,
+// emenda de 25/09/2026): webhooks de saída + motor de automação Evento→
+// Condição→Ação (§14-15) — só níveis Informativo e Assistido (Automático
+// fica de fora, exige autorização própria); a entrega HTTP de fato roda
+// num cron (src/app/api/cron/integracoes-webhooks-saida), fora do escopo
+// deste script — aqui só o caminho de banco (enfileirar via
+// confirmar_execucao_regra() e o ciclo de vida via sistema_*) é testado.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-integracoes.mjs
 
@@ -358,6 +368,470 @@ async function main() {
     ]) {
       check(`${action} registrado`, actions.has(action));
     }
+  }
+
+  console.log("\n19. gerar_webhook_integracao() — sucesso, permissão e exige integração ativa");
+  let webhookToken;
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("gerar_webhook_integracao", { p_integracao_id: integracaoId });
+    check("sem integracoes.manage não gera webhook", !!eNoPerm);
+
+    const { data, error } = await admTenant.client.rpc("gerar_webhook_integracao", { p_integracao_id: integracaoId });
+    const row = Array.isArray(data) ? data[0] : data;
+    check("ADMIN gera webhook e recebe token+segredo", !error && !!row?.token && !!row?.secret);
+    webhookToken = row?.token;
+
+    const { data: log } = await admin
+      .from("activity_logs")
+      .select("action")
+      .eq("company_id", admTenant.company.id)
+      .eq("action", "integracoes.webhook_gerado")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    check("integracoes.webhook_gerado registrado", log?.action === "integracoes.webhook_gerado");
+
+    await admTenant.client.rpc("desativar_integracao", { p_id: integracaoId });
+    const { error: eInativa } = await admTenant.client.rpc("gerar_webhook_integracao", { p_integracao_id: integracaoId });
+    check("integração inativa não permite gerar webhook", !!eInativa);
+    await admTenant.client.rpc("ativar_integracao", { p_id: integracaoId }); // religa pra próximos testes
+  }
+
+  console.log("\n20. obter_webhook_integracao() — metadado seguro, nunca o segredo");
+  {
+    const { data, error } = await admTenant.client.rpc("obter_webhook_integracao", { p_integracao_id: integracaoId });
+    const row = Array.isArray(data) ? data[0] : data;
+    check("obter_webhook_integracao devolve token e ativo", !error && row?.token === webhookToken && row?.ativo === true);
+    check("obter_webhook_integracao nunca devolve o segredo", !!row && !("secret" in row));
+
+    const { data: dataNoPerm } = await noPermTenant.client.rpc("obter_webhook_integracao", { p_integracao_id: integracaoId });
+    check("sem integracoes.view não lê metadado do webhook", (dataNoPerm ?? []).length === 0);
+
+    const { data: dataCross } = await otherTenant.client.rpc("obter_webhook_integracao", { p_integracao_id: integracaoId });
+    check("tenant B não lê webhook do tenant A", (dataCross ?? []).length === 0);
+
+    const { data: rawSelect } = await admTenant.client.from("integracao_webhooks").select("*");
+    check("SELECT direto na tabela integracao_webhooks é rejeitado (sem policy de leitura)", (rawSelect ?? []).length === 0);
+  }
+
+  console.log("\n21. registrar_operacao_webhook() — só service_role, nunca authenticated; idempotência");
+  {
+    const { error: eAuth } = await admTenant.client.rpc("registrar_operacao_webhook", {
+      p_integracao_id: integracaoId, p_tipo: "teste", p_payload: null, p_chave_idempotencia: "deny-test",
+    });
+    check("usuário autenticado não pode chamar registrar_operacao_webhook (sem grant)", !!eAuth);
+
+    const chave = `webhook:${integracaoId}:evt-${Date.now()}`;
+    const { data: opId, error } = await admin.rpc("registrar_operacao_webhook", {
+      p_integracao_id: integracaoId, p_tipo: "nfe_recebida", p_payload: { valor: 100 }, p_chave_idempotencia: chave,
+    });
+    check("service_role registra operação de webhook", !error && !!opId);
+
+    const { data: opRow } = await admin.from("integracao_operacoes").select("origem, tipo, status").eq("id", opId).single();
+    check("operação nasce com origem 'webhook' e status pendente", opRow?.origem === "webhook" && opRow?.status === "pendente");
+
+    const { data: opId2 } = await admin.rpc("registrar_operacao_webhook", {
+      p_integracao_id: integracaoId, p_tipo: "nfe_recebida", p_payload: { valor: 999 }, p_chave_idempotencia: chave,
+    });
+    check("reenvio com a mesma chave de idempotência não duplica (§14 'duplicidade')", opId2 === opId);
+
+    const { data: log } = await admin
+      .from("activity_logs")
+      .select("action")
+      .eq("company_id", admTenant.company.id)
+      .eq("action", "integracoes.webhook_recebido")
+      .limit(1)
+      .maybeSingle();
+    check("integracoes.webhook_recebido registrado", log?.action === "integracoes.webhook_recebido");
+
+    const { error: eSemTipo } = await admin.rpc("registrar_operacao_webhook", {
+      p_integracao_id: integracaoId, p_tipo: "", p_payload: null, p_chave_idempotencia: "sem-tipo",
+    });
+    check("tipo vazio é rejeitado", !!eSemTipo);
+
+    await admTenant.client.rpc("desativar_integracao", { p_id: integracaoId });
+    const { error: eIntegracaoInativa } = await admin.rpc("registrar_operacao_webhook", {
+      p_integracao_id: integracaoId, p_tipo: "x", p_payload: null, p_chave_idempotencia: `${chave}-integracao-inativa`,
+    });
+    check("integração inativa rejeita webhook recebido", !!eIntegracaoInativa);
+    await admTenant.client.rpc("ativar_integracao", { p_id: integracaoId }); // religa pra próximos testes
+  }
+
+  console.log("\n22. desativar_webhook_integracao() — sucesso, dupla desativação e isolamento");
+  {
+    const { error: eCross } = await otherTenant.client.rpc("desativar_webhook_integracao", { p_integracao_id: integracaoId });
+    check("tenant B não desativa webhook do tenant A", !!eCross);
+
+    const { data: id, error } = await admTenant.client.rpc("desativar_webhook_integracao", { p_integracao_id: integracaoId });
+    check("ADMIN desativa webhook", !error && id === integracaoId);
+
+    const { error: eDup } = await admTenant.client.rpc("desativar_webhook_integracao", { p_integracao_id: integracaoId });
+    check("desativar de novo um webhook já inativo é rejeitado", !!eDup);
+
+    const { error: eWebhookInativo } = await admin.rpc("registrar_operacao_webhook", {
+      p_integracao_id: integracaoId, p_tipo: "pos-desativacao", p_payload: null,
+      p_chave_idempotencia: `webhook:${integracaoId}:pos-desativacao-${Date.now()}`,
+    });
+    check("webhook desativado rejeita novo evento (mesmo espírito de integração desativada)", !!eWebhookInativo);
+  }
+
+  console.log("\n23. configurar_webhook_saida() — validações, permissão, exige integração ativa");
+  let webhookSaidaId;
+  {
+    const { error: eNoPerm } = await noPermTenant.client.rpc("configurar_webhook_saida", {
+      p_id: null, p_integracao_id: integracaoId, p_nome: "x", p_url: "https://example.com/hook", p_secret: "a".repeat(20),
+    });
+    check("sem integracoes.manage não configura webhook de saída", !!eNoPerm);
+
+    const { error: eHttp } = await admTenant.client.rpc("configurar_webhook_saida", {
+      p_id: null, p_integracao_id: integracaoId, p_nome: "x", p_url: "http://example.com/hook", p_secret: "a".repeat(20),
+    });
+    check("URL sem https:// é rejeitada", !!eHttp);
+
+    const { error: eCurto } = await admTenant.client.rpc("configurar_webhook_saida", {
+      p_id: null, p_integracao_id: integracaoId, p_nome: "x", p_url: "https://example.com/hook", p_secret: "curto",
+    });
+    check("segredo curto (<16) é rejeitado", !!eCurto);
+
+    const { data, error } = await admTenant.client.rpc("configurar_webhook_saida", {
+      p_id: null, p_integracao_id: integracaoId, p_nome: "ERP destino", p_url: "https://example.com/hook", p_secret: "segredo-de-teste-bem-longo-123",
+    });
+    check("ADMIN configura webhook de saída", !error && !!data);
+    webhookSaidaId = data;
+
+    await admTenant.client.rpc("desativar_integracao", { p_id: integracaoId });
+    const { error: eInativa } = await admTenant.client.rpc("configurar_webhook_saida", {
+      p_id: null, p_integracao_id: integracaoId, p_nome: "y", p_url: "https://example.com/hook2", p_secret: "a".repeat(20),
+    });
+    check("integração inativa não permite configurar webhook de saída", !!eInativa);
+    await admTenant.client.rpc("ativar_integracao", { p_id: integracaoId }); // religa pra próximos testes
+  }
+
+  console.log("\n24. listar_webhooks_saida() — nunca expõe o segredo; isolamento");
+  {
+    const { data, error } = await admTenant.client.rpc("listar_webhooks_saida");
+    const row = (data ?? []).find((r) => r.id === webhookSaidaId);
+    check("listar_webhooks_saida devolve o registro criado", !error && !!row && row.url === "https://example.com/hook");
+    check("listar_webhooks_saida nunca devolve o segredo", !!row && !("secret" in row));
+
+    const { data: dataNoPerm } = await noPermTenant.client.rpc("listar_webhooks_saida");
+    check("sem integracoes.view não lista webhooks de saída", (dataNoPerm ?? []).length === 0);
+
+    const { data: dataCross } = await otherTenant.client.rpc("listar_webhooks_saida");
+    check("tenant B não lista webhooks de saída do tenant A", (dataCross ?? []).filter((r) => r.id === webhookSaidaId).length === 0);
+
+    const { data: rawSelect } = await admTenant.client.from("integracao_webhooks_saida").select("*");
+    check("SELECT direto na tabela integracao_webhooks_saida é rejeitado (sem policy de leitura)", (rawSelect ?? []).length === 0);
+  }
+
+  console.log("\n25. ativar/desativar_webhook_saida() — toggle e isolamento");
+  {
+    const { error: eCross } = await otherTenant.client.rpc("desativar_webhook_saida", { p_id: webhookSaidaId });
+    check("tenant B não desativa webhook de saída do tenant A", !!eCross);
+
+    const { error } = await admTenant.client.rpc("desativar_webhook_saida", { p_id: webhookSaidaId });
+    check("ADMIN desativa webhook de saída", !error);
+    const { data: apósDesativar } = await admTenant.client.rpc("listar_webhooks_saida");
+    check("status ativo=false após desativar", apósDesativar.find((r) => r.id === webhookSaidaId)?.ativo === false);
+
+    const { error: eAtivar } = await admTenant.client.rpc("ativar_webhook_saida", { p_id: webhookSaidaId });
+    check("ADMIN reativa webhook de saída", !eAtivar);
+    const { data: apósAtivar } = await admTenant.client.rpc("listar_webhooks_saida");
+    check("status ativo=true após reativar", apósAtivar.find((r) => r.id === webhookSaidaId)?.ativo === true);
+  }
+
+  console.log("\n26. configurar_regra_automacao() — validações e pareamento nível×ação (§15)");
+  let regraInformativaId, regraAssistidaId;
+  {
+    const base = {
+      p_id: null, p_condicao_operador: "E", p_condicoes: [{ campo: "valor", operador: ">", valor: "1000" }],
+    };
+
+    const { error: eNoPerm } = await noPermTenant.client.rpc("configurar_regra_automacao", {
+      ...base, p_nome: "x", p_evento_tipo: "x", p_nivel_automacao: "informativo", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    check("sem integracoes.manage não configura regra", !!eNoPerm);
+
+    const { error: eAuto } = await admTenant.client.rpc("configurar_regra_automacao", {
+      ...base, p_nome: "x", p_evento_tipo: "x", p_nivel_automacao: "automatico", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    check("nível 'automatico' é rejeitado — exige autorização própria (§15)", !!eAuto);
+
+    const { error: eInfComWebhook } = await admTenant.client.rpc("configurar_regra_automacao", {
+      ...base, p_nome: "x", p_evento_tipo: "x", p_nivel_automacao: "informativo", p_acao_tipo: "webhook_saida",
+      p_acao_config: { webhook_saida_id: webhookSaidaId },
+    });
+    check("nível informativo não aceita ação webhook_saida (só notificar)", !!eInfComWebhook);
+
+    const { error: eAssistidoNotificar } = await admTenant.client.rpc("configurar_regra_automacao", {
+      ...base, p_nome: "x", p_evento_tipo: "x", p_nivel_automacao: "assistido", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    check("nível assistido não aceita ação notificar (só webhook_saida)", !!eAssistidoNotificar);
+
+    const { error: eSemDestino } = await admTenant.client.rpc("configurar_regra_automacao", {
+      ...base, p_nome: "x", p_evento_tipo: "x", p_nivel_automacao: "assistido", p_acao_tipo: "webhook_saida", p_acao_config: null,
+    });
+    check("assistido sem webhook_saida_id é rejeitado", !!eSemDestino);
+
+    const { error: eDestinoInexistente } = await admTenant.client.rpc("configurar_regra_automacao", {
+      ...base, p_nome: "x", p_evento_tipo: "x", p_nivel_automacao: "assistido", p_acao_tipo: "webhook_saida",
+      p_acao_config: { webhook_saida_id: "00000000-0000-0000-0000-000000000000" },
+    });
+    check("assistido com webhook_saida_id inexistente é rejeitado", !!eDestinoInexistente);
+
+    const { error: eCondVazia } = await admTenant.client.rpc("configurar_regra_automacao", {
+      p_id: null, p_condicao_operador: "E", p_condicoes: [], p_nome: "x", p_evento_tipo: "x",
+      p_nivel_automacao: "informativo", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    check("condições vazias são rejeitadas", !!eCondVazia);
+
+    const { error: eCondIncompleta } = await admTenant.client.rpc("configurar_regra_automacao", {
+      p_id: null, p_condicao_operador: "E", p_condicoes: [{ campo: "valor" }], p_nome: "x", p_evento_tipo: "x",
+      p_nivel_automacao: "informativo", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    check("condição sem operador/valor é rejeitada", !!eCondIncompleta);
+
+    const { error: eOperadorInvalido } = await admTenant.client.rpc("configurar_regra_automacao", {
+      p_id: null, p_condicao_operador: "E", p_condicoes: [{ campo: "valor", operador: "~=", valor: "1" }], p_nome: "x", p_evento_tipo: "x",
+      p_nivel_automacao: "informativo", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    check("operador de condição inválido é rejeitado", !!eOperadorInvalido);
+
+    const { data: idInf, error: eInf } = await admTenant.client.rpc("configurar_regra_automacao", {
+      ...base, p_nome: "Pedido grande — informar", p_evento_tipo: "pedido_grande", p_nivel_automacao: "informativo",
+      p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    check("cria regra informativo+notificar com sucesso", !eInf && !!idInf);
+    regraInformativaId = idInf;
+
+    const { data: idAss, error: eAss } = await admTenant.client.rpc("configurar_regra_automacao", {
+      p_id: null, p_condicao_operador: "E", p_condicoes: [{ campo: "valor", operador: ">", valor: "1000" }],
+      p_nome: "Pedido grande — avisar terceiro", p_evento_tipo: "pedido_grande_saida", p_nivel_automacao: "assistido",
+      p_acao_tipo: "webhook_saida", p_acao_config: { webhook_saida_id: webhookSaidaId },
+    });
+    check("cria regra assistido+webhook_saida com sucesso", !eAss && !!idAss);
+    regraAssistidaId = idAss;
+  }
+
+  console.log("\n27. Trigger dispara regra Informativo ao inserir operação correspondente");
+  {
+    const { data: opMatch } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "pedido_grande", p_payload: { valor: 5000 },
+      p_chave_idempotencia: `regra-informativo-match-${Date.now()}`,
+    });
+    const { data: execMatch } = await admin
+      .from("integracao_execucoes_regra")
+      .select("status")
+      .eq("regra_id", regraInformativaId)
+      .eq("operacao_id", opMatch)
+      .maybeSingle();
+    check("condição satisfeita cria execução 'executada_informativo'", execMatch?.status === "executada_informativo");
+
+    const { data: logRegra } = await admin
+      .from("activity_logs")
+      .select("action")
+      .eq("company_id", admTenant.company.id)
+      .eq("action", "integracoes.regra_disparada")
+      .eq("entity_id", (await admin.from("integracao_execucoes_regra").select("id").eq("operacao_id", opMatch).single()).data.id)
+      .maybeSingle();
+    check("integracoes.regra_disparada registrado", logRegra?.action === "integracoes.regra_disparada");
+
+    const { data: opSemMatch } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "pedido_grande", p_payload: { valor: 500 },
+      p_chave_idempotencia: `regra-informativo-nomatch-${Date.now()}`,
+    });
+    const { data: execSemMatch } = await admin
+      .from("integracao_execucoes_regra")
+      .select("id")
+      .eq("operacao_id", opSemMatch);
+    check("condição não satisfeita não cria execução", (execSemMatch ?? []).length === 0);
+  }
+
+  console.log("\n28. Trigger dispara regra Assistido → aguardando confirmação; condições E/OU");
+  let execucaoAssistidaId;
+  {
+    const { data: opAssistido } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "pedido_grande_saida", p_payload: { valor: 5000 },
+      p_chave_idempotencia: `regra-assistido-match-${Date.now()}`,
+    });
+    const { data: execAssistido } = await admin
+      .from("integracao_execucoes_regra")
+      .select("id, status")
+      .eq("regra_id", regraAssistidaId)
+      .eq("operacao_id", opAssistido)
+      .maybeSingle();
+    check("condição satisfeita (assistido) cria execução 'aguardando_confirmacao'", execAssistido?.status === "aguardando_confirmacao");
+    execucaoAssistidaId = execAssistido?.id;
+
+    const { data: notif } = await admin
+      .from("notificacoes")
+      .select("id")
+      .eq("company_id", admTenant.company.id)
+      .eq("tipo_evento", "integracoes.regra_aguardando_confirmacao")
+      .eq("entity_id", execucaoAssistidaId);
+    check("notificação de confirmação foi gerada (ADR-007)", (notif ?? []).length > 0);
+
+    // condição composta OU: uma das duas basta.
+    await admTenant.client.rpc("configurar_regra_automacao", {
+      p_id: null, p_condicao_operador: "OU",
+      p_condicoes: [{ campo: "a", operador: "=", valor: "x" }, { campo: "b", operador: "=", valor: "y" }],
+      p_nome: "Teste OU", p_evento_tipo: "teste_ou", p_nivel_automacao: "informativo", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    const { data: opOuMatch } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "teste_ou", p_payload: { a: "x", b: "z" },
+      p_chave_idempotencia: `regra-ou-match-${Date.now()}`,
+    });
+    const { data: execOuMatch } = await admin.from("integracao_execucoes_regra").select("id").eq("operacao_id", opOuMatch);
+    check("OU: uma condição verdadeira já dispara a regra", (execOuMatch ?? []).length > 0);
+
+    const { data: opOuSemMatch } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "teste_ou", p_payload: { a: "q", b: "z" },
+      p_chave_idempotencia: `regra-ou-nomatch-${Date.now()}`,
+    });
+    const { data: execOuSemMatch } = await admin.from("integracao_execucoes_regra").select("id").eq("operacao_id", opOuSemMatch);
+    check("OU: nenhuma condição verdadeira não dispara a regra", (execOuSemMatch ?? []).length === 0);
+
+    // condição composta E: as duas precisam ser verdadeiras.
+    await admTenant.client.rpc("configurar_regra_automacao", {
+      p_id: null, p_condicao_operador: "E",
+      p_condicoes: [{ campo: "a", operador: "=", valor: "x" }, { campo: "b", operador: "=", valor: "y" }],
+      p_nome: "Teste E", p_evento_tipo: "teste_e", p_nivel_automacao: "informativo", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    const { data: opEMatch } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "teste_e", p_payload: { a: "x", b: "y" },
+      p_chave_idempotencia: `regra-e-match-${Date.now()}`,
+    });
+    const { data: execEMatch } = await admin.from("integracao_execucoes_regra").select("id").eq("operacao_id", opEMatch);
+    check("E: as duas condições verdadeiras dispara a regra", (execEMatch ?? []).length > 0);
+
+    const { data: opEParcial } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "teste_e", p_payload: { a: "x", b: "z" },
+      p_chave_idempotencia: `regra-e-parcial-${Date.now()}`,
+    });
+    const { data: execEParcial } = await admin.from("integracao_execucoes_regra").select("id").eq("operacao_id", opEParcial);
+    check("E: só uma condição verdadeira não dispara a regra", (execEParcial ?? []).length === 0);
+  }
+
+  console.log("\n29. confirmar_execucao_regra() — sucesso, dupla confirmação, destino inativo, isolamento");
+  {
+    const { error: eCross } = await otherTenant.client.rpc("confirmar_execucao_regra", { p_id: execucaoAssistidaId });
+    check("tenant B não confirma execução do tenant A", !!eCross);
+
+    const { data: novaOperacaoId, error } = await admTenant.client.rpc("confirmar_execucao_regra", { p_id: execucaoAssistidaId });
+    check("ADMIN confirma execução e enfileira webhook de saída", !error && !!novaOperacaoId);
+
+    const { data: novaOp } = await admin
+      .from("integracao_operacoes")
+      .select("origem, tipo, status, payload")
+      .eq("id", novaOperacaoId)
+      .single();
+    check(
+      "nova operação nasce com origem 'automacao', tipo 'webhook_saida' e referência ao destino",
+      novaOp?.origem === "automacao" && novaOp?.tipo === "webhook_saida" && novaOp?.payload?.webhook_saida_id === webhookSaidaId,
+    );
+
+    const { error: eDup } = await admTenant.client.rpc("confirmar_execucao_regra", { p_id: execucaoAssistidaId });
+    check("confirmar de novo uma execução já confirmada é rejeitado", !!eDup);
+
+    // Destino inativo: nova execução aguardando, tenta confirmar, é rejeitada.
+    await admTenant.client.rpc("desativar_webhook_saida", { p_id: webhookSaidaId });
+    const { data: opParaDestinoInativo } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "pedido_grande_saida", p_payload: { valor: 9999 },
+      p_chave_idempotencia: `regra-assistido-destino-inativo-${Date.now()}`,
+    });
+    const { data: execDestinoInativo } = await admin
+      .from("integracao_execucoes_regra")
+      .select("id")
+      .eq("operacao_id", opParaDestinoInativo)
+      .single();
+    const { error: eDestinoInativo } = await admTenant.client.rpc("confirmar_execucao_regra", { p_id: execDestinoInativo.id });
+    check("confirmar com destino de webhook de saída inativo é rejeitado", !!eDestinoInativo);
+    await admTenant.client.rpc("ativar_webhook_saida", { p_id: webhookSaidaId }); // religa pra próximos testes
+
+    // limpa a execução deixada pendente pelo teste acima, pra não sobrar "aguardando_confirmacao" fora de controle.
+    await admTenant.client.rpc("rejeitar_execucao_regra", { p_id: execDestinoInativo.id });
+  }
+
+  console.log("\n30. rejeitar_execucao_regra() — sucesso e rejeição de dupla decisão");
+  {
+    const { data: opParaRejeitar } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "pedido_grande_saida", p_payload: { valor: 1500 },
+      p_chave_idempotencia: `regra-assistido-rejeitar-${Date.now()}`,
+    });
+    const { data: execParaRejeitar } = await admin
+      .from("integracao_execucoes_regra")
+      .select("id")
+      .eq("operacao_id", opParaRejeitar)
+      .single();
+
+    const { data: id, error } = await admTenant.client.rpc("rejeitar_execucao_regra", { p_id: execParaRejeitar.id });
+    check("ADMIN rejeita execução aguardando confirmação", !error && id === execParaRejeitar.id);
+
+    const { error: eDup } = await admTenant.client.rpc("rejeitar_execucao_regra", { p_id: execParaRejeitar.id });
+    check("rejeitar de novo uma execução já decidida é rejeitado", !!eDup);
+  }
+
+  console.log("\n31. Funções sistema_* — só service_role, nunca authenticated; ciclo de entrega simulado");
+  {
+    const { data: opSistema } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "webhook_saida", p_payload: { webhook_saida_id: webhookSaidaId, evento_tipo: "x", payload_original: {} },
+      p_chave_idempotencia: `sistema-teste-${Date.now()}`,
+    });
+
+    const { error: eAuthIniciar } = await admTenant.client.rpc("sistema_iniciar_processamento_operacao", { p_id: opSistema });
+    check("authenticated não pode chamar sistema_iniciar_processamento_operacao (sem grant)", !!eAuthIniciar);
+
+    const { error: eIniciar } = await admin.rpc("sistema_iniciar_processamento_operacao", { p_id: opSistema });
+    check("service_role inicia processamento via caminho de sistema", !eIniciar);
+
+    const { data: opProcessando } = await admin.from("integracao_operacoes").select("status").eq("id", opSistema).single();
+    check("status vira 'processando'", opProcessando?.status === "processando");
+
+    const { error: eConcluir } = await admin.rpc("sistema_concluir_operacao", { p_id: opSistema, p_resultado: { ok: true } });
+    check("service_role conclui operação via caminho de sistema", !eConcluir);
+
+    const { data: opConcluida } = await admin.from("integracao_operacoes").select("status").eq("id", opSistema).single();
+    check("status vira 'concluido'", opConcluida?.status === "concluido");
+
+    // ciclo de falha temporária → permanente pelo caminho de sistema.
+    const { data: opFalha } = await admTenant.client.rpc("enfileirar_operacao", {
+      p_integracao_id: integracaoId, p_tipo: "webhook_saida", p_payload: { webhook_saida_id: webhookSaidaId, evento_tipo: "x", payload_original: {} },
+      p_chave_idempotencia: `sistema-falha-${Date.now()}`,
+    });
+    await admin.rpc("sistema_iniciar_processamento_operacao", { p_id: opFalha });
+    const { error: eAuthFalhar } = await admTenant.client.rpc("sistema_falhar_operacao", { p_id: opFalha, p_erro: "x" });
+    check("authenticated não pode chamar sistema_falhar_operacao (sem grant)", !!eAuthFalhar);
+
+    await admin.rpc("sistema_falhar_operacao", { p_id: opFalha, p_erro: "timeout simulado" });
+    const { data: opErroTemp } = await admin.from("integracao_operacoes").select("status, tentativas").eq("id", opFalha).single();
+    check("falha temporária via sistema", opErroTemp?.status === "erro_temporario" && opErroTemp?.tentativas === 1);
+
+    // erro_temporario não é reprocessável por sistema_iniciar_processamento_operacao (só aceita
+    // 'pendente', igual ao caminho tenant-facing) — reprocessar_operacao (tenant-facing, já
+    // testado na seção 10) devolve a 'pendente' antes de tentar de novo.
+    await admTenant.client.rpc("reprocessar_operacao", { p_id: opFalha });
+    await admin.rpc("sistema_iniciar_processamento_operacao", { p_id: opFalha });
+    await admin.rpc("sistema_falhar_operacao", { p_id: opFalha, p_erro: "erro definitivo simulado", p_permanente: true });
+    const { data: opErroPerm } = await admin.from("integracao_operacoes").select("status").eq("id", opFalha).single();
+    check("falha permanente via sistema", opErroPerm?.status === "erro_permanente");
+  }
+
+  console.log("\n32. Isolamento cross-tenant — regras, execuções e webhooks de saída");
+  {
+    const { data: crossRegras } = await otherTenant.client.from("integracao_regras").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga regras do tenant A", (crossRegras ?? []).length === 0);
+
+    const { data: crossExec } = await otherTenant.client.from("integracao_execucoes_regra").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga execuções de regra do tenant A", (crossExec ?? []).length === 0);
+
+    const { error: eCrossConfigurar } = await otherTenant.client.rpc("configurar_regra_automacao", {
+      p_id: regraInformativaId, p_condicao_operador: "E", p_condicoes: [{ campo: "x", operador: "=", valor: "1" }],
+      p_nome: "hack", p_evento_tipo: "hack", p_nivel_automacao: "informativo", p_acao_tipo: "notificar", p_acao_config: null,
+    });
+    check("tenant B não reconfigura regra do tenant A", !!eCrossConfigurar);
+
+    const { error: eCrossAtivar } = await otherTenant.client.rpc("ativar_regra_automacao", { p_id: regraInformativaId });
+    check("tenant B não ativa/desativa regra do tenant A", !!eCrossAtivar);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

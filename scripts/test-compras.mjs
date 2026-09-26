@@ -988,7 +988,8 @@ async function main() {
     const { error: errRascunho } = await admTenant.client.rpc("vincular_pedido_compra_contrato", { p_pedido_compra_id: pcAlfaId, p_contrato_id: contratoAlfaId });
     check("rejeita contrato ainda em rascunho (não vigente)", !!errRascunho);
 
-    await admTenant.client.rpc("ativar_contrato", { p_id: contratoAlfaId });
+    await admTenant.client.rpc("enviar_contrato_para_aprovacao", { p_id: contratoAlfaId });
+    await admTenant.client.rpc("aprovar_contrato", { p_id: contratoAlfaId });
     const { error } = await admTenant.client.rpc("vincular_pedido_compra_contrato", { p_pedido_compra_id: pcAlfaId, p_contrato_id: contratoAlfaId });
     check("vincula contrato vigente do fornecedor correto", !error);
     const { data: pc } = await admin.from("pedidos_compra").select("contrato_id").eq("id", pcAlfaId).single();

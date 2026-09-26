@@ -1,7 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { ativarContratoAction, encerrarContratoAction, upsertContratoAction } from "./actions";
+import { useRef, useState, type ReactNode } from "react";
+import {
+  aprovarContratoAction,
+  cancelarContratoAction,
+  encerrarContratoAction,
+  enviarContratoParaAprovacaoAction,
+  gerarTitulosContratoAction,
+  reprovarContratoAction,
+  retomarContratoAction,
+  suspenderContratoAction,
+  upsertContratoAction,
+} from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 
 const TIPO_LABEL: Record<string, string> = {
@@ -12,8 +22,11 @@ const TIPO_LABEL: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, string> = {
   rascunho: "Rascunho",
+  em_aprovacao: "Em aprovação",
   vigente: "Vigente",
+  suspenso: "Suspenso",
   encerrado: "Encerrado",
+  cancelado: "Cancelado",
 };
 
 type Contrato = {
@@ -30,9 +43,15 @@ type Contrato = {
   renovacao: "manual" | "automatica";
   valor: number | null;
   forma_pagamento: string | null;
-  status: "rascunho" | "vigente" | "encerrado";
+  status: "rascunho" | "em_aprovacao" | "vigente" | "suspenso" | "encerrado" | "cancelado";
   motivo_encerramento: string | null;
+  motivo_suspensao: string | null;
+  motivo_cancelamento: string | null;
   observacoes: string | null;
+  garantia_inicio: string | null;
+  garantia_fim: string | null;
+  parcelas: number | null;
+  reajuste_previsto: string | null;
 };
 
 type Pessoa = { id: string; nome: string };
@@ -48,7 +67,10 @@ export default function ContratosSection({
   obras,
   pedidos,
   funcionarios,
+  contratoIdsComTitulo,
   canManage,
+  canAprovar,
+  canGerarTitulos,
 }: {
   rows: Contrato[];
   pessoas: Pessoa[];
@@ -57,7 +79,10 @@ export default function ContratosSection({
   obras: Obra[];
   pedidos: Pedido[];
   funcionarios: Funcionario[];
+  contratoIdsComTitulo: Set<string>;
   canManage: boolean;
+  canAprovar: boolean;
+  canGerarTitulos: boolean;
 }) {
   const pessoaPorId = new Map(pessoas.map((p) => [p.id, p.nome]));
   const obraPorId = new Map(obras.map((o) => [o.id, o.nome]));
@@ -72,15 +97,25 @@ export default function ContratosSection({
     return partes.join(" — ");
   }
 
+  function motivoAtual(row: Contrato): string | null {
+    if (row.status === "encerrado") return row.motivo_encerramento;
+    if (row.status === "suspenso") return row.motivo_suspensao;
+    if (row.status === "cancelado") return row.motivo_cancelamento;
+    return null;
+  }
+
   return (
     <section>
       <h2 style={sectionTitleStyle}>Contratos</h2>
       <p style={hintStyle}>
-        Cliente, fornecedor ou funcionário/prestador — uma estrutura genérica só. Editar é possível
-        só enquanto o contrato está em rascunho.
+        Cliente, fornecedor ou funcionário/prestador — uma estrutura genérica só. Ciclo de vida
+        completo: rascunho → em aprovação → vigente → suspenso → encerrado, com cancelamento
+        possível antes de vigorar. Editar é possível só enquanto o contrato está em rascunho.
       </p>
 
-      {canManage && <ContratoForm row={null} clientes={clientes} fornecedores={fornecedores} obras={obras} pedidos={pedidos} funcionarios={funcionarios} />}
+      {canManage && (
+        <ContratoForm row={null} clientes={clientes} fornecedores={fornecedores} obras={obras} pedidos={pedidos} funcionarios={funcionarios} />
+      )}
 
       <div style={{ overflowX: "auto", marginTop: "12px" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
@@ -91,8 +126,9 @@ export default function ContratosSection({
               <th style={thStyle}>Vínculo</th>
               <th style={thStyle}>Objeto</th>
               <th style={thStyle}>Vigência</th>
+              <th style={thStyle}>Garantia</th>
               <th style={thStyle}>Status</th>
-              {canManage && <th style={thStyle}></th>}
+              {(canManage || canAprovar) && <th style={thStyle}></th>}
             </tr>
           </thead>
           <tbody>
@@ -106,19 +142,33 @@ export default function ContratosSection({
                   {row.data_inicio ?? "—"} a {row.data_fim ?? "—"}
                 </td>
                 <td style={tdStyle}>
-                  {STATUS_LABEL[row.status]}
-                  {row.status === "encerrado" && row.motivo_encerramento && ` — ${row.motivo_encerramento}`}
+                  {row.garantia_inicio || row.garantia_fim ? `${row.garantia_inicio ?? "—"} a ${row.garantia_fim ?? "—"}` : "—"}
                 </td>
-                {canManage && (
+                <td style={tdStyle}>
+                  {STATUS_LABEL[row.status]}
+                  {motivoAtual(row) && ` — ${motivoAtual(row)}`}
+                </td>
+                {(canManage || canAprovar) && (
                   <td style={tdStyle}>
-                    <AcoesContrato row={row} clientes={clientes} fornecedores={fornecedores} obras={obras} pedidos={pedidos} funcionarios={funcionarios} />
+                    <AcoesContrato
+                      row={row}
+                      clientes={clientes}
+                      fornecedores={fornecedores}
+                      obras={obras}
+                      pedidos={pedidos}
+                      funcionarios={funcionarios}
+                      canManage={canManage}
+                      canAprovar={canAprovar}
+                      canGerarTitulos={canGerarTitulos}
+                      jaTemTitulo={contratoIdsComTitulo.has(row.id)}
+                    />
                   </td>
                 )}
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td style={tdStyle} colSpan={canManage ? 7 : 6}>
+                <td style={tdStyle} colSpan={canManage || canAprovar ? 8 : 7}>
                   Nenhum contrato registrado ainda.
                 </td>
               </tr>
@@ -211,14 +261,22 @@ function ContratoForm({
       )}
 
       <input name="objeto" placeholder="objeto do contrato" defaultValue={row?.objeto ?? ""} required style={{ ...inputStyle, width: "180px" }} />
-      <input name="data_inicio" type="date" defaultValue={row?.data_inicio ?? ""} style={inputStyle} />
-      <input name="data_fim" type="date" defaultValue={row?.data_fim ?? ""} style={inputStyle} />
+      <input name="data_inicio" type="date" defaultValue={row?.data_inicio ?? ""} style={inputStyle} title="data de início" />
+      <input name="data_fim" type="date" defaultValue={row?.data_fim ?? ""} style={inputStyle} title="data de fim (vigência)" />
       <select name="renovacao" defaultValue={row?.renovacao ?? "manual"} style={inputStyle}>
         <option value="manual">Renovação manual</option>
         <option value="automatica">Renovação automática</option>
       </select>
       <input name="valor" type="number" step="0.01" placeholder="valor" defaultValue={row?.valor ?? ""} style={{ ...inputStyle, width: "100px" }} />
       <input name="forma_pagamento" placeholder="forma de pagamento" defaultValue={row?.forma_pagamento ?? ""} style={{ ...inputStyle, width: "140px" }} />
+      <input name="parcelas" type="number" min="1" placeholder="nº parcelas" defaultValue={row?.parcelas ?? ""} style={{ ...inputStyle, width: "90px" }} />
+      <input name="reajuste_previsto" placeholder="reajuste previsto (opcional)" defaultValue={row?.reajuste_previsto ?? ""} style={{ ...inputStyle, width: "150px" }} />
+      {tipo === "cliente" && (
+        <>
+          <input name="garantia_inicio" type="date" defaultValue={row?.garantia_inicio ?? ""} style={inputStyle} title="início da garantia" />
+          <input name="garantia_fim" type="date" defaultValue={row?.garantia_fim ?? ""} style={inputStyle} title="fim da garantia" />
+        </>
+      )}
       <input name="observacoes" placeholder="observações (opcional)" defaultValue={row?.observacoes ?? ""} style={{ ...inputStyle, width: "160px" }} />
       <button type="submit" style={buttonStyle}>
         {row ? "Salvar" : "Criar rascunho"}
@@ -234,6 +292,10 @@ function AcoesContrato({
   obras,
   pedidos,
   funcionarios,
+  canManage,
+  canAprovar,
+  canGerarTitulos,
+  jaTemTitulo,
 }: {
   row: Contrato;
   clientes: Pessoa[];
@@ -241,8 +303,12 @@ function AcoesContrato({
   obras: Obra[];
   pedidos: Pedido[];
   funcionarios: Funcionario[];
+  canManage: boolean;
+  canAprovar: boolean;
+  canGerarTitulos: boolean;
+  jaTemTitulo: boolean;
 }) {
-  const [modo, setModo] = useState<"nenhum" | "editar" | "encerrar">("nenhum");
+  const [modo, setModo] = useState<"nenhum" | "editar" | "encerrar" | "suspender" | "reprovar" | "cancelar" | "gerar_titulos">("nenhum");
 
   if (modo === "editar") {
     return (
@@ -255,9 +321,10 @@ function AcoesContrato({
     );
   }
 
-  if (modo === "encerrar") {
+  if (modo === "encerrar" || modo === "suspender" || modo === "reprovar" || modo === "cancelar") {
+    const action = { encerrar: encerrarContratoAction, suspender: suspenderContratoAction, reprovar: reprovarContratoAction, cancelar: cancelarContratoAction }[modo];
     return (
-      <form action={encerrarContratoAction} style={{ display: "flex", gap: "4px" }} onSubmit={() => setModo("nenhum")}>
+      <form action={action} style={{ display: "flex", gap: "4px" }} onSubmit={() => setModo("nenhum")}>
         <input type="hidden" name="id" value={row.id} />
         <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "120px" }} />
         <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>
@@ -270,29 +337,133 @@ function AcoesContrato({
     );
   }
 
-  if (row.status === "rascunho") {
+  if (modo === "gerar_titulos") {
     return (
-      <div style={{ display: "flex", gap: "4px" }}>
-        <button onClick={() => setModo("editar")} style={buttonStyle}>
-          Editar
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        <GerarTitulosContratoForm contratoId={row.id} onSubmit={() => setModo("nenhum")} />
+        <button onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de", width: "fit-content" }}>
+          Fechar
         </button>
-        <form action={ativarContratoAction}>
-          <input type="hidden" name="id" value={row.id} />
-          <button type="submit" style={buttonStyle}>
-            Ativar
-          </button>
-        </form>
       </div>
     );
   }
 
-  if (row.status === "vigente") {
-    return (
-      <button onClick={() => setModo("encerrar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
-        Encerrar
-      </button>
+  const botoes: ReactNode[] = [];
+
+  if (row.status === "rascunho" && canManage) {
+    botoes.push(
+      <button key="editar" onClick={() => setModo("editar")} style={buttonStyle}>
+        Editar
+      </button>,
+    );
+    botoes.push(
+      <form key="enviar" action={enviarContratoParaAprovacaoAction} style={{ display: "inline" }}>
+        <input type="hidden" name="id" value={row.id} />
+        <button type="submit" style={buttonStyle}>
+          Enviar p/ aprovação
+        </button>
+      </form>,
+    );
+    botoes.push(
+      <button key="cancelar" onClick={() => setModo("cancelar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+        Cancelar
+      </button>,
     );
   }
 
-  return null;
+  if (row.status === "em_aprovacao") {
+    if (canAprovar) {
+      botoes.push(
+        <form key="aprovar" action={aprovarContratoAction} style={{ display: "inline" }}>
+          <input type="hidden" name="id" value={row.id} />
+          <button type="submit" style={buttonStyle}>
+            Aprovar
+          </button>
+        </form>,
+      );
+      botoes.push(
+        <button key="reprovar" onClick={() => setModo("reprovar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+          Reprovar
+        </button>,
+      );
+    }
+    if (canManage) {
+      botoes.push(
+        <button key="cancelar" onClick={() => setModo("cancelar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+          Cancelar
+        </button>,
+      );
+    }
+  }
+
+  if (row.status === "vigente" && canManage) {
+    botoes.push(
+      <button key="suspender" onClick={() => setModo("suspender")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+        Suspender
+      </button>,
+    );
+    botoes.push(
+      <button key="encerrar" onClick={() => setModo("encerrar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+        Encerrar
+      </button>,
+    );
+    if (row.tipo === "cliente" && canGerarTitulos && !jaTemTitulo) {
+      botoes.push(
+        <button key="gerar_titulos" onClick={() => setModo("gerar_titulos")} style={buttonStyle}>
+          Gerar título(s)
+        </button>,
+      );
+    }
+  }
+
+  if (row.status === "suspenso" && canManage) {
+    botoes.push(
+      <form key="retomar" action={retomarContratoAction} style={{ display: "inline" }}>
+        <input type="hidden" name="id" value={row.id} />
+        <button type="submit" style={buttonStyle}>
+          Retomar
+        </button>
+      </form>,
+    );
+    botoes.push(
+      <button key="encerrar" onClick={() => setModo("encerrar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+        Encerrar
+      </button>,
+    );
+  }
+
+  if (botoes.length === 0) return null;
+
+  return <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>{botoes}</div>;
+}
+
+function GerarTitulosContratoForm({ contratoId, onSubmit }: { contratoId: string; onSubmit?: () => void }) {
+  const [parcelas, setParcelas] = useState([{ key: 0 }]);
+  const nextKeyRef = useRef(1);
+
+  return (
+    <form action={gerarTitulosContratoAction} onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: "8px", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
+      <input type="hidden" name="contrato_id" value={contratoId} />
+      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        <button type="button" onClick={() => setParcelas((rows) => [...rows, { key: nextKeyRef.current++ }])} style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #1f5d57" }}>
+          + parcela
+        </button>
+      </div>
+      {parcelas.map((row, i) => (
+        <div key={row.key} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          <input name="parcela_valor" type="number" min="0" step="0.01" placeholder="valor" required style={{ ...inputStyle, width: "100px" }} />
+          <input name="parcela_vencimento" type="date" required style={inputStyle} />
+          <input name="parcela_condicao" placeholder="condição (opcional)" style={{ ...inputStyle, width: "120px" }} />
+          {parcelas.length > 1 && (
+            <button type="button" onClick={() => setParcelas((rows) => rows.filter((_, idx) => idx !== i))} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+              remover
+            </button>
+          )}
+        </div>
+      ))}
+      <button type="submit" style={{ ...buttonStyle, width: "fit-content" }}>
+        Gerar título(s)
+      </button>
+    </form>
+  );
 }
