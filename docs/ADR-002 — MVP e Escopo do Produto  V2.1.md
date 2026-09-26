@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.14\
+**Versão:** 2.15\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -19,7 +19,9 @@ recebidos de terceiros; §4.17 revisado uma terceira vez em 2026-09-25 —
 Fase 4 do TÓPICO 13, webhooks enviados + motor de automação; §4.14 e
 §4.17 revisados em 2026-09-25 — Fase 5 do TÓPICO 13, bancos/boletos/PIX
 com contas a pagar/cobrança/conciliação; §4.16 revisado em 2026-09-26 —
-Fase 3 do TÓPICO 12, dashboards por área com dados já existentes)\
+Fase 3 do TÓPICO 12, dashboards por área com dados já existentes; §4.17
+revisado em 2026-09-26 — Fase 6 do TÓPICO 13, exportação genérica em
+CSV)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
 ADR-011
@@ -1299,6 +1301,30 @@ Continua fora, sem mudança: NF-e/fiscal real (bloqueado pelo ADR-004,
 não por este ADR), cartões e meios de pagamento (§7), extrato/
 conciliação automática, DRE, plano de contas, e qualquer conector
 bancário real (nenhum provedor de fato conectado).
+
+**Ampliação de escopo — Fase 6, exportação genérica em CSV (26/09/2026 —
+decisão do responsável do produto via chat).** Abre §30 (Exportação). O
+próprio §37 do doc ("Escopo do MVP") lista "importação/exportação" como
+prioridade de infraestrutura — diferente de cartões, certificados
+digitais ou APIs de terceiros, que não aparecem nessa lista. Importação
+(§29) já tinha uma base real desde 20260929000000 (CSV, com prévia/
+dry-run, para Pessoas e Itens); esta fase fecha o lado da exportação, que
+só existia como exportação LGPD de portabilidade da própria conta
+(`/export`), não como exportação de listagem de negócio.
+
+Só CSV (mesma decisão de corte já usada na importação), cinco entidades
+— pedidos, itens, pessoas, estoque, financeiro (só contas a receber
+nesta fase) — cada uma exigindo a MESMA permissão que a tela daquele
+módulo já exige (`pedidos.view`, `itens.view`, `pessoas.view`,
+`estoque.view`, `financeiro.view`), nunca uma permissão nova e genérica
+de "exportação" que contornaria o controle de acesso por módulo. A
+entidade é um parâmetro validado contra uma lista fixa, nunca um
+identificador livre.
+
+Continua fora: Excel/XML/PDF, exportação agendada (seria sobreposição
+com "relatórios agendados" do BI, já fora desde a Fase 3 do T12), contas
+a pagar (fica para quando houver demanda real), e qualquer outra
+entidade além das cinco listadas.
 
 **4.18 Abastecimento / Compras**
 

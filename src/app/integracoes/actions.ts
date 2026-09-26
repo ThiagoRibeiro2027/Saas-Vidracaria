@@ -241,3 +241,37 @@ export async function definirFonteOficialAction(formData: FormData) {
 
   revalidatePath("/integracoes");
 }
+
+// TÓPICO 13 §30, Fase 6 — exportação genérica em CSV. Mesmo padrão do
+// export LGPD (src/app/export/actions.ts): Server Action devolve o texto
+// pronto, um Client Component vira Blob e dispara o download no
+// navegador — não existe rota HTTP dedicada. A permissão real é checada
+// dentro de exportar_dados_csv() (uma por entidade); esta action não
+// duplica a checagem, só repassa o erro se a função rejeitar.
+function paraCsv(linhas: Record<string, unknown>[]): string {
+  if (linhas.length === 0) return "";
+  const colunas = Object.keys(linhas[0]);
+  const escapar = (v: unknown) => {
+    const texto = v === null || v === undefined ? "" : String(v);
+    return /[",\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+  };
+  const cabecalho = colunas.join(",");
+  const corpo = linhas.map((linha) => colunas.map((c) => escapar(linha[c])).join(","));
+  return [cabecalho, ...corpo].join("\n");
+}
+
+export async function exportarDadosCsvAction(formData: FormData): Promise<{ error: string } | { data: string }> {
+  const entidade = String(formData.get("entidade") ?? "").trim();
+  const dataInicio = String(formData.get("data_inicio") ?? "").trim() || null;
+  const dataFim = String(formData.get("data_fim") ?? "").trim() || null;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("exportar_dados_csv", {
+    p_entidade: entidade,
+    p_data_inicio: dataInicio,
+    p_data_fim: dataFim,
+  });
+  if (error) return { error: error.message };
+
+  return { data: paraCsv((data as Record<string, unknown>[]) ?? []) };
+}

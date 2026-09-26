@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import IntegracoesSection from "./IntegracoesSection";
+import ExportacaoSection from "./ExportacaoSection";
 
 // TÓPICO 13 — Integrações. Fase 1 (ADR-002 v2.5 §4.17): Central de
 // Integrações (configurar/ativar/desativar) e fonte oficial por tipo de
@@ -14,7 +15,11 @@ import IntegracoesSection from "./IntegracoesSection";
 // 20261004000000). Fase 4 (ADR-002 §4.17, emenda): webhooks de saída +
 // motor de automação Evento→Condição→Ação (§14-15), só níveis Informativo
 // e Assistido — a entrega HTTP de fato roda num cron
-// (api/cron/integracoes-webhooks-saida), 1x/dia (plano Hobby).
+// (api/cron/integracoes-webhooks-saida), 1x/dia (plano Hobby). Fase 6
+// (ADR-002 §4.17, emenda de 26/09/2026): exportação genérica em CSV
+// (§30) — a permissão real por entidade vive em exportar_dados_csv();
+// aqui só filtramos quais opções aparecem pro usuário, pra não oferecer
+// uma entidade que ele sabe de antemão que vai dar erro de permissão.
 export default async function IntegracoesPage() {
   const supabase = await createClient();
 
@@ -22,6 +27,12 @@ export default async function IntegracoesPage() {
     supabase.rpc("has_permission", { p_resource: "integracoes", p_action: "view" }),
     supabase.rpc("has_permission", { p_resource: "integracoes", p_action: "manage" }),
   ]);
+
+  const ENTIDADES_EXPORTAVEIS = ["pedidos", "itens", "pessoas", "estoque", "financeiro"] as const;
+  const permissoesExport = await Promise.all(
+    ENTIDADES_EXPORTAVEIS.map((entidade) => supabase.rpc("has_permission", { p_resource: entidade, p_action: "view" })),
+  );
+  const entidadesPermitidas = ENTIDADES_EXPORTAVEIS.filter((_, i) => !!permissoesExport[i].data);
 
   if (!canView) {
     return (
@@ -100,6 +111,8 @@ export default async function IntegracoesPage() {
           logs={logs ?? []}
           canManage={!!canManage}
         />
+
+        <ExportacaoSection entidadesPermitidas={entidadesPermitidas} />
       </div>
     </main>
   );

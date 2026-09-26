@@ -13,6 +13,10 @@
 // num cron (src/app/api/cron/integracoes-webhooks-saida), fora do escopo
 // deste script — aqui só o caminho de banco (enfileirar via
 // confirmar_execucao_regra() e o ciclo de vida via sistema_*) é testado.
+// Fase 6 (ADR-002 §4.17, emenda de 26/09/2026): exportação genérica em
+// CSV (exportar_dados_csv) para pedidos/itens/pessoas/estoque/financeiro
+// — cada entidade exige a mesma permissão que a tela do módulo já exige,
+// nunca uma permissão nova de "exportação".
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-integracoes.mjs
 
@@ -832,6 +836,74 @@ async function main() {
 
     const { error: eCrossAtivar } = await otherTenant.client.rpc("ativar_regra_automacao", { p_id: regraInformativaId });
     check("tenant B não ativa/desativa regra do tenant A", !!eCrossAtivar);
+  }
+
+  console.log("\n33. Fase 6 — exportação genérica em CSV (exportar_dados_csv)");
+  {
+    // Massa mínima só pra popular as 5 entidades exportáveis — sem
+    // produção/qualidade/expedição/instalação, que export não usa.
+    for (const [dt, pfx] of [["orcamento", "ORCEXP-"], ["pedido", "PEDEXP-"], ["titulo_financeiro", "TITEXP-"]]) {
+      await admTenant.client.rpc("upsert_numbering_sequence", {
+        p_document_type: dt, p_prefixo: pfx, p_sufixo: "", p_digitos: 4,
+        p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca",
+      });
+    }
+    const { data: pessoaId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CNPJ", p_documento: "22233344000199", p_nome: "Cliente Export Teste",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+      p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: pessoaId, p_papel: "CLIENTE", p_ativo: true });
+    const { data: obraId } = await admTenant.client.rpc("upsert_obra", {
+      p_id: null, p_pessoa_id: pessoaId, p_nome: "Obra Export Teste",
+      p_logradouro: "Rua Export, 1", p_cidade: "São Paulo", p_uf: "SP", p_cep: "01000-000", p_situacao: "ativo",
+    });
+    const { data: itemId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "VD-EXP-1", p_descricao: "Item exportação teste",
+      p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2", p_situacao: "ativo",
+    });
+    const { data: orcamentoId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: pessoaId, p_obra_id: obraId, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: itemId, p_quantidade: 2, p_preco_unitario: 300,
+    });
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoId, p_decisao: "aprovado" });
+    const { data: pedidoId } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoId });
+    await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoId });
+    await admTenant.client.rpc("liberar_pedido", { p_id: pedidoId });
+    await admTenant.client.rpc("gerar_titulos_pedido", { p_pedido_id: pedidoId, p_parcelas: [{ valor: 600, vencimento: "2027-01-01" }] });
+
+    const { data: dPedidos, error: ePedidos } = await admTenant.client.rpc("exportar_dados_csv", { p_entidade: "pedidos" });
+    check("exportar pedidos sem erro e com a linha esperada", !ePedidos && dPedidos?.some((r) => Number(r.valor_total) === 600 && r.cliente === "Cliente Export Teste"));
+
+    const { data: dItens, error: eItens } = await admTenant.client.rpc("exportar_dados_csv", { p_entidade: "itens" });
+    check("exportar itens sem erro e com o item esperado", !eItens && dItens?.some((r) => r.codigo === "VD-EXP-1"));
+
+    const { data: dPessoas, error: ePessoas } = await admTenant.client.rpc("exportar_dados_csv", { p_entidade: "pessoas" });
+    check("exportar pessoas sem erro e com a pessoa esperada", !ePessoas && dPessoas?.some((r) => r.nome === "Cliente Export Teste"));
+
+    const { data: dEstoque, error: eEstoque } = await admTenant.client.rpc("exportar_dados_csv", { p_entidade: "estoque" });
+    check("exportar estoque sem erro (pode ser vazio, pipeline não movimenta estoque)", !eEstoque && Array.isArray(dEstoque));
+
+    const { data: dFinanceiro, error: eFinanceiro } = await admTenant.client.rpc("exportar_dados_csv", { p_entidade: "financeiro" });
+    check("exportar financeiro sem erro e com o título esperado", !eFinanceiro && dFinanceiro?.some((r) => Number(r.valor) === 600 && r.cliente === "Cliente Export Teste"));
+
+    const { error: eEntidadeInvalida } = await admTenant.client.rpc("exportar_dados_csv", { p_entidade: "drop_table_please" });
+    check("entidade inválida é rejeitada", !!eEntidadeInvalida);
+
+    const { error: eDataInvalida } = await admTenant.client.rpc("exportar_dados_csv", { p_entidade: "pedidos", p_data_inicio: "2027-06-01", p_data_fim: "2027-01-01" });
+    check("data_fim anterior à data_inicio é rejeitada", !!eDataInvalida);
+
+    // noPermTenant tem papel QUALIDADE — sem pedidos.view/pessoas.view/
+    // itens.view/estoque.view/financeiro.view.
+    const { error: eSemPermPedidos } = await noPermTenant.client.rpc("exportar_dados_csv", { p_entidade: "pedidos" });
+    check("papel QUALIDADE não exporta pedidos (sem pedidos.view)", !!eSemPermPedidos);
+    const { error: eSemPermFinanceiro } = await noPermTenant.client.rpc("exportar_dados_csv", { p_entidade: "financeiro" });
+    check("papel QUALIDADE não exporta financeiro (sem financeiro.view)", !!eSemPermFinanceiro);
+
+    const { data: dOutroTenant } = await otherTenant.client.rpc("exportar_dados_csv", { p_entidade: "pedidos" });
+    check("tenant B não enxerga o pedido do tenant A na exportação", !(dOutroTenant ?? []).some((r) => r.cliente === "Cliente Export Teste"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
