@@ -56,7 +56,10 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
   });
   let userId = created?.user?.id;
   if (!userId) {
-    const { data: list } = await admin.auth.admin.listUsers();
+    // Banco único compartilhado entre as máquinas (CLAUDE.md) acumula
+    // usuários de teste entre sessões — sem perPage alto, o fixture antigo
+    // deste e-mail some da 1ª página do listUsers() e o fallback nunca acha.
+    const { data: list } = await admin.auth.admin.listUsers({ perPage: 10000 });
     userId = list.users.find((u) => u.email === email)?.id;
   }
 
