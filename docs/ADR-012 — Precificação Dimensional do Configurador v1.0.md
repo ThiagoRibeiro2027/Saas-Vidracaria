@@ -66,12 +66,16 @@ aplicável só aos dois últimos. Regras condicionais continuam
 inteiramente cobertas por `peca_regras`, sem mudança nele.
 
 **2.3 Fonte de custo: histórico de compras.** Confirmado pelo
-responsável do produto: o custo de cada material vem do preço mais
-recente em `historico_precos_item_fornecedor` (ADR-011) — nunca um
-campo de preço próprio em `itens` (que não existe hoje) nem um valor
-inventado. Se não houver histórico de preço pra um material da
-composição, o cálculo não assume zero silenciosamente — avisa
-explicitamente que falta custo pra aquele componente.
+responsável do produto: o custo de cada material vem do "histórico de
+compras" — implementado como `pedido_compra_itens.custo_unitario` mais
+recente (correção de rota feita durante a Fase 1: `historico_precos_
+item_fornecedor`, ADR-011, registra toda PROPOSTA de cotação, mesmo as
+não selecionadas — custo real pago é o de um Pedido de Compra de fato
+confirmado, não uma proposta qualquer). Nunca um campo de preço próprio
+em `itens` (que não existe hoje) nem um valor inventado. Se não houver
+histórico de preço pra um material da composição, o cálculo não assume
+zero silenciosamente — avisa explicitamente que falta custo pra aquele
+componente.
 
 **2.4 Acessórios reaproveitam o motor existente.** Quantidade
 condicionada a faixa de tamanho (ex.: roldana) usa `peca_regras`, já
@@ -91,9 +95,25 @@ de precificação configurado.
 
 **3. O que fica fora mesmo com o escopo aprovado**
 
-- Otimização real de corte — reaproveitamento de sobra de barra entre
-  pedidos diferentes. Projeto à parte, já citado como fora de escopo no
-  TÓPICO 13 §40 ("Otimizador de Corte Externo").
+**Emenda (27/09/2026, aprovação explícita do responsável do produto,
+via chat, antes do código da Fase 2).** A exclusão original abaixo
+("otimização real de corte") previa só UM comprimento de barra por
+perfil. O responsável do produto pediu explicitamente o caso mais
+amplo — múltiplos comprimentos disponíveis por perfil (ex.: 3m e 6m),
+com o sistema escolhendo a combinação de **menor custo total** (não
+menor sobra em metros — os dois nem sempre coincidem quando o preço não
+é exatamente proporcional ao comprimento) pra cobrir a metragem
+necessária. Isso passa a ser parte da Fase 2 (§4), com sua própria
+tabela de comprimentos candidatos por linha de composição linear. O que
+**continua** fora, sem mudança, é o item abaixo em sua forma original —
+reaproveitar a sobra de UM corte real (a barra física que sobrou depois
+de cortada) num orçamento ou pedido diferente. A escolha de combinação
+de barras nesta Fase 2 é sempre sobre catálogo (quais comprimentos
+existem pra comprar), nunca sobre estoque físico de sobras já cortadas.
+
+- Reaproveitamento de sobra de barra **já cortada** entre pedidos
+  diferentes (estoque físico de retalho). Projeto à parte, já citado
+  como fora de escopo no TÓPICO 13 §40 ("Otimizador de Corte Externo").
 - Fórmulas de composição mais sofisticadas que perímetro/área simples
   (ex.: contagem geométrica de barras verticais vs. horizontais,
   encaixes, cortes em ângulo) — entram só quando um caso real exigir,
@@ -118,10 +138,19 @@ passa a poder ser preenchido automaticamente por essa função, em vez de
 só digitado — a formação de preço (markup) já existente atua em cima do
 que sair daqui, sem mudança nela.
 
-**Fase 2 — Perda e sobra real de barra.** Perfil passa a considerar o
-comprimento de barra disponível do item de matéria-prima e arredonda
-pra cima em barras inteiras, além do percentual de perda já previsto na
-Fase 1. Reaproveitamento de sobra entre orçamentos continua fora (§3).
+**Fase 2 — Combinação de barras de menor custo.** Uma linha de
+composição `linear` (perfil) ganha um catálogo de comprimentos de barra
+candidatos (nova tabela — cada comprimento é um item comprável distinto,
+com seu próprio custo via §2.3), além do percentual de perda já previsto
+na Fase 1. O cálculo passa a escolher, entre os comprimentos
+cadastrados, a combinação de barras que cobre a metragem necessária
+(perímetro + perda) pelo **menor custo total** — nunca pela menor sobra
+em metros, que pode divergir (emenda ao §3, 27/09/2026). Linha de
+composição sem nenhum comprimento cadastrado continua se comportando
+como a Fase 1 (custo por metro corrido, sem arredondamento de barra) —
+comportamento anterior preservado por omissão, não por padrão forçado.
+Reaproveitamento de sobra **física** (retalho já cortado) entre
+orçamentos continua fora (§3).
 
 **Fase 3 — Composição vira BOM sugerida no Pedido.** Reabre a decisão de
 26/09 de não copiar nada na conversão: `converter_orcamento_em_pedido()`
@@ -144,12 +173,14 @@ obra por operação, substituindo o campo manual da Fase 1.
 Não bloqueiam a aprovação desta ADR, mas bloqueiam o código da fase
 correspondente até resolvidas com o responsável do produto:
 
-- **Fase 1:** o que a tela mostra/faz quando um material da composição
-  não tem nenhum histórico de preço — bloqueia o cálculo do item
-  inteiro, ou calcula parcialmente e avisa o que falta?
-- **Fase 2:** de onde vem o(s) comprimento(s) de barra disponíveis por
-  item de perfil (campo novo no cadastro do item, ou fixo por
-  configuração da empresa)?
+- **Fase 1 — resolvida (27/09/2026):** calcula parcialmente e avisa
+  explicitamente o que falta — nunca bloqueia o item inteiro nem assume
+  zero.
+- **Fase 2 — resolvida (27/09/2026):** múltiplos comprimentos por item
+  de perfil, cada um um item comprável distinto (não um campo novo em
+  `itens`), cadastrado numa tabela própria de "comprimentos candidatos"
+  por linha de composição; otimização por menor custo total, não menor
+  sobra.
 - **Fase 3:** se a Engenharia reprovar ou alterar a composição sugerida
   depois que o orçamento (e o preço) já foi aprovado/faturado, o preço
   já cobrado do cliente muda retroativamente, ou fica congelado e a
