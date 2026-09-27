@@ -997,6 +997,95 @@ async function main() {
     check("item que não é peça configurável retorna aplica_configurador=false, sem erro", calcSimples?.aplica_configurador === false);
   }
 
+  console.log("\n64. ADR-012 Fase 2 — combinação de barras de menor custo (definir_comprimento_barra_composicao)");
+  {
+    async function registrarCustoCompra(companyId, solicitanteId, itemId, custoUnitario, fornecedorId) {
+      const { data: sc } = await admin.from("solicitacoes_compra").insert({ company_id: companyId, numero: `SC-F2-${itemId.slice(0, 8)}`, solicitante_id: solicitanteId, status: "aberta" }).select().single();
+      const { data: sci } = await admin.from("solicitacao_compra_itens").insert({ company_id: companyId, solicitacao_compra_id: sc.id, item_id: itemId, quantidade: 50 }).select().single();
+      const { data: cot } = await admin.from("cotacoes").insert({ company_id: companyId, numero: `COT-F2-${itemId.slice(0, 8)}`, solicitacao_compra_id: sc.id, status: "selecionada" }).select().single();
+      const { data: ci } = await admin.from("cotacao_itens").insert({ company_id: companyId, cotacao_id: cot.id, solicitacao_compra_item_id: sci.id }).select().single();
+      const { data: pc } = await admin.from("pedidos_compra").insert({ company_id: companyId, numero: `PC-F2-${itemId.slice(0, 8)}`, cotacao_id: cot.id, pessoa_id: fornecedorId, status: "confirmado" }).select().single();
+      await admin.from("pedido_compra_itens").insert({ company_id: companyId, pedido_compra_id: pc.id, cotacao_item_id: ci.id, item_id: itemId, quantidade: 50, preco_unitario: custoUnitario, custo_unitario: custoUnitario });
+    }
+
+    const { data: fornecedorF2Id } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CNPJ", p_documento: "99988877000166", p_nome: "Fornecedor Fase2 Teste",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null, p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: fornecedorF2Id, p_papel: "FORNECEDOR", p_ativo: true });
+    const { data: clienteF2Id } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CPF", p_documento: "44455566620", p_nome: "Cliente Fase2 Teste",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null, p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: clienteF2Id, p_papel: "CLIENTE", p_ativo: true });
+    await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "orcamento", p_prefixo: "ORCF2-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+
+    const { data: janelaItemId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "JAN-F2", p_descricao: "Janela Fase 2", p_tipo: "produto_acabado", p_classificacao: "janela", p_unidade_principal: "UN", p_situacao: "ativo" });
+    const { data: pecaJanelaId } = await admTenant.client.rpc("criar_peca", { p_item_id: janelaItemId, p_descricao_tecnica: "Janela de correr" });
+    const { data: caractLarguraF2 } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaJanelaId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true });
+    const { data: caractAlturaF2 } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaJanelaId, p_nome: "altura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true });
+    await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractLarguraF2, p_papel: "largura" });
+    await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractAlturaF2, p_papel: "altura" });
+
+    const { data: perfilGenericoId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "PERFIL-GEN-F2", p_descricao: "Perfil genérico (sem barra)", p_tipo: "materia_prima", p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo" });
+    const { data: compPerfilF2 } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaJanelaId, material_item_id: perfilGenericoId, quantidade_por_unidade: 1 }).select().single();
+    await admTenant.client.rpc("definir_tipo_calculo_composicao", { p_composicao_id: compPerfilF2.id, p_tipo_calculo: "linear", p_percentual_perda: 0 });
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, perfilGenericoId, 25.0, fornecedorF2Id);
+
+    const { data: orcamentoF2Id } = await admTenant.client.rpc("upsert_orcamento", { p_id: null, p_pessoa_id: clienteF2Id, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null });
+    await admTenant.client.rpc("upsert_orcamento_item", { p_id: null, p_orcamento_id: orcamentoF2Id, p_item_id: janelaItemId, p_quantidade: 1, p_preco_unitario: 100 });
+    const { data: orcItemF2 } = await admin.from("orcamento_itens").select("id").eq("orcamento_id", orcamentoF2Id).single();
+    // perímetro = 2*(2000+1500)/1000 = 7m (sem perda nesta peça)
+    await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", { p_orcamento_item_id: orcItemF2.id, p_peca_caracteristica_id: caractLarguraF2, p_valor_numero: 2000, p_valor_texto: null });
+    await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", { p_orcamento_item_id: orcItemF2.id, p_peca_caracteristica_id: caractAlturaF2, p_valor_numero: 1500, p_valor_texto: null });
+
+    const { data: calcSemBarra } = await admTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItemF2.id });
+    check("sem comprimento de barra cadastrado, comporta-se como Fase 1 (7m x 25.00 = 175.00)", calcSemBarra?.custo_total === 175);
+
+    const { error: eTipoErrado } = await admTenant.client.rpc("definir_comprimento_barra_composicao", { p_peca_composicao_id: compPerfilF2.id, p_item_id: perfilGenericoId, p_comprimento_metros: -1 });
+    check("comprimento de barra <= 0 é rejeitado", !!eTipoErrado);
+
+    const { data: vidroDummyId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "VIDRO-DUMMY-F2", p_descricao: "Vidro dummy (só pra testar rejeição)", p_tipo: "materia_prima", p_classificacao: "vidro", p_unidade_principal: "M2", p_situacao: "ativo" });
+    const { data: compVidroF2 } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaJanelaId, material_item_id: vidroDummyId, quantidade_por_unidade: 1, tipo_calculo: "area" }).select().single();
+    const { error: eNaoLinear } = await admTenant.client.rpc("definir_comprimento_barra_composicao", { p_peca_composicao_id: compVidroF2.id, p_item_id: perfilGenericoId, p_comprimento_metros: 3 });
+    check("comprimento de barra rejeitado numa linha que não é 'linear'", !!eNaoLinear);
+
+    const { data: item3mF2 } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "PERFIL-3M-F2", p_descricao: "Perfil 3m", p_tipo: "materia_prima", p_classificacao: "perfil", p_unidade_principal: "UN", p_situacao: "ativo" });
+    const { data: item6mF2 } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "PERFIL-6M-F2", p_descricao: "Perfil 6m", p_tipo: "materia_prima", p_classificacao: "perfil", p_unidade_principal: "UN", p_situacao: "ativo" });
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, item3mF2, 80.0, fornecedorF2Id);
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, item6mF2, 150.0, fornecedorF2Id);
+
+    const { error: eSemPermBarra } = await noPermTenant.client.rpc("definir_comprimento_barra_composicao", { p_peca_composicao_id: compPerfilF2.id, p_item_id: item3mF2, p_comprimento_metros: 3 });
+    check("sem pecas.manage não cadastra comprimento de barra", !!eSemPermBarra);
+
+    const { error: e3m } = await admTenant.client.rpc("definir_comprimento_barra_composicao", { p_peca_composicao_id: compPerfilF2.id, p_item_id: item3mF2, p_comprimento_metros: 3 });
+    const { error: e6m } = await admTenant.client.rpc("definir_comprimento_barra_composicao", { p_peca_composicao_id: compPerfilF2.id, p_item_id: item6mF2, p_comprimento_metros: 6 });
+    check("ADMIN cadastra os dois comprimentos de barra", !e3m && !e6m);
+
+    const { error: eDuplicado } = await admTenant.client.rpc("definir_comprimento_barra_composicao", { p_peca_composicao_id: compPerfilF2.id, p_item_id: item3mF2, p_comprimento_metros: 3 });
+    check("mesmo item de barra duas vezes na mesma composição é rejeitado", !!eDuplicado);
+
+    // necessidade = 7m; opções: 3m (R$80) e 6m (R$150).
+    // Combinações possíveis: 1x6m+1x3m=9m/R$230; 3x3m=9m/R$240; 2x6m=12m/R$300.
+    // Menor custo: 1x6m+1x3m = R$230.
+    const { data: calcComBarra, error: eCalcBarra } = await admTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItemF2.id });
+    check("cálculo com comprimentos de barra sem erro", !eCalcBarra);
+    const perfilComponentes = (calcComBarra?.componentes ?? []).filter((c) => c.codigo === "PERFIL-3M-F2" || c.codigo === "PERFIL-6M-F2");
+    const custoPerfilTotal = perfilComponentes.reduce((s, c) => s + c.subtotal, 0);
+    check("escolhe a combinação de menor custo (1x6m + 1x3m = R$230,00), não 2x6m nem 3x3m", Math.abs(custoPerfilTotal - 230) < 0.01);
+    check("usa exatamente 1 barra de cada comprimento", perfilComponentes.length === 2 && perfilComponentes.every((c) => c.quantidade === 1));
+
+    const { data: compRow } = await admin.from("peca_composicao_comprimentos_barra").select("id").eq("peca_composicao_id", compPerfilF2.id).eq("item_id", item3mF2).single();
+    const { error: eSemPermRemover } = await noPermTenant.client.rpc("remover_comprimento_barra_composicao", { p_id: compRow.id });
+    check("sem pecas.manage não remove comprimento de barra", !!eSemPermRemover);
+    const { error: eRemover } = await admTenant.client.rpc("remover_comprimento_barra_composicao", { p_id: compRow.id });
+    check("ADMIN remove comprimento de barra de 3m", !eRemover);
+
+    const { data: calcSoComBarra6m } = await admTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItemF2.id });
+    const perfil6mSozinho = (calcSoComBarra6m?.componentes ?? []).find((c) => c.codigo === "PERFIL-6M-F2");
+    check("com só o comprimento de 6m restante, usa 2 barras de 6m (12m cobre os 7m necessários)", perfil6mSozinho?.quantidade === 2 && Math.abs(perfil6mSozinho.subtotal - 300) < 0.01);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

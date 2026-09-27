@@ -571,7 +571,16 @@ function OrcamentoItemRow({
   );
 }
 
-type ComponenteCusto = { item_id: string; codigo: string; descricao: string; quantidade: number; custo_unitario?: number; subtotal?: number };
+type ComponenteCusto = {
+  item_id: string;
+  codigo: string;
+  descricao: string;
+  quantidade: number;
+  custo_unitario?: number;
+  subtotal?: number;
+  comprimento_metros?: number;
+  necessidade_metros?: number;
+};
 type CalculoCustoResultado = {
   aplica_configurador: boolean;
   custo_total?: number;
@@ -621,7 +630,9 @@ function CalculadoraCustoConfigurador({ orcamentoItemId }: { orcamentoItemId: st
         <div className="flex flex-col gap-0.5">
           {(resultado.componentes ?? []).map((c) => (
             <div key={c.item_id} className="flex justify-between">
-              <span>{c.codigo} — {c.descricao} ({c.quantidade})</span>
+              <span>
+                {c.codigo} — {c.descricao} ({c.comprimento_metros ? `${c.quantidade} barra(s) de ${c.comprimento_metros}m` : c.quantidade})
+              </span>
               <span>{currency(c.subtotal ?? 0)}</span>
             </div>
           ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   criarPecaAction,
   inativarPecaAction,
@@ -12,6 +12,8 @@ import {
   removerCaracteristicaPecaAction,
   definirPapelDimensionalAction,
   definirTipoCalculoComposicaoAction,
+  definirComprimentoBarraAction,
+  removerComprimentoBarraAction,
 } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 import RegrasPeca from "./RegrasPeca";
@@ -35,6 +37,7 @@ const TIPO_CALCULO_LABEL: Record<PecaComposicao["tipo_calculo"], string> = {
   linear: "Linear (perímetro)",
   area: "Área",
 };
+type ComprimentoBarra = { id: string; item_id: string; comprimento_metros: number };
 type Regra = {
   id: string;
   versao: number;
@@ -71,6 +74,7 @@ export default function PecasSection({
   revisoesPorPeca,
   caracteristicasPorPeca,
   regrasPorPeca,
+  comprimentosPorComposicao,
   canManage,
 }: {
   pecas: Peca[];
@@ -79,6 +83,7 @@ export default function PecasSection({
   revisoesPorPeca: Map<string, Revisao[]>;
   caracteristicasPorPeca: Map<string, Caracteristica[]>;
   regrasPorPeca: Map<string, Regra[]>;
+  comprimentosPorComposicao: Map<string, ComprimentoBarra[]>;
   canManage: boolean;
 }) {
   const itemLabel = (id: string) => {
@@ -169,7 +174,8 @@ export default function PecasSection({
                   {linhas.map((c) => {
                     const ehPeca = pecaPorItemId.has(c.material_item_id);
                     return (
-                      <tr key={c.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
+                      <Fragment key={c.id}>
+                      <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
                         <td style={tdStyle}>
                           {itemLabel(c.material_item_id)}
                           {ehPeca && (
@@ -218,6 +224,20 @@ export default function PecasSection({
                           </td>
                         )}
                       </tr>
+                      {c.tipo_calculo === "linear" && (
+                        <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
+                          <td style={tdStyle} colSpan={canManage ? 5 : 4}>
+                            <ComprimentosBarraComposicao
+                              composicaoId={c.id}
+                              comprimentos={comprimentosPorComposicao.get(c.id) ?? []}
+                              itens={itens}
+                              itemLabel={itemLabel}
+                              canManage={canManage}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                   {linhas.length === 0 && (
@@ -292,6 +312,62 @@ export default function PecasSection({
         {pecas.length === 0 && <p style={hintStyle}>Nenhuma peça cadastrada ainda.</p>}
       </div>
     </section>
+  );
+}
+
+function ComprimentosBarraComposicao({
+  composicaoId,
+  comprimentos,
+  itens,
+  itemLabel,
+  canManage,
+}: {
+  composicaoId: string;
+  comprimentos: ComprimentoBarra[];
+  itens: Item[];
+  itemLabel: (id: string) => string;
+  canManage: boolean;
+}) {
+  const itensMateriais = itens.filter((i) => MATERIAL_TIPOS.includes(i.tipo));
+  const itensJaUsados = new Set(comprimentos.map((c) => c.item_id));
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", fontSize: "11px", color: "#3e4d49" }}>
+      <span style={{ fontWeight: 600 }}>Comprimentos de barra (ADR-012 Fase 2):</span>
+      {comprimentos.length === 0 && <span style={{ color: "#6b7a75" }}>nenhum — custo por metro corrido, sem arredondar em barra</span>}
+      {comprimentos.map((c) => (
+        <span key={c.id} style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+          {itemLabel(c.item_id)} ({c.comprimento_metros}m)
+          {canManage && (
+            <form action={removerComprimentoBarraAction}>
+              <input type="hidden" name="id" value={c.id} />
+              <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 4px", background: "#9b2c2c" }}>
+                x
+              </button>
+            </form>
+          )}
+        </span>
+      ))}
+      {canManage && (
+        <form action={definirComprimentoBarraAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+          <input type="hidden" name="composicao_id" value={composicaoId} />
+          <select name="item_id" required style={{ ...inputStyle, width: "180px", fontSize: "11px" }}>
+            <option value="">item da barra...</option>
+            {itensMateriais
+              .filter((it) => !itensJaUsados.has(it.id))
+              .map((it) => (
+                <option key={it.id} value={it.id}>
+                  {it.codigo} — {it.descricao}
+                </option>
+              ))}
+          </select>
+          <input name="comprimento_metros" type="number" min="0.001" step="0.001" placeholder="metros" style={{ ...inputStyle, width: "70px", fontSize: "11px" }} />
+          <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "2px 6px" }}>
+            Adicionar
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
 

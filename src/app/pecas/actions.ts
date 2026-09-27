@@ -224,3 +224,35 @@ export async function definirTipoCalculoComposicaoAction(formData: FormData) {
 
   revalidatePath("/pecas");
 }
+
+// ADR-012 Fase 2 — comprimentos de barra candidatos de uma linha de
+// composição 'linear'. Cada comprimento é um item comprável distinto.
+export async function definirComprimentoBarraAction(formData: FormData) {
+  const composicaoId = String(formData.get("composicao_id") ?? "");
+  const itemId = String(formData.get("item_id") ?? "");
+  const comprimentoRaw = String(formData.get("comprimento_metros") ?? "").trim();
+  if (!composicaoId || !itemId || !comprimentoRaw) throw new Error("Item e comprimento são obrigatórios.");
+  const comprimento = Number(comprimentoRaw);
+  if (!Number.isFinite(comprimento) || comprimento <= 0) throw new Error("Comprimento inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_comprimento_barra_composicao", {
+    p_peca_composicao_id: composicaoId,
+    p_item_id: itemId,
+    p_comprimento_metros: comprimento,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
+
+export async function removerComprimentoBarraAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Comprimento inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remover_comprimento_barra_composicao", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
