@@ -58,7 +58,21 @@ produto (cláusula de governança da própria ADR):
 - **Fase 4** — mão de obra automática a partir do roteiro produtivo e do
   novo `recursos_produtivos.custo_hora`.
 
-Pendência conhecida, fora do escopo aprovado: nenhuma tela nova para as
-Fases 3/4 (sugestão de mão de obra, sugestão de atualização de preço
-pós-BOM) — mesmo padrão do item 1 deste backlog, backend funcional via
-RPC/Data API, sem UI própria ainda.
+Telas das Fases 3/4 entregues (27/09/2026): campo + calculadora de mão de
+obra no item de orçamento (Comercial), campo `custo_hora` no cadastro de
+recurso produtivo — com a edição estreita que faltava pra atualizar
+depois de criado (Produção), e a seção de divergência de preço com
+"Aplicar sugerido"/"Manter atual" por item de pedido (Pedidos). Validado
+com `typecheck`/`eslint`/`next build`; não testado interativamente no
+browser — o tenant de desenvolvimento (jrbox) já tem usuários reais e a
+sessão não tinha como logar sem adivinhar/resetar credencial de alguém.
+
+Achado de passagem ao construir a tela: `criar_recurso_produtivo()`/
+`editar_recurso_produtivo()` ganharam `p_localizacao` (17/09) e depois o
+gate `assert_tenant_write_any('producao', ['configurar','manage'])`
+(25/09) — a migration da Fase 4 baseou o `drop function` numa assinatura
+mais antiga (sem `localizacao`) e criou uma segunda sobrecarga em
+paralelo em vez de substituir a função real, deixando `p_localizacao`
+inacessível junto de `p_custo_hora` e regredindo o gate pra só 'manage'
+nessa sobrecarga nova. Corrigido na mesma sessão
+(`20261105050000_fix_recurso_produtivo_custo_hora_localizacao.sql`).
