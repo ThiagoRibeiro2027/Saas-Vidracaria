@@ -5,26 +5,36 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 
-// Lista fixa — sem UI de criar tipo de documento arbitrário. Achado do
-// code-review (16/09/2026): 'expedicao' (T9) e 'instalacao' (T16) já
-// tinham ficado de fora dessa lista desde que esses módulos entraram —
-// sem esta tela, next_document_number() nunca tem sequência configurada
-// pra eles, e criar_expedicao()/criar_instalacao()/gerar_titulos_pedido()
-// falham sempre com "Sequência de numeração não configurada". Adicionado
-// 'titulo_financeiro' (T11) junto, mesmo problema recém-introduzido.
-// Mesmo problema encontrado de novo em teste manual (22/09/2026): 'proposta'
-// (ADR-002 v2.4) ficou fora quando Propostas foi adicionado depois — sem
-// isso, gerarPropostaAction() sempre falhava com o mesmo erro de sequência
-// não configurada.
-const DOCUMENT_TYPES = [
-  { key: "orcamento", label: "Orçamento" },
-  { key: "proposta", label: "Proposta comercial" },
-  { key: "pedido", label: "Pedido" },
-  { key: "ordem_producao", label: "Ordem de produção" },
-  { key: "expedicao", label: "Expedição" },
-  { key: "instalacao", label: "Instalação" },
-  { key: "titulo_financeiro", label: "Título financeiro" },
-] as const;
+// FIX (achado em teste manual, 27/09/2026): esta lista já ficou pra trás
+// TRÊS vezes antes (expedição/instalação, depois titulo_financeiro,
+// depois proposta — ver histórico do arquivo) porque era fixa no código,
+// nunca acompanhando novo tipo de documento — e aconteceu de novo,
+// desta vez faltando o módulo de Compras inteiro (solicitação, cotação,
+// pedido de compra, recebimento, título) e Contratos. A lista agora vem
+// do catálogo real (`numbering_document_types`, a mesma tabela que
+// next_document_number() consulta) via prop `documentTypeKeys` — só o
+// RÓTULO amigável continua aqui, com fallback automático pra qualquer
+// tipo novo que apareça sem label mapeado.
+const LABELS: Record<string, string> = {
+  orcamento: "Orçamento",
+  proposta: "Proposta comercial",
+  pedido: "Pedido",
+  ordem_producao: "Ordem de produção",
+  expedicao: "Expedição",
+  instalacao: "Instalação",
+  titulo_financeiro: "Título financeiro (a receber)",
+  contrato: "Contrato",
+  solicitacao_compra: "Solicitação de compra",
+  cotacao: "Cotação",
+  pedido_compra: "Pedido de compra",
+  recebimento_compra: "Recebimento de compra",
+  titulo_compra: "Título a pagar (compra)",
+  cobranca: "Cobrança (boleto/PIX)",
+};
+
+function labelFor(key: string): string {
+  return LABELS[key] ?? key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
 
 type Row = {
   document_type: string;
@@ -39,9 +49,11 @@ type Row = {
 
 export default function NumberingSequencesSection({
   rows,
+  documentTypeKeys,
   canManage,
 }: {
   rows: Row[];
+  documentTypeKeys: string[];
   canManage: boolean;
 }) {
   const byType = new Map(rows.map((r) => [r.document_type, r]));
@@ -50,7 +62,8 @@ export default function NumberingSequencesSection({
     <section>
       <h2 className="text-sm font-semibold text-text">Numeração</h2>
       <div className="mt-2 flex flex-col gap-2.5">
-        {DOCUMENT_TYPES.map(({ key, label }) => {
+        {documentTypeKeys.map((key) => {
+          const label = labelFor(key);
           const row = byType.get(key);
           return (
             <form key={key} action={upsertNumberingSequenceAction} className="flex flex-wrap items-center gap-2 text-xs">

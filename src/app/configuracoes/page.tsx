@@ -44,6 +44,7 @@ export default async function ConfiguracoesPage({
     { data: measurementRules },
     { data: roles },
     { data: approvalThresholds },
+    { data: documentTypes },
   ] = await Promise.all([
     supabase.from("numbering_sequences").select("*").order("document_type"),
     supabase
@@ -54,7 +55,14 @@ export default async function ConfiguracoesPage({
     supabase.from("measurement_rules").select("*").order("tipo_item"),
     supabase.from("roles").select("id, key, name, company_id").order("name"),
     supabase.from("approval_thresholds").select("*").order("processo"),
+    // FIX (achado em teste manual, 27/09/2026): a lista de tipos de
+    // documento numerável era fixa no componente e nunca acompanhou
+    // novos tipos (Compras/ADR-011, Contratos) — puxa do catálogo real
+    // (next_document_number() já consulta esta mesma tabela).
+    supabase.from("numbering_document_types").select("document_type"),
   ]);
+
+  const documentTypeKeys = Array.from(new Set((documentTypes ?? []).map((d) => d.document_type))).sort();
 
   const availableTabs: { slug: TabSlug; label: string }[] = [
     { slug: "numeracao", label: "Numeração" },
@@ -79,7 +87,11 @@ export default async function ConfiguracoesPage({
 
       <div className="mt-6">
         {activeTab === "numeracao" && (
-          <NumberingSequencesSection rows={numberingSequences ?? []} canManage={!!canManage} />
+          <NumberingSequencesSection
+            rows={numberingSequences ?? []}
+            documentTypeKeys={documentTypeKeys}
+            canManage={!!canManage}
+          />
         )}
         {activeTab === "quebra" && <CuttingMarginsSection rows={cuttingMargins ?? []} canManage={!!canManage} />}
         {activeTab === "medicao" && (
