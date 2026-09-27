@@ -949,6 +949,20 @@ async function main() {
     const { error: ePapelA } = await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractAltura, p_papel: "altura" });
     check("ADMIN define largura e altura como papel dimensional", !ePapelL && !ePapelA);
 
+    // FIX (achado em teste manual, 27/09/2026): reatribuir um papel já
+    // usado por outra característica da mesma peça não deve dar erro de
+    // constraint — deve desmarcar a anterior automaticamente.
+    const { data: caractLarguraDuplicada } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaBoxId, p_nome: "largura2", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: false });
+    const { error: eReatribuir } = await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractLarguraDuplicada, p_papel: "largura" });
+    check("reatribuir 'largura' pra outra característica não dá erro (desmarca a anterior)", !eReatribuir);
+    const { data: listaAposReatribuir } = await admTenant.client.rpc("listar_caracteristicas_peca", { p_peca_id: pecaBoxId });
+    const antiga = listaAposReatribuir?.find((c) => c.id === caractLargura);
+    const nova = listaAposReatribuir?.find((c) => c.id === caractLarguraDuplicada);
+    check("característica antiga perde o papel dimensional, a nova assume", antiga?.papel_dimensional === null && nova?.papel_dimensional === "largura");
+    // Devolve o papel pra característica original, pro resto do teste (largura=2000/2600) continuar funcionando.
+    await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractLargura, p_papel: "largura" });
+    await admTenant.client.rpc("remover_caracteristica_peca", { p_id: caractLarguraDuplicada });
+
     const { data: compPerfil } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaBoxId, material_item_id: perfilId, quantidade_por_unidade: 1 }).select().single();
     const { data: compVidro } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaBoxId, material_item_id: vidroId, quantidade_por_unidade: 1 }).select().single();
     const { data: compRoldana } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaBoxId, material_item_id: roldanaId, quantidade_por_unidade: 2 }).select().single();
