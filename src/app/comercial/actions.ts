@@ -40,12 +40,17 @@ export async function upsertOrcamentoItemAction(formData: FormData) {
   const precoUnitario = Number(formData.get("preco_unitario"));
   const custoUnitarioRaw = String(formData.get("custo_unitario") ?? "").trim();
   const custoUnitario = custoUnitarioRaw ? Number(custoUnitarioRaw) : null;
+  const custoMaoObraRaw = String(formData.get("custo_mao_obra") ?? "").trim();
+  const custoMaoObra = custoMaoObraRaw ? Number(custoMaoObraRaw) : null;
 
   if (!orcamentoId || !itemId || !Number.isFinite(quantidade) || !Number.isFinite(precoUnitario)) {
     throw new Error("Dados inválidos para item do orçamento.");
   }
   if (custoUnitario !== null && !Number.isFinite(custoUnitario)) {
     throw new Error("Custo unitário inválido.");
+  }
+  if (custoMaoObra !== null && !Number.isFinite(custoMaoObra)) {
+    throw new Error("Custo de mão de obra inválido.");
   }
 
   const supabase = await createClient();
@@ -56,6 +61,7 @@ export async function upsertOrcamentoItemAction(formData: FormData) {
     p_quantidade: quantidade,
     p_preco_unitario: precoUnitario,
     p_custo_unitario: custoUnitario,
+    p_custo_mao_obra: custoMaoObra,
   });
   if (error) throw new Error(error.message);
 
@@ -262,6 +268,19 @@ export async function calcularCustoOrcamentoItemAction(
 ): Promise<{ error: string } | { data: Record<string, unknown> }> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcamentoItemId });
+  if (error) return { error: error.message };
+  return { data: data as Record<string, unknown> };
+}
+
+// ADR-012 Fase 4 — leitura pura (não grava nada). O vendedor decide se
+// aplica o custo_total ao campo custo_mao_obra, via o form de edição do
+// item já existente — nunca aplicado automaticamente (mesmo padrão de
+// calcularCustoOrcamentoItemAction).
+export async function calcularMaoObraOrcamentoItemAction(
+  orcamentoItemId: string,
+): Promise<{ error: string } | { data: Record<string, unknown> }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("calcular_mao_obra_orcamento_item", { p_orcamento_item_id: orcamentoItemId });
   if (error) return { error: error.message };
   return { data: data as Record<string, unknown> };
 }

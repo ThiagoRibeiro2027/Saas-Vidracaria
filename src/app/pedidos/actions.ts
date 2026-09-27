@@ -70,3 +70,30 @@ export async function cancelarPedidoAction(formData: FormData) {
 
   revalidatePath("/pedidos");
 }
+
+// ADR-012 Fase 3 — decisão explícita e auditada do operador sobre a
+// sugestão de atualização de preço gerada quando a BOM definitiva da
+// Engenharia diverge do custo que formou o preço no orçamento. O preço
+// nunca muda sozinho: aplicar_atualizacao_preco_bom()/ignorar_
+// divergencia_preco_bom() exigem essa escolha explícita.
+export async function aplicarAtualizacaoPrecoBomAction(formData: FormData) {
+  const pedidoItemId = String(formData.get("pedido_item_id") ?? "");
+  if (!pedidoItemId) throw new Error("Item de pedido inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("aplicar_atualizacao_preco_bom", { p_pedido_item_id: pedidoItemId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pedidos");
+}
+
+export async function ignorarDivergenciaPrecoBomAction(formData: FormData) {
+  const pedidoItemId = String(formData.get("pedido_item_id") ?? "");
+  if (!pedidoItemId) throw new Error("Item de pedido inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("ignorar_divergencia_preco_bom", { p_pedido_item_id: pedidoItemId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pedidos");
+}

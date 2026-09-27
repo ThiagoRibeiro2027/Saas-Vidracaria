@@ -10,6 +10,7 @@ import {
   vincularOportunidadeOrcamentoAction,
   definirValorCaracteristicaOrcamentoAction,
   calcularCustoOrcamentoItemAction,
+  calcularMaoObraOrcamentoItemAction,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -51,6 +52,7 @@ type OrcamentoItem = {
   quantidade: number;
   preco_unitario: number;
   custo_unitario: number | null;
+  custo_mao_obra: number | null;
 };
 
 type Caracteristica = {
@@ -461,6 +463,7 @@ function OrcamentoItemRow({
               {item.custo_unitario !== null
                 ? `${currency(item.custo_unitario)} · ${margem !== null ? margem.toFixed(1) : "—"}%`
                 : "—"}
+              {item.custo_mao_obra !== null && <> · MO: {currency(item.custo_mao_obra)}</>}
             </Td>
           )}
         </tr>
@@ -532,6 +535,18 @@ function OrcamentoItemRow({
               className="w-[110px]"
             />
           )}
+          {canManage && (
+            <Input
+              id={item ? `custo-mao-obra-${item.id}` : undefined}
+              name="custo_mao_obra"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="mão de obra"
+              defaultValue={item?.custo_mao_obra ?? ""}
+              className="w-[110px]"
+            />
+          )}
           <Button type="submit" variant="primary">
             {item ? "Salvar" : "Adicionar"}
           </Button>
@@ -564,6 +579,13 @@ function OrcamentoItemRow({
         <tr>
           <Td colSpan={totalColumns}>
             <CalculadoraCustoConfigurador orcamentoItemId={item.id} />
+          </Td>
+        </tr>
+      )}
+      {item && canManage && (
+        <tr>
+          <Td colSpan={totalColumns}>
+            <CalculadoraMaoDeObraConfigurador orcamentoItemId={item.id} />
           </Td>
         </tr>
       )}
@@ -639,6 +661,96 @@ function CalculadoraCustoConfigurador({ orcamentoItemId }: { orcamentoItemId: st
           {(resultado.materiais_sem_custo ?? []).length > 0 && (
             <p className="text-danger">
               Sem custo cadastrado: {(resultado.materiais_sem_custo ?? []).map((m) => `${m.codigo} (${m.quantidade})`).join(", ")} — não entram no total acima.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type OperacaoMaoObra = {
+  operacao_id: string;
+  sequencia: number;
+  descricao: string;
+  recurso_nome?: string;
+  tempo_previsto_minutos?: number;
+  custo_hora?: number;
+  custo_operacao?: number;
+  motivo?: string;
+};
+type CalculoMaoObraResultado = {
+  tem_roteiro: boolean;
+  custo_total?: number;
+  operacoes?: OperacaoMaoObra[];
+  operacoes_sem_custo?: OperacaoMaoObra[];
+};
+
+const MOTIVO_LABEL: Record<string, string> = {
+  sem_tempo_previsto: "sem tempo previsto no roteiro",
+  sem_recurso_definido: "sem recurso definido na operação",
+  recurso_sem_custo_hora: "recurso sem custo/hora cadastrado",
+};
+
+// ADR-012 Fase 4 — mesmo padrão de CalculadoraCustoConfigurador: leitura
+// pura, o vendedor decide se aplica o resultado (nunca autoridade cega).
+function CalculadoraMaoDeObraConfigurador({ orcamentoItemId }: { orcamentoItemId: string }) {
+  const [resultado, setResultado] = useState<CalculoMaoObraResultado | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function calcular() {
+    setPending(true);
+    setError(null);
+    const r = await calcularMaoObraOrcamentoItemAction(orcamentoItemId);
+    setPending(false);
+    if ("error" in r) {
+      setError(r.error);
+      return;
+    }
+    setResultado(r.data as CalculoMaoObraResultado);
+  }
+
+  function usarCusto() {
+    if (resultado?.custo_total === undefined) return;
+    const campo = document.getElementById(`custo-mao-obra-${orcamentoItemId}`) as HTMLInputElement | null;
+    if (campo) campo.value = String(resultado.custo_total);
+  }
+
+  return (
+    <div className="flex flex-col gap-1 rounded border border-border-subtle bg-page-bg p-2 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-text">Mão de obra (roteiro produtivo, ADR-012):</span>
+        <Button type="button" variant="secondary" onClick={calcular} disabled={pending}>
+          {pending ? "Calculando..." : "Calcular"}
+        </Button>
+        {resultado?.custo_total !== undefined && (
+          <Button type="button" variant="primary" onClick={usarCusto}>
+            Usar este custo ({currency(resultado.custo_total)})
+          </Button>
+        )}
+      </div>
+      {error && <p className="text-danger">{error}</p>}
+      {resultado && !resultado.tem_roteiro && (
+        <p className="text-text-muted">Este item não tem roteiro produtivo ativo cadastrado — mão de obra continua manual.</p>
+      )}
+      {resultado?.tem_roteiro && (
+        <div className="flex flex-col gap-0.5">
+          {(resultado.operacoes ?? []).map((o) => (
+            <div key={o.operacao_id} className="flex justify-between">
+              <span>
+                {o.sequencia}. {o.descricao} ({o.recurso_nome}, {o.tempo_previsto_minutos}min × {currency(o.custo_hora ?? 0)}/h)
+              </span>
+              <span>{currency(o.custo_operacao ?? 0)}</span>
+            </div>
+          ))}
+          {(resultado.operacoes_sem_custo ?? []).length > 0 && (
+            <p className="text-danger">
+              Sem custo calculável:{" "}
+              {(resultado.operacoes_sem_custo ?? [])
+                .map((o) => `${o.sequencia}. ${o.descricao} (${MOTIVO_LABEL[o.motivo ?? ""] ?? o.motivo})`)
+                .join(", ")}{" "}
+              — não entram no total acima.
             </p>
           )}
         </div>

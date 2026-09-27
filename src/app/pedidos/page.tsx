@@ -51,6 +51,15 @@ export default async function PedidosPage({
     supabase.from("itens").select("id, codigo, descricao"),
   ]);
 
+  // ADR-012 Fase 3 — sugestão de atualização de preço quando a BOM
+  // definitiva da Engenharia diverge do custo que formou o preço no
+  // orçamento. Só pendentes: aplicada/ignorada já foi decidida e não
+  // precisa mais aparecer aqui.
+  const { data: divergencias } = canManage
+    ? await supabase.from("pedido_item_divergencia_preco").select("*").eq("status", "pendente")
+    : { data: null };
+  const divergenciasPorPedidoItem = new Map((divergencias ?? []).map((d) => [d.pedido_item_id, d]));
+
   const orcamentosConvertidos = new Set((pedidos ?? []).map((p) => p.orcamento_id));
   const orcamentosDisponiveis = (orcamentosAprovados ?? []).filter((o) => !orcamentosConvertidos.has(o.id));
   // orcamentosAprovados cobre também os já convertidos (conversão não muda o
@@ -111,6 +120,7 @@ export default async function PedidosPage({
           pessoas={pessoas ?? []}
           obras={obras ?? []}
           itens={itens ?? []}
+          divergenciasPorPedidoItem={divergenciasPorPedidoItem}
           canManage={!!canManage}
         />
       </div>

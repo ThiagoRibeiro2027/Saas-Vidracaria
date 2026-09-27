@@ -191,12 +191,17 @@ export async function criarRecursoProdutivoAction(formData: FormData) {
   const setor = String(formData.get("setor") ?? "").trim() || null;
   const capacidadeRaw = String(formData.get("capacidade_horas_dia") ?? "").trim();
   const localizacao = String(formData.get("localizacao") ?? "").trim() || null;
+  const custoHoraRaw = String(formData.get("custo_hora") ?? "").trim();
   if (!codigo) throw new Error("Código do recurso é obrigatório.");
   if (!nome) throw new Error("Nome do recurso é obrigatório.");
   if (!tipo) throw new Error("Tipo do recurso é obrigatório.");
   const capacidade = capacidadeRaw ? Number(capacidadeRaw) : null;
   if (capacidade !== null && (!Number.isFinite(capacidade) || capacidade <= 0)) {
     throw new Error("Capacidade (horas/dia) deve ser um número maior que zero.");
+  }
+  const custoHora = custoHoraRaw ? Number(custoHoraRaw) : null;
+  if (custoHora !== null && !Number.isFinite(custoHora)) {
+    throw new Error("Custo/hora inválido.");
   }
 
   const supabase = await createClient();
@@ -207,6 +212,43 @@ export async function criarRecursoProdutivoAction(formData: FormData) {
     p_setor: setor,
     p_capacidade_horas_dia: capacidade,
     p_localizacao: localizacao,
+    p_custo_hora: custoHora,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+// ADR-012 Fase 4 — edição estreita (só o que a tela realmente expõe pra
+// edição pós-cadastro), mesmo padrão de atualizarSituacaoRecursoAction:
+// lê os campos atuais do próprio form (hidden inputs) e reenvia todos,
+// já que editar_recurso_produtivo() substitui o registro inteiro.
+export async function editarRecursoProdutivoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const nome = String(formData.get("nome") ?? "").trim();
+  const setor = String(formData.get("setor") ?? "").trim() || null;
+  const capacidadeRaw = String(formData.get("capacidade_horas_dia") ?? "").trim();
+  const localizacao = String(formData.get("localizacao") ?? "").trim() || null;
+  const custoHoraRaw = String(formData.get("custo_hora") ?? "").trim();
+  if (!id) throw new Error("Recurso inválido.");
+  if (!nome) throw new Error("Nome do recurso é obrigatório.");
+  const capacidade = capacidadeRaw ? Number(capacidadeRaw) : null;
+  if (capacidade !== null && (!Number.isFinite(capacidade) || capacidade <= 0)) {
+    throw new Error("Capacidade (horas/dia) deve ser um número maior que zero.");
+  }
+  const custoHora = custoHoraRaw ? Number(custoHoraRaw) : null;
+  if (custoHora !== null && !Number.isFinite(custoHora)) {
+    throw new Error("Custo/hora inválido.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("editar_recurso_produtivo", {
+    p_id: id,
+    p_nome: nome,
+    p_setor: setor,
+    p_capacidade_horas_dia: capacidade,
+    p_localizacao: localizacao,
+    p_custo_hora: custoHora,
   });
   if (error) throw new Error(error.message);
 

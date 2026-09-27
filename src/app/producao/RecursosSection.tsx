@@ -2,6 +2,7 @@
 
 import {
   criarRecursoProdutivoAction,
+  editarRecursoProdutivoAction,
   atualizarSituacaoRecursoAction,
   desativarRecursoProdutivoAction,
   programarManutencaoPreventivaAction,
@@ -25,6 +26,7 @@ type RecursoProdutivo = {
   setor: string | null;
   localizacao: string | null;
   capacidade_horas_dia: number | null;
+  custo_hora: number | null;
   situacao: string;
   motivo_situacao: string | null;
   ativo: boolean;
@@ -73,6 +75,7 @@ export type GargaloRow = {
 };
 
 const num = (v: number) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const TIPO_LABEL: Record<string, string> = {
   maquina: "Máquina",
@@ -227,6 +230,14 @@ export default function RecursosSection({
             className="w-28"
           />
           <Input name="localizacao" placeholder="Localização (opcional)" className="w-32" />
+          <Input
+            name="custo_hora"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="R$/h (opcional, ADR-012)"
+            className="w-36"
+          />
           <Button type="submit" variant="primary">
             Criar recurso
           </Button>
@@ -256,6 +267,30 @@ export default function RecursosSection({
                     {r.codigo} — {r.nome}
                     {(r.setor || r.localizacao) && (
                       <div className="text-xs text-text-muted">{[r.setor, r.localizacao].filter(Boolean).join(" — ")}</div>
+                    )}
+                    <div className="mt-0.5 text-xs text-text-muted">
+                      {r.custo_hora !== null ? `${currency(r.custo_hora)}/h` : "sem custo/hora cadastrado"}
+                    </div>
+                    {canManage && (
+                      <form action={editarRecursoProdutivoAction} className="mt-1 flex flex-wrap items-center gap-1">
+                        <input type="hidden" name="id" value={r.id} />
+                        <input type="hidden" name="nome" value={r.nome} />
+                        <input type="hidden" name="setor" value={r.setor ?? ""} />
+                        <input type="hidden" name="capacidade_horas_dia" value={r.capacidade_horas_dia ?? ""} />
+                        <input type="hidden" name="localizacao" value={r.localizacao ?? ""} />
+                        <Input
+                          name="custo_hora"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="R$/h"
+                          defaultValue={r.custo_hora ?? ""}
+                          className="w-24 text-xs"
+                        />
+                        <Button type="submit" variant="secondary" size="sm">
+                          Salvar custo/h
+                        </Button>
+                      </form>
                     )}
                   </Td>
                   <Td>{TIPO_LABEL[r.tipo] ?? r.tipo}</Td>

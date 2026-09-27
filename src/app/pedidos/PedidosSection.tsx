@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import {
   converterOrcamentoAction,
   iniciarConferenciaAction,
@@ -7,6 +8,8 @@ import {
   resolverPendenciaAction,
   liberarPedidoAction,
   cancelarPedidoAction,
+  aplicarAtualizacaoPrecoBomAction,
+  ignorarDivergenciaPrecoBomAction,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -49,6 +52,18 @@ type Pendencia = {
   resolucao: string | null;
 };
 
+type DivergenciaPreco = {
+  pedido_item_id: string;
+  custo_congelado: number;
+  custo_bom_efetiva: number;
+  custo_bom_efetiva_parcial: boolean;
+  preco_congelado: number;
+  preco_sugerido: number;
+  delta_custo: number;
+};
+
+const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
 const STATUS_LABEL: Record<Pedido["status"], string> = {
   recebido: "Recebido",
   em_conferencia: "Em conferência",
@@ -76,6 +91,7 @@ export default function PedidosSection({
   pessoas,
   obras,
   itens,
+  divergenciasPorPedidoItem,
   canManage,
 }: {
   activeTab: "pedidos" | "conversao";
@@ -88,6 +104,7 @@ export default function PedidosSection({
   pessoas: Pessoa[];
   obras: Obra[];
   itens: Item[];
+  divergenciasPorPedidoItem: Map<string, DivergenciaPreco>;
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -162,13 +179,54 @@ export default function PedidosSection({
                     </tr>
                   </thead>
                   <tbody>
-                    {pedItens.map((pi) => (
-                      <tr key={pi.id}>
-                        <Td>{itemLabel(pi.item_id)}</Td>
-                        <Td>{pi.quantidade}</Td>
-                        <Td>{pi.preco_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</Td>
-                      </tr>
-                    ))}
+                    {pedItens.map((pi) => {
+                      const divergencia = divergenciasPorPedidoItem.get(pi.id);
+                      return (
+                        <Fragment key={pi.id}>
+                          <tr>
+                            <Td>{itemLabel(pi.item_id)}</Td>
+                            <Td>{pi.quantidade}</Td>
+                            <Td>{pi.preco_unitario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</Td>
+                          </tr>
+                          {divergencia && (
+                            <tr>
+                              <Td colSpan={3}>
+                                <div className="rounded border border-warning/30 bg-warning/5 p-2 text-xs">
+                                  <p className="font-medium text-text">
+                                    Divergência de preço (ADR-012 §Fase 3) — a BOM definitiva da Engenharia ficou{" "}
+                                    {divergencia.delta_custo > 0 ? "mais cara" : "mais barata"} do que o custo que formou este
+                                    preço.
+                                  </p>
+                                  <p className="mt-0.5 text-text-muted">
+                                    Custo congelado (orçamento): {currency(divergencia.custo_congelado)} · Custo real da BOM:{" "}
+                                    {currency(divergencia.custo_bom_efetiva)}
+                                    {divergencia.custo_bom_efetiva_parcial && " (parcial — algum material sem histórico de custo)"}
+                                    {" · "}Preço atual: {currency(divergencia.preco_congelado)} · Preço sugerido:{" "}
+                                    {currency(divergencia.preco_sugerido)}
+                                  </p>
+                                  {canManage && (
+                                    <div className="mt-1.5 flex gap-1.5">
+                                      <form action={aplicarAtualizacaoPrecoBomAction}>
+                                        <input type="hidden" name="pedido_item_id" value={pi.id} />
+                                        <Button type="submit" variant="primary" size="sm">
+                                          Aplicar preço sugerido ({currency(divergencia.preco_sugerido)})
+                                        </Button>
+                                      </form>
+                                      <form action={ignorarDivergenciaPrecoBomAction}>
+                                        <input type="hidden" name="pedido_item_id" value={pi.id} />
+                                        <Button type="submit" variant="secondary" size="sm">
+                                          Manter preço atual
+                                        </Button>
+                                      </form>
+                                    </div>
+                                  )}
+                                </div>
+                              </Td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </Table>
 
