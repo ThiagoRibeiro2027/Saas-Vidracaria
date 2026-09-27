@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import OrcamentoComprasSection from "./OrcamentoComprasSection";
+import ComprasTabs from "../ComprasTabs";
 
 // TÓPICO 7 — Compras, Fase 6 da ADR-011: orçado×comprometido×realizado
 // (§33). "categoria" reaproveita itens.classificacao (T2). "Realizado"
@@ -42,6 +43,7 @@ export default async function OrcamentoComprasPage() {
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
+        <ComprasTabs />
         <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 6 da ADR-011)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Orçado × comprometido × realizado</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>

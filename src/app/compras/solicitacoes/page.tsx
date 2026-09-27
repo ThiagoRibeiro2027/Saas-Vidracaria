@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import SolicitacoesComprasSection from "./SolicitacoesComprasSection";
+import ComprasTabs from "../ComprasTabs";
 
 // TÓPICO 7 — Compras, Fase 4 da ADR-011: Solicitação de Compra (§16) e
 // Compras Diretas (§2). Item de SC com necessidade_compra_id vinculada
@@ -50,6 +51,7 @@ export default async function SolicitacoesComprasPage() {
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
+        <ComprasTabs />
         <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 4 da ADR-011)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Solicitações de compra e compras diretas</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>

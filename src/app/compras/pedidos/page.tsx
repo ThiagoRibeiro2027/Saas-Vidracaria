@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import PedidosComprasSection from "./PedidosComprasSection";
+import ComprasTabs from "../ComprasTabs";
 
 // TÓPICO 7 — Compras, Fase 6 da ADR-011: Pedido de Compra formal (§24) e
 // compras recorrentes via contrato de fornecedor (§25, T18). PC só nasce
@@ -59,6 +60,7 @@ export default async function PedidosComprasPage() {
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
+        <ComprasTabs />
         <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 6 da ADR-011)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Pedidos de compra</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>

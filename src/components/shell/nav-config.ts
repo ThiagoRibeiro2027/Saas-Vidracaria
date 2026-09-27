@@ -26,14 +26,6 @@ import {
   Plug,
   FileSignature,
   Handshake,
-  Scale,
-  PackageCheck,
-  Inbox,
-  Award,
-  Map,
-  Calculator,
-  Gauge,
-  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -77,20 +69,10 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Instalação", href: "/instalacao", icon: Wrench },
       { label: "Instalação — Campo (PWA)", href: "/campo", icon: Smartphone },
       { label: "Suprimentos", href: "/suprimentos", icon: PackageSearch },
-      // Compras (ADR-011, 9 fases) mora em rotas separadas, não em abas
-      // ?tab= — sem uma entrada própria por fase, as fases além da 1ª só
-      // eram alcançáveis por um link dentro do texto de /compras (achado
-      // de teste manual, 27/09/2026).
-      { label: "Compras — Fornecedores e Políticas", href: "/compras", icon: Handshake, exact: true },
-      { label: "Compras — Solicitações", href: "/compras/solicitacoes", icon: ClipboardList },
-      { label: "Compras — Cotações", href: "/compras/cotacoes", icon: Scale },
-      { label: "Compras — Pedidos", href: "/compras/pedidos", icon: PackageCheck },
-      { label: "Compras — Recebimentos", href: "/compras/recebimentos", icon: Inbox },
-      { label: "Compras — Avaliação de Fornecedores", href: "/compras/fornecedores", icon: Award },
-      { label: "Compras — Mapa de Necessidades", href: "/compras/mapa", icon: Map },
-      { label: "Compras — Orçado × Realizado", href: "/compras/orcamento", icon: Calculator },
-      { label: "Compras — Dashboard", href: "/compras/dashboard", icon: Gauge },
-      { label: "Compras — Configurações", href: "/compras/configuracoes", icon: SlidersHorizontal },
+      // Compras (ADR-011, 9 fases) tem uma única entrada aqui — as fases
+      // viram abas dentro do próprio módulo (ComprasTabs), mesmo padrão
+      // já usado em Comercial (Orçamentos/Oportunidades/Propostas).
+      { label: "Compras", href: "/compras", icon: Handshake },
     ],
   },
   {

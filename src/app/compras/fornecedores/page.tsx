@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import FornecedoresComprasSection from "./FornecedoresComprasSection";
+import ComprasTabs from "../ComprasTabs";
 
 // TÓPICO 7 — Compras, Fase 8 da ADR-011 (docs/ADR-011 — Compras v1.0.md):
 // compras emergenciais (filtro, criação fica em /compras/solicitacoes),
@@ -69,6 +70,7 @@ export default async function FornecedoresComprasPage({
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
+        <ComprasTabs />
         <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 8 da ADR-011)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Fornecedores: avaliação, emergenciais e rastreabilidade</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>

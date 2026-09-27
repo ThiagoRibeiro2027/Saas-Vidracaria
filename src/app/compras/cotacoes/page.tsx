@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import CotacoesSection from "./CotacoesSection";
+import ComprasTabs from "../ComprasTabs";
 
 // TÓPICO 7 — Compras, Fase 5 da ADR-011: cotação, negociação, histórico
 // de preços, custo total de aquisição e alçada de aprovação (§17-§23).
@@ -71,6 +72,7 @@ export default async function CotacoesPage() {
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
+        <ComprasTabs />
         <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 5 da ADR-011)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Cotações, negociação e alçada</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
