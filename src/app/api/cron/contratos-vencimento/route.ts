@@ -58,8 +58,17 @@ export async function GET(request: NextRequest) {
       p_contrato_id: contrato.id,
       p_tipo: "vigencia",
     });
-    if (error) falharam++;
-    else notificados++;
+    if (error) {
+      falharam++;
+      await logSystemEvent(admin, {
+        category: "job_failure",
+        severity: "error",
+        message: `contratos-vencimento: falha ao notificar vigência do contrato ${contrato.id}: ${error.message}`,
+        context: { contrato_id: contrato.id, tipo: "vigencia" },
+      });
+    } else {
+      notificados++;
+    }
   }
 
   const { data: garantiaVencendo, error: eGarantia } = await admin
@@ -85,8 +94,17 @@ export async function GET(request: NextRequest) {
       p_contrato_id: contrato.id,
       p_tipo: "garantia",
     });
-    if (error) falharam++;
-    else notificados++;
+    if (error) {
+      falharam++;
+      await logSystemEvent(admin, {
+        category: "job_failure",
+        severity: "error",
+        message: `contratos-vencimento: falha ao notificar garantia do contrato ${contrato.id}: ${error.message}`,
+        context: { contrato_id: contrato.id, tipo: "garantia" },
+      });
+    } else {
+      notificados++;
+    }
   }
 
   if (falharam > 0) {

@@ -74,16 +74,24 @@ export default function ExportacaoSection({ entidadesPermitidas }: { entidadesPe
             ))}
           </select>
         </label>
-        <label style={{ fontSize: "12px" }}>
-          De
-          <br />
-          <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} style={inputStyle} />
-        </label>
-        <label style={{ fontSize: "12px" }}>
-          Até
-          <br />
-          <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} style={inputStyle} />
-        </label>
+        {entidade === "estoque" ? (
+          <span style={{ fontSize: "12px", color: "#6b7a76" }}>
+            Estoque é posição atual — sem filtro de período.
+          </span>
+        ) : (
+          <>
+            <label style={{ fontSize: "12px" }}>
+              De
+              <br />
+              <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} style={inputStyle} />
+            </label>
+            <label style={{ fontSize: "12px" }}>
+              Até
+              <br />
+              <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} style={inputStyle} />
+            </label>
+          </>
+        )}
         <button type="submit" disabled={pending} style={buttonStyle}>
           {pending ? "Gerando..." : "Exportar CSV"}
         </button>

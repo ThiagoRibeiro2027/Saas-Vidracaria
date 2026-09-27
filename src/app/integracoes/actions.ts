@@ -253,7 +253,7 @@ function paraCsv(linhas: Record<string, unknown>[]): string {
   const colunas = Object.keys(linhas[0]);
   const escapar = (v: unknown) => {
     const texto = v === null || v === undefined ? "" : String(v);
-    return /[",\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+    return /[",\r\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
   };
   const cabecalho = colunas.join(",");
   const corpo = linhas.map((linha) => colunas.map((c) => escapar(linha[c])).join(","));
