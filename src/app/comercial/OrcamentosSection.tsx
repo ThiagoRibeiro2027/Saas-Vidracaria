@@ -8,6 +8,7 @@ import {
   decidirOrcamentoAction,
   cancelarOrcamentoAction,
   vincularOportunidadeOrcamentoAction,
+  definirValorCaracteristicaOrcamentoAction,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -51,6 +52,16 @@ type OrcamentoItem = {
   custo_unitario: number | null;
 };
 
+type Caracteristica = {
+  peca_caracteristica_id: string;
+  nome: string;
+  tipo: string;
+  unidade: string | null;
+  obrigatoria: boolean;
+  valor_numero: number | null;
+  valor_texto: string | null;
+};
+
 const STATUS_LABEL: Record<Orcamento["status"], string> = {
   rascunho: "Rascunho",
   aprovado: "Aprovado",
@@ -76,6 +87,8 @@ export default function OrcamentosSection({
   todasPessoas,
   obras,
   itens,
+  pecaIdPorItemId,
+  caracteristicasPorOrcamentoItem,
   oportunidadesAbertas,
   canManage,
 }: {
@@ -86,6 +99,8 @@ export default function OrcamentosSection({
   todasPessoas: Pessoa[];
   obras: Obra[];
   itens: Item[];
+  pecaIdPorItemId: Map<string, string>;
+  caracteristicasPorOrcamentoItem: Map<string, Caracteristica[]>;
   oportunidadesAbertas: OportunidadeResumo[];
   canManage: boolean;
 }) {
@@ -221,6 +236,8 @@ export default function OrcamentosSection({
                       itens={itens}
                       editavel={editavel}
                       canManage={canManage}
+                      pecaId={pecaIdPorItemId.get(oi.item_id)}
+                      caracteristicas={caracteristicasPorOrcamentoItem.get(oi.id) ?? []}
                     />
                   ))}
                   {editavel && (
@@ -231,6 +248,7 @@ export default function OrcamentosSection({
                       itens={itens}
                       editavel={editavel}
                       canManage={canManage}
+                      caracteristicas={[]}
                     />
                   )}
                 </tbody>
@@ -404,6 +422,8 @@ function OrcamentoItemRow({
   itens,
   editavel,
   canManage,
+  pecaId,
+  caracteristicas,
 }: {
   item: OrcamentoItem | null;
   orcamentoId?: string;
@@ -412,6 +432,8 @@ function OrcamentoItemRow({
   itens: Item[];
   editavel: boolean;
   canManage: boolean;
+  pecaId?: string;
+  caracteristicas: Caracteristica[];
 }) {
   const subtotal = item ? item.quantidade * item.preco_unitario : 0;
   const margem = item ? margemPercentual(item.preco_unitario, item.custo_unitario) : null;
@@ -427,24 +449,41 @@ function OrcamentoItemRow({
   if (!editavel) {
     if (!item) return null;
     return (
-      <tr>
-        <Td>{itemLabel(itens, item.item_id)}</Td>
-        <Td>{item.quantidade}</Td>
-        <Td>{currency(item.preco_unitario)}</Td>
-        <Td>{currency(subtotal)}</Td>
-        {canManage && (
-          <Td>
-            {item.custo_unitario !== null
-              ? `${currency(item.custo_unitario)} · ${margem !== null ? margem.toFixed(1) : "—"}%`
-              : "—"}
-          </Td>
+      <>
+        <tr>
+          <Td>{itemLabel(itens, item.item_id)}</Td>
+          <Td>{item.quantidade}</Td>
+          <Td>{currency(item.preco_unitario)}</Td>
+          <Td>{currency(subtotal)}</Td>
+          {canManage && (
+            <Td>
+              {item.custo_unitario !== null
+                ? `${currency(item.custo_unitario)} · ${margem !== null ? margem.toFixed(1) : "—"}%`
+                : "—"}
+            </Td>
+          )}
+        </tr>
+        {caracteristicas.length > 0 && (
+          <tr>
+            <Td colSpan={totalColumns}>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                <span className="font-medium text-text">Características (configurador):</span>
+                {caracteristicas.map((c) => (
+                  <span key={c.peca_caracteristica_id}>
+                    {c.nome}: {c.valor_numero ?? c.valor_texto ?? "—"} {c.unidade ?? ""}
+                  </span>
+                ))}
+              </div>
+            </Td>
+          </tr>
         )}
-      </tr>
+      </>
     );
   }
 
   return (
-    <tr>
+    <>
+      <tr>
       <Td colSpan={totalColumns}>
         <form action={upsertOrcamentoItemAction} className="flex flex-wrap items-center gap-1.5">
           {item && <input type="hidden" name="id" value={item.id} />}
@@ -505,6 +544,43 @@ function OrcamentoItemRow({
           </form>
         )}
       </Td>
-    </tr>
+      </tr>
+      {item && pecaId && (
+        <tr>
+          <Td colSpan={totalColumns}>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+              <span className="font-medium text-text">Características (configurador):</span>
+              {caracteristicas.length === 0 && <span>peça configurável sem características cadastradas</span>}
+              {caracteristicas.map((c) => (
+                <CaracteristicaOrcamentoValor key={c.peca_caracteristica_id} orcamentoItemId={item.id} caracteristica={c} />
+              ))}
+            </div>
+          </Td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function CaracteristicaOrcamentoValor({
+  orcamentoItemId,
+  caracteristica,
+}: {
+  orcamentoItemId: string;
+  caracteristica: Caracteristica;
+}) {
+  const valorAtual = caracteristica.valor_numero ?? caracteristica.valor_texto ?? "";
+
+  return (
+    <form action={definirValorCaracteristicaOrcamentoAction} className="flex items-center gap-1">
+      <input type="hidden" name="orcamento_item_id" value={orcamentoItemId} />
+      <input type="hidden" name="peca_caracteristica_id" value={caracteristica.peca_caracteristica_id} />
+      <input type="hidden" name="tipo" value={caracteristica.tipo} />
+      <span>{caracteristica.nome}:</span>
+      <Input name="valor" defaultValue={valorAtual} placeholder={caracteristica.unidade ?? "valor"} className="w-24" />
+      <Button type="submit" variant="primary">
+        Salvar
+      </Button>
+    </form>
   );
 }

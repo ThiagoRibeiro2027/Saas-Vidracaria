@@ -703,6 +703,73 @@ async function main() {
     check("proposta_cancelada registrado", actions.has("comercial.proposta_cancelada"));
   }
 
+  console.log("\n§9 — configurador de peça durante o orçamento (definir_valor_caracteristica_orcamento_item)");
+  {
+    const { data: itemPecaId, error: eItemPeca } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "JAN-CFG-TESTE", p_descricao: "Janela configurável teste",
+      p_tipo: "produto_acabado", p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+    });
+    check("item tipo produto_acabado criado", !eItemPeca && !!itemPecaId);
+
+    const { data: pecaId, error: ePeca } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaId, p_descricao_tecnica: "Janela de correr" });
+    check("peça criada a partir do item", !ePeca && !!pecaId);
+
+    const { data: caractLargura } = await admTenant.client.rpc("definir_caracteristica_peca", {
+      p_peca_id: pecaId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true,
+    });
+    const { data: caractVidro } = await admTenant.client.rpc("definir_caracteristica_peca", {
+      p_peca_id: pecaId, p_nome: "vidro", p_tipo: "opcao", p_unidade: null, p_opcoes: ["temperado", "laminado"], p_obrigatoria: true,
+    });
+
+    const { data: orcamentoCfgId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: obraId, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcamentoCfgId, p_item_id: itemPecaId, p_quantidade: 2, p_preco_unitario: 500,
+    });
+    const { data: orcItemRow } = await admin.from("orcamento_itens").select("id").eq("orcamento_id", orcamentoCfgId).single();
+    const orcItemId = orcItemRow.id;
+
+    const { error: eSemPerm } = await noPermTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractLargura, p_valor_numero: 1800, p_valor_texto: null,
+    });
+    check("sem orcamentos.manage não define valor de característica", !!eSemPerm);
+
+    const { error: eTipoErrado } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractLargura, p_valor_numero: null, p_valor_texto: "1800",
+    });
+    check("valor de tipo errado (texto pra característica numérica) é rejeitado", !!eTipoErrado);
+
+    const { error: eOpcaoInvalida } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractVidro, p_valor_numero: null, p_valor_texto: "comum",
+    });
+    check("opção fora da lista permitida é rejeitada", !!eOpcaoInvalida);
+
+    const { error: eLargura } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractLargura, p_valor_numero: 1800, p_valor_texto: null,
+    });
+    const { error: eVidro } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractVidro, p_valor_numero: null, p_valor_texto: "temperado",
+    });
+    check("ADMIN define largura e vidro com sucesso", !eLargura && !eVidro);
+
+    const { data: listagem, error: eListagem } = await admTenant.client.rpc("listar_valores_caracteristicas_orcamento_item", { p_orcamento_item_id: orcItemId });
+    check(
+      "listar_valores_caracteristicas_orcamento_item devolve as duas características com os valores certos",
+      !eListagem && listagem?.find((l) => l.nome === "largura")?.valor_numero === 1800 && listagem?.find((l) => l.nome === "vidro")?.valor_texto === "temperado",
+    );
+
+    const { data: dataOutro } = await otherTenant.client.rpc("listar_valores_caracteristicas_orcamento_item", { p_orcamento_item_id: orcItemId });
+    const { error: eOutro } = await otherTenant.client.rpc("listar_valores_caracteristicas_orcamento_item", { p_orcamento_item_id: orcItemId });
+    check("outro tenant não enxerga item de orçamento alheio", !!eOutro && !dataOutro);
+
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoCfgId, p_decisao: "aprovado" });
+    const { error: eAposAprovado } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractLargura, p_valor_numero: 2000, p_valor_texto: null,
+    });
+    check("orçamento aprovado não aceita mais alteração de característica (só rascunho)", !!eAposAprovado);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

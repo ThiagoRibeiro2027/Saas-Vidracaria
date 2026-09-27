@@ -63,6 +63,7 @@ export default async function ComercialPage({
     { data: papeis },
     { data: obras },
     { data: itens },
+    { data: pecas },
     { data: oportunidades },
     { data: propostas },
   ] = await Promise.all([
@@ -72,6 +73,7 @@ export default async function ComercialPage({
     supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
     supabase.from("obras").select("id, nome, pessoa_id, situacao").order("nome"),
     supabase.from("itens").select("id, codigo, descricao, unidade_principal, situacao").order("codigo"),
+    supabase.from("pecas").select("id, item_id"),
     canViewOportunidades
       ? supabase.from("oportunidades").select("*").order("created_at", { ascending: false })
       : Promise.resolve({ data: [] as never[] }),
@@ -91,6 +93,24 @@ export default async function ComercialPage({
     list.push(oi);
     itensPorOrcamento.set(oi.orcamento_id, list);
   }
+
+  // TÓPICO 10 §9 — orcamento_item cujo item é uma peça configurável
+  // ganha a lista de características + valor já informado (se houver).
+  // Mesmo padrão de N chamadas via Promise.all já usado em
+  // engenharia/page.tsx pro equivalente do lado do Pedido.
+  const pecaIdPorItemId = new Map((pecas ?? []).map((p) => [p.item_id, p.id]));
+  const caracteristicasPorOrcamentoItem = new Map<
+    string,
+    { peca_caracteristica_id: string; nome: string; tipo: string; unidade: string | null; obrigatoria: boolean; valor_numero: number | null; valor_texto: string | null }[]
+  >();
+  await Promise.all(
+    (orcamentoItens ?? [])
+      .filter((oi) => pecaIdPorItemId.has(oi.item_id))
+      .map(async (oi) => {
+        const { data } = await supabase.rpc("listar_valores_caracteristicas_orcamento_item", { p_orcamento_item_id: oi.id });
+        if (data && data.length > 0) caracteristicasPorOrcamentoItem.set(oi.id, data);
+      }),
+  );
 
   // Mesma fórmula usada por decidir_orcamento() pra checar a alçada
   // (approval_thresholds) — uma única fonte de verdade via RPC, em vez de
@@ -136,6 +156,8 @@ export default async function ComercialPage({
             todasPessoas={pessoas ?? []}
             obras={obras ?? []}
             itens={itens ?? []}
+            pecaIdPorItemId={pecaIdPorItemId}
+            caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
             oportunidadesAbertas={oportunidadesAbertas}
             canManage={!!canManage}
           />

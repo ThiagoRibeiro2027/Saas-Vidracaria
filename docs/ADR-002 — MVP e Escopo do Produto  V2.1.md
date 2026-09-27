@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.15\
+**Versão:** 2.16\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -21,7 +21,8 @@ Fase 4 do TÓPICO 13, webhooks enviados + motor de automação; §4.14 e
 com contas a pagar/cobrança/conciliação; §4.16 revisado em 2026-09-26 —
 Fase 3 do TÓPICO 12, dashboards por área com dados já existentes; §4.17
 revisado em 2026-09-26 — Fase 6 do TÓPICO 13, exportação genérica em
-CSV)\
+CSV; §4.3 revisado em 2026-09-26 — TÓPICO 10 §9, configurador de peça
+ligado ao orçamento)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
 ADR-011
@@ -296,6 +297,40 @@ Continuam fora do MVP após esta ampliação:
 
 - identidade visual/layout configurável e assinatura eletrônica da
   proposta.
+
+**Ampliação de escopo — captura de características de peça configurável
+no orçamento, TÓPICO 10 §9 (26/09/2026 — decisão do responsável do
+produto via chat).** Até aqui o configurador (peça configurável com
+características — largura, material, acabamento etc., Fases F-H da BOM
+leve) só existia do lado do Pedido, gate `engenharia.manage`. A
+justificativa original desta ADR (19/09) pra deixar "produtos
+configuráveis" fora do MVP era que a Engenharia ainda não tinha BOM
+madura — isso deixou de ser verdade com as Fases F-H, encerradas em
+25/09, mas o Comercial nunca foi atualizado pra usar o que passou a
+existir.
+
+Abre só §9 (informar as características já na cotação, mesma validação
+de tipo/opção que já existe do lado do Pedido). `orcamento_item_
+caracteristicas` é gerido pelo próprio Comercial (`orcamentos.manage`,
+não `engenharia.manage`), só com o orçamento em rascunho — mesma regra
+já aplicada a `upsert_orcamento_item()`.
+
+Decisão explícita: os valores capturados aqui **não são copiados
+automaticamente** para `pedido_item_caracteristicas` quando o orçamento
+vira pedido — `converter_orcamento_em_pedido()` copia itens em lote
+(`INSERT...SELECT`), sem preservar a correspondência linha a linha
+necessária pra isso, e mudar essa função central e já testada não valeu
+o risco por ora. A Engenharia continua capturando/confirmando no pedido
+exatamente como já fazia; o dado do orçamento é só subsídio de
+precificação do Comercial. Migrar pra cópia automática fica pra uma fase
+seguinte, se comprovado necessário.
+
+Continuam fora: §10 (Comercial solicita à Engenharia uma estrutura
+nova/especial, com aprovar/reprovar/devolver/duplicar) e §11 (validação
+técnica formal com 5 status — aprovado/pendente/necessita alteração/
+inviável/aguardando informação) — nenhum dos dois existe hoje nem do
+lado do Pedido, e são workflow maior e distinto que mereceria sua
+própria decisão de escopo.
 
 **4.4 Pedidos**
 

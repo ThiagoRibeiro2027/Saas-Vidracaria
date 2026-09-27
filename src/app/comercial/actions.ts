@@ -224,3 +224,32 @@ export async function vincularOportunidadeOrcamentoAction(formData: FormData) {
 
   revalidatePath("/comercial");
 }
+
+// TÓPICO 10 §9 — mesmo padrão de definirValorCaracteristicaAction
+// (src/app/engenharia/actions.ts), só que grava em orcamento_item_
+// caracteristicas via definir_valor_caracteristica_orcamento_item()
+// (gate orcamentos.manage, só com orçamento em rascunho).
+export async function definirValorCaracteristicaOrcamentoAction(formData: FormData) {
+  const orcamentoItemId = String(formData.get("orcamento_item_id") ?? "");
+  const pecaCaracteristicaId = String(formData.get("peca_caracteristica_id") ?? "");
+  const tipo = String(formData.get("tipo") ?? "");
+  const valorRaw = String(formData.get("valor") ?? "").trim();
+  if (!orcamentoItemId || !pecaCaracteristicaId || !valorRaw) {
+    throw new Error("Característica e valor são obrigatórios.");
+  }
+
+  const valorNumero = tipo === "numero" ? Number(valorRaw) : null;
+  if (tipo === "numero" && !Number.isFinite(valorNumero)) throw new Error("Valor numérico inválido.");
+  const valorTexto = tipo === "numero" ? null : valorRaw;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_valor_caracteristica_orcamento_item", {
+    p_orcamento_item_id: orcamentoItemId,
+    p_peca_caracteristica_id: pecaCaracteristicaId,
+    p_valor_numero: valorNumero,
+    p_valor_texto: valorTexto,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
