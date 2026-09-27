@@ -253,3 +253,15 @@ export async function definirValorCaracteristicaOrcamentoAction(formData: FormDa
 
   revalidatePath("/comercial");
 }
+
+// ADR-012 §2 — leitura pura (não grava nada). O vendedor decide se
+// aplica o custo_total ao campo custo_unitario, via o form de edição do
+// item já existente — nunca aplicado automaticamente.
+export async function calcularCustoOrcamentoItemAction(
+  orcamentoItemId: string,
+): Promise<{ error: string } | { data: Record<string, unknown> }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcamentoItemId });
+  if (error) return { error: error.message };
+  return { data: data as Record<string, unknown> };
+}

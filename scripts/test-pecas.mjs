@@ -5,6 +5,12 @@
 // (matéria-prima/insumo/material auxiliar) e quantidade por unidade — sem
 // hierarquia, sem motor de regras.
 //
+// ADR-012, Fase 1 (27/09/2026): precificação dimensional — perfil por
+// metro linear, vidro por metro quadrado, custo vindo do histórico de
+// compras real (pedido_compra_itens.custo_unitario), acessório com
+// quantidade condicional reaproveitando o motor de regras desta mesma
+// Fase G (nenhuma tabela nova pra isso).
+//
 // Uso: set -a; source .env.local; set +a; node scripts/test-pecas.mjs
 
 import { createClient } from "@supabase/supabase-js";
@@ -891,6 +897,104 @@ async function main() {
     check("engenharia.bom_sugerida_gerada registrado", actions.has("engenharia.bom_sugerida_gerada"));
     check("engenharia.bom_item_ajustado registrado", actions.has("engenharia.bom_item_ajustado"));
     check("engenharia.bom_definitiva_aprovada registrado", actions.has("engenharia.bom_definitiva_aprovada"));
+  }
+
+  console.log("\n63. ADR-012 Fase 1 — precificação dimensional (calcular_custo_orcamento_item)");
+  {
+    // Cadeia mínima de Compras (solicitação->cotação->pedido de compra)
+    // só pra popular pedido_compra_itens.custo_unitario — não testa
+    // Compras em si (já coberto em test-compras.mjs), só cria o dado que
+    // calcular_custo_orcamento_item() precisa ler.
+    async function registrarCustoCompra(companyId, solicitanteId, itemId, custoUnitario, fornecedorId) {
+      const { data: sc } = await admin.from("solicitacoes_compra").insert({ company_id: companyId, numero: `SC-ADR012-${itemId.slice(0, 8)}`, solicitante_id: solicitanteId, status: "aberta" }).select().single();
+      const { data: sci } = await admin.from("solicitacao_compra_itens").insert({ company_id: companyId, solicitacao_compra_id: sc.id, item_id: itemId, quantidade: 100 }).select().single();
+      const { data: cot } = await admin.from("cotacoes").insert({ company_id: companyId, numero: `COT-ADR012-${itemId.slice(0, 8)}`, solicitacao_compra_id: sc.id, status: "selecionada" }).select().single();
+      const { data: ci } = await admin.from("cotacao_itens").insert({ company_id: companyId, cotacao_id: cot.id, solicitacao_compra_item_id: sci.id }).select().single();
+      const { data: pc } = await admin.from("pedidos_compra").insert({ company_id: companyId, numero: `PC-ADR012-${itemId.slice(0, 8)}`, cotacao_id: cot.id, pessoa_id: fornecedorId, status: "confirmado" }).select().single();
+      await admin.from("pedido_compra_itens").insert({ company_id: companyId, pedido_compra_id: pc.id, cotacao_item_id: ci.id, item_id: itemId, quantidade: 100, preco_unitario: custoUnitario, custo_unitario: custoUnitario });
+    }
+
+    const { data: fornecedorId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CNPJ", p_documento: "33344455000199", p_nome: "Fornecedor ADR012 Teste",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null, p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: fornecedorId, p_papel: "FORNECEDOR", p_ativo: true });
+    const { data: clienteId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CPF", p_documento: "11122233396", p_nome: "Cliente ADR012 Teste",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null, p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: clienteId, p_papel: "CLIENTE", p_ativo: true });
+    await admTenant.client.rpc("upsert_numbering_sequence", { p_document_type: "orcamento", p_prefixo: "ORCADR012-", p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
+
+    const { data: perfilId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "PERFIL-ADR012", p_descricao: "Perfil alumínio", p_tipo: "materia_prima", p_classificacao: "perfil", p_unidade_principal: "M", p_situacao: "ativo" });
+    const { data: vidroId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "VIDRO-ADR012", p_descricao: "Vidro temperado", p_tipo: "materia_prima", p_classificacao: "vidro", p_unidade_principal: "M2", p_situacao: "ativo" });
+    const { data: roldanaId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "ROLD-ADR012", p_descricao: "Roldana", p_tipo: "materia_prima", p_classificacao: "acessorio", p_unidade_principal: "UN", p_situacao: "ativo" });
+    const { data: fechoId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "FECHO-ADR012", p_descricao: "Fecho sem custo", p_tipo: "materia_prima", p_classificacao: "acessorio", p_unidade_principal: "UN", p_situacao: "ativo" });
+
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, perfilId, 25.5, fornecedorId);
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, vidroId, 180.0, fornecedorId);
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, roldanaId, 12.0, fornecedorId);
+    // fechoId propositalmente sem custo cadastrado.
+
+    const { data: boxItemId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "BOX-ADR012", p_descricao: "Box de correr", p_tipo: "produto_acabado", p_classificacao: "box", p_unidade_principal: "UN", p_situacao: "ativo" });
+    const { data: pecaBoxId } = await admTenant.client.rpc("criar_peca", { p_item_id: boxItemId, p_descricao_tecnica: "Box 2 folhas" });
+    const { data: caractLargura } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaBoxId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true });
+    const { data: caractAltura } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaBoxId, p_nome: "altura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true });
+
+    const { error: eTipoInvalido } = await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractLargura, p_papel: "diagonal" });
+    check("papel dimensional inválido é rejeitado", !!eTipoInvalido);
+    const { error: eSemPerm } = await noPermTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractLargura, p_papel: "largura" });
+    check("sem pecas.manage não define papel dimensional", !!eSemPerm);
+    const { error: ePapelL } = await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractLargura, p_papel: "largura" });
+    const { error: ePapelA } = await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: caractAltura, p_papel: "altura" });
+    check("ADMIN define largura e altura como papel dimensional", !ePapelL && !ePapelA);
+
+    const { data: compPerfil } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaBoxId, material_item_id: perfilId, quantidade_por_unidade: 1 }).select().single();
+    const { data: compVidro } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaBoxId, material_item_id: vidroId, quantidade_por_unidade: 1 }).select().single();
+    const { data: compRoldana } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaBoxId, material_item_id: roldanaId, quantidade_por_unidade: 2 }).select().single();
+    await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaBoxId, material_item_id: fechoId, quantidade_por_unidade: 4 });
+
+    const { error: eFixoComPerda } = await admTenant.client.rpc("definir_tipo_calculo_composicao", { p_composicao_id: compRoldana.id, p_tipo_calculo: "fixo", p_percentual_perda: 5 });
+    check("tipo_calculo fixo com percentual_perda != 0 é rejeitado", !!eFixoComPerda);
+    const { error: eTipoPerfil } = await admTenant.client.rpc("definir_tipo_calculo_composicao", { p_composicao_id: compPerfil.id, p_tipo_calculo: "linear", p_percentual_perda: 10 });
+    const { error: eTipoVidro } = await admTenant.client.rpc("definir_tipo_calculo_composicao", { p_composicao_id: compVidro.id, p_tipo_calculo: "area", p_percentual_perda: 5 });
+    check("ADMIN define perfil como linear e vidro como área", !eTipoPerfil && !eTipoVidro);
+
+    await admTenant.client.rpc("criar_regra_peca", {
+      p_peca_id: pecaBoxId, p_caracteristica_id: caractLargura, p_operador: ">=", p_valor_comparacao_numero: 2500, p_valor_comparacao_texto: null,
+      p_acao: "ajustar_quantidade", p_acao_material_item_id: roldanaId, p_acao_quantidade: 3, p_motivo: "porta larga precisa de mais roldanas",
+    });
+
+    const { data: orcamentoId } = await admTenant.client.rpc("upsert_orcamento", { p_id: null, p_pessoa_id: clienteId, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null });
+    await admTenant.client.rpc("upsert_orcamento_item", { p_id: null, p_orcamento_id: orcamentoId, p_item_id: boxItemId, p_quantidade: 1, p_preco_unitario: 100 });
+    const { data: orcItem } = await admin.from("orcamento_itens").select("id").eq("orcamento_id", orcamentoId).single();
+
+    await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", { p_orcamento_item_id: orcItem.id, p_peca_caracteristica_id: caractLargura, p_valor_numero: 2000, p_valor_texto: null });
+    await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", { p_orcamento_item_id: orcItem.id, p_peca_caracteristica_id: caractAltura, p_valor_numero: 1500, p_valor_texto: null });
+
+    const { data: calc1, error: eCalc1 } = await admTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItem.id });
+    check("cálculo sem erro (largura 2000)", !eCalc1 && calc1?.aplica_configurador === true);
+    // perímetro = 2*(2000+1500)/1000 = 7m * 1.10 = 7.7m * 25.50 = 196.35
+    // área = (2000*1500)/1e6 = 3m² * 1.05 = 3.15m² * 180.00 = 567.00
+    // roldana = 2 * 12.00 = 24.00 (regra não ativa, largura < 2500)
+    // total = 787.35
+    check("custo_total bate com o cálculo manual (787.35, largura 2000)", calc1?.custo_total === 787.35);
+    check("fecho sem custo aparece em materiais_sem_custo, não conta no total", calc1?.materiais_sem_custo?.some((m) => m.codigo === "FECHO-ADR012") && calc1?.materiais_sem_custo?.length === 1);
+
+    const { error: eSemPermCalc } = await noPermTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItem.id });
+    check("sem orcamentos.view não calcula custo", !!eSemPermCalc);
+
+    await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", { p_orcamento_item_id: orcItem.id, p_peca_caracteristica_id: caractLargura, p_valor_numero: 2600, p_valor_texto: null });
+    const { data: calc2 } = await admTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItem.id });
+    const roldanaComp = calc2?.componentes?.find((c) => c.codigo === "ROLD-ADR012");
+    check("regra de quantidade condicional dispara com largura 2600 (roldana vira 3)", roldanaComp?.quantidade === 3);
+    check("perfil/vidro recalculam com a nova largura (custo_total muda)", calc2?.custo_total !== calc1?.custo_total);
+
+    const { data: itemSemPecaId } = await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: "SIMPLES-ADR012", p_descricao: "Item simples, não é peça", p_tipo: "produto_acabado", p_classificacao: null, p_unidade_principal: "UN", p_situacao: "ativo" });
+    await admTenant.client.rpc("upsert_orcamento_item", { p_id: null, p_orcamento_id: orcamentoId, p_item_id: itemSemPecaId, p_quantidade: 1, p_preco_unitario: 50 });
+    const { data: orcItemSimples } = await admin.from("orcamento_itens").select("id").eq("orcamento_id", orcamentoId).eq("item_id", itemSemPecaId).single();
+    const { data: calcSimples } = await admTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItemSimples.id });
+    check("item que não é peça configurável retorna aplica_configurador=false, sem erro", calcSimples?.aplica_configurador === false);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

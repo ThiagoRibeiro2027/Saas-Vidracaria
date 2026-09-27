@@ -52,7 +52,7 @@ export default async function PecasPage() {
   // TÓPICO 5 Fase F — características configuráveis por peça.
   const caracteristicasPorPeca = new Map<
     string,
-    { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean }[]
+    { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null }[]
   >();
   await Promise.all(
     (pecas ?? []).map(async (p) => {

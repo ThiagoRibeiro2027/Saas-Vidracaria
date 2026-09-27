@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   upsertOrcamentoAction,
   upsertOrcamentoItemAction,
@@ -9,6 +9,7 @@ import {
   cancelarOrcamentoAction,
   vincularOportunidadeOrcamentoAction,
   definirValorCaracteristicaOrcamentoAction,
+  calcularCustoOrcamentoItemAction,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -521,6 +522,7 @@ function OrcamentoItemRow({
           />
           {canManage && (
             <Input
+              id={item ? `custo-unitario-${item.id}` : undefined}
               name="custo_unitario"
               type="number"
               step="0.01"
@@ -558,7 +560,79 @@ function OrcamentoItemRow({
           </Td>
         </tr>
       )}
+      {item && pecaId && canManage && (
+        <tr>
+          <Td colSpan={totalColumns}>
+            <CalculadoraCustoConfigurador orcamentoItemId={item.id} />
+          </Td>
+        </tr>
+      )}
     </>
+  );
+}
+
+type ComponenteCusto = { item_id: string; codigo: string; descricao: string; quantidade: number; custo_unitario?: number; subtotal?: number };
+type CalculoCustoResultado = {
+  aplica_configurador: boolean;
+  custo_total?: number;
+  componentes?: ComponenteCusto[];
+  materiais_sem_custo?: ComponenteCusto[];
+};
+
+function CalculadoraCustoConfigurador({ orcamentoItemId }: { orcamentoItemId: string }) {
+  const [resultado, setResultado] = useState<CalculoCustoResultado | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function calcular() {
+    setPending(true);
+    setError(null);
+    const r = await calcularCustoOrcamentoItemAction(orcamentoItemId);
+    setPending(false);
+    if ("error" in r) {
+      setError(r.error);
+      return;
+    }
+    setResultado(r.data as CalculoCustoResultado);
+  }
+
+  function usarCusto() {
+    if (resultado?.custo_total === undefined) return;
+    const campo = document.getElementById(`custo-unitario-${orcamentoItemId}`) as HTMLInputElement | null;
+    if (campo) campo.value = String(resultado.custo_total);
+  }
+
+  return (
+    <div className="flex flex-col gap-1 rounded border border-border-subtle bg-page-bg p-2 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-text">Custo dimensional (ADR-012):</span>
+        <Button type="button" variant="secondary" onClick={calcular} disabled={pending}>
+          {pending ? "Calculando..." : "Calcular"}
+        </Button>
+        {resultado?.custo_total !== undefined && (
+          <Button type="button" variant="primary" onClick={usarCusto}>
+            Usar este custo ({currency(resultado.custo_total)})
+          </Button>
+        )}
+      </div>
+      {error && <p className="text-danger">{error}</p>}
+      {resultado && !resultado.aplica_configurador && <p className="text-text-muted">Este item não é uma peça configurável — custo continua manual.</p>}
+      {resultado?.aplica_configurador && (
+        <div className="flex flex-col gap-0.5">
+          {(resultado.componentes ?? []).map((c) => (
+            <div key={c.item_id} className="flex justify-between">
+              <span>{c.codigo} — {c.descricao} ({c.quantidade})</span>
+              <span>{currency(c.subtotal ?? 0)}</span>
+            </div>
+          ))}
+          {(resultado.materiais_sem_custo ?? []).length > 0 && (
+            <p className="text-danger">
+              Sem custo cadastrado: {(resultado.materiais_sem_custo ?? []).map((m) => `${m.codigo} (${m.quantidade})`).join(", ")} — não entram no total acima.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

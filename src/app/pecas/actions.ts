@@ -185,3 +185,42 @@ export async function desativarRegraPecaAction(formData: FormData) {
   revalidatePath("/pecas");
   revalidatePath("/engenharia");
 }
+
+// ADR-012 §2.1 — marca uma característica numérica como largura/altura
+// da peça, pra alimentar a fórmula de perímetro/área.
+export async function definirPapelDimensionalAction(formData: FormData) {
+  const caracteristicaId = String(formData.get("caracteristica_id") ?? "");
+  const papelRaw = String(formData.get("papel_dimensional") ?? "").trim();
+  if (!caracteristicaId) throw new Error("Característica inválida.");
+  const papel = papelRaw === "" ? null : papelRaw;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_papel_dimensional_caracteristica", {
+    p_caracteristica_id: caracteristicaId,
+    p_papel: papel,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
+
+// ADR-012 §2.2 — tipo de cálculo (fixo/linear/área) e percentual de
+// perda de uma linha de composição.
+export async function definirTipoCalculoComposicaoAction(formData: FormData) {
+  const composicaoId = String(formData.get("composicao_id") ?? "");
+  const tipoCalculo = String(formData.get("tipo_calculo") ?? "");
+  const percentualPerdaRaw = String(formData.get("percentual_perda") ?? "0").trim();
+  if (!composicaoId || !tipoCalculo) throw new Error("Dados inválidos.");
+  const percentualPerda = tipoCalculo === "fixo" ? 0 : Number(percentualPerdaRaw || "0");
+  if (!Number.isFinite(percentualPerda) || percentualPerda < 0) throw new Error("Percentual de perda inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_tipo_calculo_composicao", {
+    p_composicao_id: composicaoId,
+    p_tipo_calculo: tipoCalculo,
+    p_percentual_perda: percentualPerda,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}

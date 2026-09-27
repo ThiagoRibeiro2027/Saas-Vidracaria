@@ -10,6 +10,8 @@ import {
   removerMaterialPecaAction,
   definirCaracteristicaPecaAction,
   removerCaracteristicaPecaAction,
+  definirPapelDimensionalAction,
+  definirTipoCalculoComposicaoAction,
 } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 import RegrasPeca from "./RegrasPeca";
@@ -22,9 +24,17 @@ type PecaComposicao = {
   material_item_id: string;
   quantidade_por_unidade: number;
   observacao: string | null;
+  tipo_calculo: "fixo" | "linear" | "area";
+  percentual_perda: number;
 };
 type Revisao = { revisao: number; motivo: string | null; created_at: string };
-type Caracteristica = { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean };
+type Caracteristica = { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null };
+
+const TIPO_CALCULO_LABEL: Record<PecaComposicao["tipo_calculo"], string> = {
+  fixo: "Fixo",
+  linear: "Linear (perímetro)",
+  area: "Área",
+};
 type Regra = {
   id: string;
   versao: number;
@@ -151,6 +161,7 @@ export default function PecasSection({
                     <th style={thStyle}>Material</th>
                     <th style={thStyle}>Qtd. por unidade</th>
                     <th style={thStyle}>Observação</th>
+                    <th style={thStyle}>Cálculo (ADR-012)</th>
                     {canManage && <th style={thStyle}></th>}
                   </tr>
                 </thead>
@@ -189,6 +200,13 @@ export default function PecasSection({
                           )}
                         </td>
                         <td style={tdStyle}>{c.observacao ?? "—"}</td>
+                        <td style={tdStyle}>
+                          {canManage ? (
+                            <TipoCalculoComposicao composicao={c} />
+                          ) : (
+                            `${TIPO_CALCULO_LABEL[c.tipo_calculo]}${c.tipo_calculo !== "fixo" ? ` (perda ${c.percentual_perda}%)` : ""}`
+                          )}
+                        </td>
                         {canManage && (
                           <td style={tdStyle}>
                             <form action={removerMaterialPecaAction}>
@@ -204,7 +222,7 @@ export default function PecasSection({
                   })}
                   {linhas.length === 0 && (
                     <tr>
-                      <td style={tdStyle} colSpan={canManage ? 4 : 3}>
+                      <td style={tdStyle} colSpan={canManage ? 5 : 4}>
                         <span style={{ color: "#6b7a75" }}>Peça sem materiais na composição ainda.</span>
                       </td>
                     </tr>
@@ -277,6 +295,37 @@ export default function PecasSection({
   );
 }
 
+function TipoCalculoComposicao({ composicao }: { composicao: PecaComposicao }) {
+  const [tipo, setTipo] = useState<PecaComposicao["tipo_calculo"]>(composicao.tipo_calculo);
+
+  return (
+    <form action={definirTipoCalculoComposicaoAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+      <input type="hidden" name="composicao_id" value={composicao.id} />
+      <select name="tipo_calculo" value={tipo} onChange={(e) => setTipo(e.target.value as PecaComposicao["tipo_calculo"])} style={{ ...inputStyle, width: "130px" }}>
+        {(Object.keys(TIPO_CALCULO_LABEL) as PecaComposicao["tipo_calculo"][]).map((v) => (
+          <option key={v} value={v}>
+            {TIPO_CALCULO_LABEL[v]}
+          </option>
+        ))}
+      </select>
+      {tipo !== "fixo" && (
+        <input
+          name="percentual_perda"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="% perda"
+          defaultValue={composicao.tipo_calculo !== "fixo" ? composicao.percentual_perda : 0}
+          style={{ ...inputStyle, width: "70px" }}
+        />
+      )}
+      <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
+        Salvar
+      </button>
+    </form>
+  );
+}
+
 function CaracteristicasPeca({
   pecaId,
   caracteristicas,
@@ -303,6 +352,26 @@ function CaracteristicasPeca({
                 {c.opcoes ? `: ${c.opcoes.join(", ")}` : ""}
                 {c.obrigatoria ? ", obrigatória" : ""})
               </span>
+              {c.tipo === "numero" && (canManage ? (
+                <form action={definirPapelDimensionalAction} style={{ display: "flex", alignItems: "center" }}>
+                  <input type="hidden" name="caracteristica_id" value={c.id} />
+                  <select
+                    name="papel_dimensional"
+                    defaultValue={c.papel_dimensional ?? ""}
+                    onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                    style={{ ...inputStyle, fontSize: "10px", padding: "1px 4px" }}
+                    title="Papel dimensional (ADR-012) — alimenta a fórmula de perímetro/área"
+                  >
+                    <option value="">sem papel dimensional</option>
+                    <option value="largura">largura</option>
+                    <option value="altura">altura</option>
+                  </select>
+                </form>
+              ) : (
+                c.papel_dimensional && (
+                  <span style={{ fontSize: "10px", color: "#1f5d57", fontFamily: "monospace" }}>{c.papel_dimensional}</span>
+                )
+              ))}
               {canManage && (
                 <form action={removerCaracteristicaPecaAction}>
                   <input type="hidden" name="id" value={c.id} />
