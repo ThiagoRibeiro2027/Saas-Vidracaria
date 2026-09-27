@@ -181,14 +181,18 @@ correspondente até resolvidas com o responsável do produto:
   `itens`), cadastrado numa tabela própria de "comprimentos candidatos"
   por linha de composição; otimização por menor custo total, não menor
   sobra.
-- **Fase 3:** se a Engenharia reprovar ou alterar a composição sugerida
-  depois que o orçamento (e o preço) já foi aprovado/faturado, o preço
-  já cobrado do cliente muda retroativamente, ou fica congelado e a
-  divergência vira só um registro interno?
-- **Fase 4:** fonte exata de custo/hora por operação e por recurso
-  produtivo (cadastro já existe em `recursos_produtivos`, mas custo/hora
-  por recurso ainda precisa ser confirmado como campo existente ou
-  novo).
+- **Fase 3 — resolvida (27/09/2026):** preço já aprovado/faturado fica
+  sempre congelado, nunca muda sozinho. Quando a Engenharia aprova uma
+  BOM definitiva com custo diferente do que formou o preço, o sistema
+  registra a diferença (custo congelado × custo real, com o preço
+  sugerido correspondente) como uma sugestão pendente — um humano com
+  `pedidos.manage` decide, explicitamente, se aplica a atualização ou
+  mantém o preço como está (`aplicar_atualizacao_preco_bom()` /
+  `ignorar_divergencia_preco_bom()`).
+- **Fase 4 — resolvida (27/09/2026):** custo/hora vive em
+  `recursos_produtivos` (campo novo, `custo_hora`), não em
+  `roteiro_operacoes` — por recurso (máquina/equipe/operador), não por
+  tipo de operação.
 
 **6. Consequências**
 

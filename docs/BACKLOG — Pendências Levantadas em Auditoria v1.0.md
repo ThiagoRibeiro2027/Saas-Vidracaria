@@ -43,14 +43,22 @@ suspeita). Só 2 tinham o gap de fato:
 Ambas corrigidas, com teste negativo em `scripts/test-governance.mjs` (regra
 9 do CLAUDE.md) e validação manual do caminho feliz.
 
-## 3. ADR-012 — próximas fases aprovadas, não iniciadas
+## 3. ADR-012 — todas as 4 fases entregues (27/09/2026)
 
-A ADR-012 (Precificação Dimensional do Configurador) está aprovada até a
-Fase 4, mas cada fase exige "pode seguir" explícito do responsável antes de
-começar (cláusula de governança da própria ADR). Fases 1 e 2 estão em
-produção. Faltam:
+A ADR-012 (Precificação Dimensional do Configurador) está com as 4 fases em
+produção, cada uma liberada com "pode seguir" explícito do responsável do
+produto (cláusula de governança da própria ADR):
 
-- **Fase 3** — composição do configurador virar BOM sugerida no pedido, para
-  conferência da engenharia.
-- **Fase 4** — cálculo automático de mão de obra no orçamento (hoje o campo é
-  digitação livre, conforme decidido na aprovação da ADR).
+- **Fase 1** — cálculo de custo dimensional (perfil/vidro/acessório).
+- **Fase 2** — combinação de barras de menor custo total.
+- **Fase 3** — composição do orçamento vira BOM sugerida do pedido
+  automaticamente na conversão; preço já aprovado/faturado fica sempre
+  congelado, com sugestão de atualização quando a BOM definitiva da
+  Engenharia diverge (decisão explícita do operador, nunca automática).
+- **Fase 4** — mão de obra automática a partir do roteiro produtivo e do
+  novo `recursos_produtivos.custo_hora`.
+
+Pendência conhecida, fora do escopo aprovado: nenhuma tela nova para as
+Fases 3/4 (sugestão de mão de obra, sugestão de atualização de preço
+pós-BOM) — mesmo padrão do item 1 deste backlog, backend funcional via
+RPC/Data API, sem UI própria ainda.
