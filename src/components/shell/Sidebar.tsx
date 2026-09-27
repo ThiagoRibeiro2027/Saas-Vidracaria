@@ -24,8 +24,10 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 export function Sidebar() {
   const pathname = usePathname();
 
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  const isActive = (item: NavItem) =>
+    item.href === "/" || item.exact
+      ? pathname === item.href
+      : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar-bg px-3 py-4 md:flex">
@@ -34,7 +36,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex flex-col gap-4">
-        <NavLink item={HOME_ITEM} active={isActive(HOME_ITEM.href)} />
+        <NavLink item={HOME_ITEM} active={isActive(HOME_ITEM)} />
 
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
@@ -43,7 +45,7 @@ export function Sidebar() {
             </p>
             <div className="flex flex-col gap-0.5">
               {group.items.map((item) => (
-                <NavLink key={item.href} item={item} active={isActive(item.href)} />
+                <NavLink key={item.href} item={item} active={isActive(item)} />
               ))}
             </div>
           </div>
