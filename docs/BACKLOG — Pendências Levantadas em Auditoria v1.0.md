@@ -22,13 +22,26 @@ interface:
 - **Editar recurso produtivo / manutenção preventiva** — mesmo padrão: só
   cadastro e remoção, sem edição.
 
-## 2. Lacuna de segurança pré-existente, mais ampla que o corrigido
+## 2. Lacuna de segurança pré-existente, mais ampla que o corrigido — RESOLVIDO (27/09/2026)
 
 Ao corrigir `orcamento_item_caracteristicas` (ADR-012 Fase 1) para chamar
-`assert_company_not_suspended()`, ficou claro que **o módulo de Orçamentos
-como um todo** tem funções de mutação mais antigas sem essa checagem — não é
-só o que essa fase tocou. Precisa de um levantamento função a função para
-saber a extensão real antes de corrigir.
+`assert_company_not_suspended()`, o comentário da migration registrou a
+suspeita de que **o módulo de Orçamentos como um todo** tinha funções de
+mutação mais antigas sem essa checagem. Feito o levantamento função a
+função (migration `20261105020000_fix_orcamento_suspensao_gaps.sql`):
+a suspeita era só parcialmente verdadeira — das 9 funções de mutação do
+módulo, 7 já estavam corretas (5 delas retrofitadas com
+`assert_tenant_write()` em 15/09, antes mesmo do comentário que levantou a
+suspeita). Só 2 tinham o gap de fato:
+
+- `upsert_orcamento_item()` — tinha `assert_tenant_write()` em 15/09, mas
+  regrediu em 02/10 ao ganhar o parâmetro `custo_unitario` (a reescrita
+  voltou ao guard manual antigo, sem a checagem de suspensão).
+- `vincular_oportunidade_orcamento()` — nunca teve a checagem, desde que foi
+  criada em 01/10.
+
+Ambas corrigidas, com teste negativo em `scripts/test-governance.mjs` (regra
+9 do CLAUDE.md) e validação manual do caminho feliz.
 
 ## 3. ADR-012 — próximas fases aprovadas, não iniciadas
 
