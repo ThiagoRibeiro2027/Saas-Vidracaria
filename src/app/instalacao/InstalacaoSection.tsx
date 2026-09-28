@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { formatarData } from "@/lib/formato/data";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -284,7 +285,7 @@ export default function InstalacaoSection({
                           <Badge variant={STATUS_TONE[inst.status]}>{STATUS_LABEL[inst.status]}</Badge>
                           <span className="text-text-muted">{equipeNome(inst.equipe_id)}</span>
                           <span className="text-text-muted">
-                            {new Date(`${inst.data_agendada}T00:00:00`).toLocaleDateString("pt-BR")}
+                            {formatarData(inst.data_agendada)}
                           </span>
                           {inst.status === "cancelada" && inst.motivo_cancelamento && (
                             <span className="text-text-muted">Motivo: {inst.motivo_cancelamento}</span>

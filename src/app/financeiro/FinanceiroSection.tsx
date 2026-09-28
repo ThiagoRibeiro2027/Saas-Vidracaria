@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { formatarData, parseDataLocal } from "@/lib/formato/data";
 
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -189,12 +190,11 @@ export default function FinanceiroSection({
           <tbody>
             {titulos.map((t) => {
               const pedido = nomePorPedido.get(t.pedido_id);
-              // Mesmo parsing (local, não UTC) usado na exibição da data
-              // logo abaixo — um new Date(t.vencimento) bare interpreta
-              // "YYYY-MM-DD" como meia-noite UTC, que em UTC-3 (Brasil)
-              // fica atrás da meia-noite local o dia inteiro, marcando um
-              // título com vencimento hoje como "vencido" prematuramente.
-              const vencido = t.status !== "pago" && t.status !== "cancelado" && new Date(`${t.vencimento}T00:00:00`) < new Date(new Date().toDateString());
+              // parseDataLocal (e não new Date(t.vencimento) bare) pelo
+              // mesmo motivo da exibição: lido como UTC, um vencimento de
+              // hoje fica atrás da meia-noite local o dia inteiro e o
+              // título aparece como vencido antes da hora.
+              const vencido = t.status !== "pago" && t.status !== "cancelado" && parseDataLocal(t.vencimento) < new Date(new Date().toDateString());
               return (
                 <tr key={t.id}>
                   <Td>{t.numero}</Td>
@@ -205,7 +205,7 @@ export default function FinanceiroSection({
                   <Td>{currency(t.valor_recebido)}</Td>
                   <Td>{currency(t.saldo_pendente)}</Td>
                   <Td>
-                    {new Date(`${t.vencimento}T00:00:00`).toLocaleDateString("pt-BR")}
+                    {formatarData(t.vencimento)}
                     {vencido && <span className="text-danger"> (vencido)</span>}
                   </Td>
                   <Td>
@@ -385,7 +385,7 @@ export default function FinanceiroSection({
                   <td style={tdStyle}>{t.numero}</td>
                   <td style={tdStyle}>{t.pedidos_compra ? nomePorPessoa.get(t.pedidos_compra.pessoa_id) ?? "—" : "—"}</td>
                   <td style={tdStyle}>{currency(t.saldo_pendente)}</td>
-                  <td style={tdStyle}>{new Date(`${t.vencimento}T00:00:00`).toLocaleDateString("pt-BR")}</td>
+                  <td style={tdStyle}>{formatarData(t.vencimento)}</td>
                   <td style={tdStyle}>{TITULO_PAGAR_STATUS_LABEL[t.status]}</td>
                   <td style={tdStyle}>{statusAprovacao ? APROVACAO_STATUS_LABEL[statusAprovacao] ?? statusAprovacao : "—"}</td>
                   {(canManage || canPagar) && (t.status === "aberto" || t.status === "parcial") && (
@@ -436,7 +436,7 @@ export default function FinanceiroSection({
                 <td style={tdStyle}>{c.titulos_financeiros?.numero ?? "—"}</td>
                 <td style={tdStyle}>{c.tipo === "boleto" ? "Boleto" : "PIX"}</td>
                 <td style={tdStyle}>{currency(c.valor)}</td>
-                <td style={tdStyle}>{new Date(`${c.vencimento}T00:00:00`).toLocaleDateString("pt-BR")}</td>
+                <td style={tdStyle}>{formatarData(c.vencimento)}</td>
                 <td style={tdStyle}>{COBRANCA_STATUS_LABEL[c.status]}</td>
                 {(canManage || canReceber) && c.status === "gerada" && (
                   <td style={tdStyle}>
@@ -487,7 +487,7 @@ export default function FinanceiroSection({
           <tbody>
             {movimentacoes.map((m) => (
               <tr key={m.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                <td style={tdStyle}>{new Date(`${m.data_movimento}T00:00:00`).toLocaleDateString("pt-BR")}</td>
+                <td style={tdStyle}>{formatarData(m.data_movimento)}</td>
                 <td style={tdStyle}>{m.tipo === "credito" ? "Crédito" : "Débito"}</td>
                 <td style={tdStyle}>{currency(m.valor)}</td>
                 <td style={tdStyle}>{m.descricao ?? "—"}</td>

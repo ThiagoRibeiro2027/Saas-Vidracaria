@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { formatarData } from "@/lib/formato/data";
 
 type RecursoProdutivo = {
   id: string;
@@ -584,10 +585,7 @@ function PreventivaRow({ p, canManage }: { p: ManutencaoPreventivaRow; canManage
   return (
     <tr>
       <Td>{p.tipo}</Td>
-      {/* proxima_data é `date`, sem hora. `new Date("2027-06-01")` é lido
-          como meia-noite UTC e, no fuso de Brasília, exibe 31/05 — um dia
-          antes do que está gravado. O sufixo força leitura local. */}
-      <Td>{new Date(`${p.proxima_data}T00:00:00`).toLocaleDateString("pt-BR")}</Td>
+      <Td>{formatarData(p.proxima_data)}</Td>
       <Td>{p.periodicidade_dias ?? "—"}</Td>
       <Td>{p.duracao_estimada_horas ?? "—"}</Td>
       {canManage && (

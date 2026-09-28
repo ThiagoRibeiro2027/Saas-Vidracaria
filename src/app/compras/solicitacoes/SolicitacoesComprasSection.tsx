@@ -12,6 +12,7 @@ import {
   cancelarCompraDiretaAction,
 } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { formatarData } from "@/lib/formato/data";
 
 const PRIORIDADES = [
   ["baixa", "Baixa"],
@@ -269,7 +270,7 @@ function SolicitacaoCard({
             <tr key={it.id}>
               <td style={tdStyle}>{itemPorId.get(it.item_id)?.codigo ?? it.item_id}</td>
               <td style={tdStyle}>{it.quantidade}</td>
-              <td style={tdStyle}>{it.data_necessaria ? new Date(`${it.data_necessaria}T00:00:00`).toLocaleDateString("pt-BR") : "—"}</td>
+              <td style={tdStyle}>{formatarData(it.data_necessaria)}</td>
               <td style={tdStyle}>{it.necessidade_compra_id ? "vinculada" : "—"}</td>
               {canManage && emRascunho && (
                 <td style={tdStyle}>

@@ -2,6 +2,7 @@
 
 import { upsertCriterioAvaliacaoFornecedorAction, avaliarFornecedorAction } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { formatarData } from "@/lib/formato/data";
 
 const CRITERIOS = [
   ["prazo", "Prazo"],
@@ -95,7 +96,7 @@ export default function FornecedoresComprasSection({
                 <tr key={a.id} style={{ borderBottom: "1px solid #eef1ef" }}>
                   <td style={tdStyle}>{nomeFornecedor(fornecedores, a.pessoa_id)}</td>
                   <td style={tdStyle}>
-                    {new Date(`${a.periodo_inicio}T00:00:00`).toLocaleDateString("pt-BR")} — {new Date(`${a.periodo_fim}T00:00:00`).toLocaleDateString("pt-BR")}
+                    {formatarData(a.periodo_inicio)} — {formatarData(a.periodo_fim)}
                   </td>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>{a.score !== null ? Number(a.score).toFixed(2) : "sem dado"}</td>
                   <td style={tdStyle}>

@@ -10,6 +10,7 @@ import {
   registrarPagamentoTituloCompraAction,
 } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { formatarData } from "@/lib/formato/data";
 
 const STATUS_PC_LABEL: Record<string, string> = { emitido: "Emitido", confirmado: "Confirmado", cancelado: "Cancelado" };
 const STATUS_TITULO_LABEL: Record<string, string> = { aberto: "Aberto", parcial: "Parcial", pago: "Pago", cancelado: "Cancelado" };
@@ -206,7 +207,7 @@ function PedidoCompraCard({
           <p style={{ fontSize: "12px", fontWeight: 600, margin: "0 0 2px" }}>Entregas programadas:</p>
           {programacoesPc.map((p) => (
             <span key={p.id} style={{ fontSize: "12px", marginRight: "10px" }}>
-              {new Date(`${p.data_entrega}T00:00:00`).toLocaleDateString("pt-BR")}: {p.quantidade}
+              {formatarData(p.data_entrega)}: {p.quantidade}
             </span>
           ))}
         </div>
@@ -231,7 +232,7 @@ function TituloRow({ titulo, canManage }: { titulo: Titulo; canManage: boolean }
     <div style={{ fontSize: "12px", display: "flex", gap: "8px", alignItems: "center", marginBottom: "4px" }}>
       <span>
         {titulo.numero}: R$ {Number(titulo.valor).toFixed(2)} (pago R$ {Number(titulo.valor_pago).toFixed(2)}, saldo R$ {Number(titulo.saldo_pendente).toFixed(2)}) —
-        vence {new Date(`${titulo.vencimento}T00:00:00`).toLocaleDateString("pt-BR")} — {STATUS_TITULO_LABEL[titulo.status]}
+        vence {formatarData(titulo.vencimento)} — {STATUS_TITULO_LABEL[titulo.status]}
       </span>
       {canManage && ["aberto", "parcial"].includes(titulo.status) && (
         !pagando ? (

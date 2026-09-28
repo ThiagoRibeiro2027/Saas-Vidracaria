@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle } from "../configuracoes/styles";
+import { formatarData } from "@/lib/formato/data";
 
 export type FilaProducaoRow = {
   pedido_id: string;
@@ -43,8 +44,6 @@ const SITUACAO_COLOR: Record<FilaProducaoRow["situacao"], string> = {
   liberada_com_restricao: "#a15c00",
   bloqueada: "#9b2c2c",
 };
-
-const fmtData = (v: string | null) => (v ? new Date(`${v}T00:00:00`).toLocaleDateString("pt-BR") : "—");
 
 export default function FilaProducaoSection({ linhas }: { linhas: FilaProducaoRow[] }) {
   const [filtroPessoa, setFiltroPessoa] = useState("");
@@ -140,7 +139,7 @@ export default function FilaProducaoSection({ linhas }: { linhas: FilaProducaoRo
               <strong>Pedido {primeira.pedido_numero}</strong>
               <span>{primeira.pessoa_nome}</span>
               {primeira.obra_nome && <span style={{ color: "#6b7a75" }}>Obra: {primeira.obra_nome}</span>}
-              <span style={{ color: "#6b7a75" }}>Previsão de entrega: {fmtData(primeira.previsao_entrega)}</span>
+              <span style={{ color: "#6b7a75" }}>Previsão de entrega: {formatarData(primeira.previsao_entrega)}</span>
             </div>
 
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>

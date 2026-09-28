@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { formatarData } from "@/lib/formato/data";
 
 const ORIGENS = [
   ["manual", "Manual"],
@@ -110,7 +111,7 @@ export default function SuprimentosSection({
                   <Td>
                     {row.quantidade} {item?.unidade_principal ?? ""}
                   </Td>
-                  <Td>{row.data_necessaria ? new Date(`${row.data_necessaria}T00:00:00`).toLocaleDateString("pt-BR") : "—"}</Td>
+                  <Td>{formatarData(row.data_necessaria)}</Td>
                   <Td>{ORIGENS.find(([v]) => v === row.origem)?.[1] ?? row.origem}</Td>
                   <Td>
                     <Badge variant={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
