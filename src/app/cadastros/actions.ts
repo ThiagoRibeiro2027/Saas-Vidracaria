@@ -2,15 +2,15 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import Papa from "papaparse";
 import { CAMPOS_PESSOAS, CAMPOS_ITENS } from "./importacao-campos";
+import { lerPlanilha, type ImportacaoLinha } from "./importacao-arquivo";
 
 // TÓPICO 2 §28 / ADR-002 §4.2.1 — importação inicial de dados. Só CSV
 // nesta fase (decisão de escopo registrada na migration
 // 20260929000000_topico2_importacao_inicial.sql). Histórico,
 // reprocessamento e mapeamento de colunas vieram depois, na Fase 7 do
 // TÓPICO 13 §29 (migration 20261201000000).
-export type ImportacaoLinha = Record<string, string>;
+export type { ImportacaoLinha };
 export type ImportacaoResultadoLinha = {
   linha: number;
   identificador: string | null;
@@ -46,38 +46,6 @@ export type ImportacaoState =
       origemImportacaoId?: undefined;
     }
   | undefined;
-
-// Regra 12 do CLAUDE.md (validar tamanho e tipo real, nunca só o MIME que
-// o cliente informa): o limite é checado aqui, e "é CSV mesmo?" é provado
-// pelo próprio parse — um binário renomeado para .csv não produz
-// cabeçalho nem linhas e cai nos erros abaixo.
-const TAMANHO_MAXIMO_BYTES = 5 * 1024 * 1024;
-
-async function lerCsv(file: File): Promise<{ colunas: string[]; linhas: ImportacaoLinha[] }> {
-  if (file.size > TAMANHO_MAXIMO_BYTES) {
-    throw new Error(
-      `Arquivo maior que o limite de ${TAMANHO_MAXIMO_BYTES / 1024 / 1024} MB. Divida a importação em partes.`,
-    );
-  }
-  const texto = await file.text();
-  const resultado = Papa.parse<ImportacaoLinha>(texto, {
-    header: true,
-    skipEmptyLines: true,
-    transformHeader: (h) => h.trim(),
-  });
-  if (resultado.errors.length > 0) {
-    const e = resultado.errors[0];
-    throw new Error(`Erro ao ler o CSV (linha ${e.row ?? "?"}): ${e.message}`);
-  }
-  if (resultado.data.length === 0) {
-    throw new Error("Arquivo CSV vazio ou sem linhas de dados.");
-  }
-  const colunas = (resultado.meta.fields ?? []).filter((c) => c.trim() !== "");
-  if (colunas.length === 0) {
-    throw new Error("Não foi possível ler o cabeçalho do arquivo (primeira linha).");
-  }
-  return { colunas, linhas: resultado.data };
-}
 
 // Normalização só para COMPARAR nomes de coluna: minúsculas, sem acento e
 // sem separador. Faz "Nome Fantasia", "nome_fantasia" e "NOME-FANTASIA"
@@ -135,7 +103,7 @@ async function lerEntrada(formData: FormData): Promise<EntradaImportacao | { err
   const arquivo = formData.get("arquivo") as File | null;
   if (arquivo && arquivo.size > 0) {
     try {
-      const { colunas, linhas } = await lerCsv(arquivo);
+      const { colunas, linhas } = await lerPlanilha(arquivo);
       return { colunas, linhas, arquivoNome: arquivo.name };
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Falha ao ler o arquivo." };
@@ -143,7 +111,7 @@ async function lerEntrada(formData: FormData): Promise<EntradaImportacao | { err
   }
 
   const brutasRaw = String(formData.get("linhas_brutas") ?? "");
-  if (brutasRaw === "") return { error: "Selecione um arquivo CSV." };
+  if (brutasRaw === "") return { error: "Selecione um arquivo .csv ou .xlsx." };
   try {
     const bruto = JSON.parse(brutasRaw) as { colunas: string[]; linhas: ImportacaoLinha[] };
     if (!Array.isArray(bruto.colunas) || !Array.isArray(bruto.linhas) || bruto.linhas.length === 0) {

@@ -168,7 +168,7 @@ function Bloco({
     <div className="mb-6">
       <h3 className="mb-1 text-[13px] font-medium text-text">{titulo}</h3>
       <p className="text-xs text-text-muted">
-        Campos do sistema: {campos.join(", ")}. A primeira linha do CSV é o cabeçalho — se os nomes
+        Campos do sistema: {campos.join(", ")}. A primeira linha do arquivo é o cabeçalho — se os nomes
         das colunas forem diferentes, ajuste o destino de cada uma abaixo da prévia.
       </p>
 
@@ -178,7 +178,7 @@ function Bloco({
             <input
               type="file"
               name="arquivo"
-              accept=".csv,text/csv"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               required={!linhasBrutas}
               className="text-xs"
             />
@@ -342,10 +342,10 @@ export default function ImportacaoSection({ historico = [] }: { historico?: Impo
     <section>
       <h2 className="text-sm font-semibold text-text">Importação inicial de dados (TÓPICO 2 §28)</h2>
       <p className="mt-1 text-xs text-text-muted">
-        Só CSV nesta fase. Fluxo: ler arquivo → mapear colunas → validar → pré-visualizar (nada é
-        gravado) → confirmar. Linha inválida nunca é gravada silenciosamente — fica marcada, as
-        demais são gravadas normalmente, e as que falharam podem ser reprocessadas depois pelo
-        histórico.
+        Aceita <strong>.csv</strong> e <strong>.xlsx</strong> (de uma planilha, só a primeira aba
+        é lida). Fluxo: ler arquivo → mapear colunas → validar → pré-visualizar (nada é gravado) →
+        confirmar. Linha inválida nunca é gravada silenciosamente — fica marcada, as demais são
+        gravadas normalmente, e as que falharam podem ser reprocessadas depois pelo histórico.
       </p>
       <div className="mt-3">
         <Bloco

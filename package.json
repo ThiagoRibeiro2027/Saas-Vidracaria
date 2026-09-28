@@ -11,9 +11,14 @@
     "test": "node scripts/run-tests.mjs",
     "check:secrets": "node scripts/check-secrets.mjs"
   },
+  "_comment_overrides": "exceljs 4.4.0 fixa uuid ^8 (GHSA-w5hq-g745-h8pq: falta de checagem de limites de buffer em v3/v5/v6). O caminho vulneravel exige passar um buffer, e o exceljs so chama v4() sem buffer — mas o projeto e security-first e nao devolve npm audit sujo. Remover este override quando o exceljs publicar versao com uuid >= 11.1.1.",
+  "overrides": {
+    "uuid": "^11.1.1"
+  },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
+    "exceljs": "^4.4.0",
     "file-type": "^22.1.0",
     "lucide-react": "^1.47.0",
     "next": "16.3.4",
