@@ -75,3 +75,101 @@ export async function registrarEntradaSobraAction(formData: FormData) {
 
   revalidatePath("/estoque");
 }
+
+// =========================================================================
+// Fase 2 da ADR-011 — estoque dimensional (TÓPICO 7 §5-6, §9 base).
+//
+// Item com dimensao_tipo definido deixa de ser saldo escalar e passa a ter
+// peça física individual: barra, chapa, bobina. Consumir parte de uma peça
+// só reduz a quantidade disponível DELA — o que sobra já é a sobra
+// reaproveitável, sem tabela nem estado separado. Por isso não há ação de
+// "registrar sobra" aqui: sobra não é entrada, é o saldo que ficou.
+// =========================================================================
+
+export async function registrarPecaDimensionalAction(formData: FormData) {
+  const itemId = String(formData.get("item_id") ?? "");
+  const quantidade = Number(formData.get("quantidade"));
+  const identificador = String(formData.get("identificador") ?? "").trim() || null;
+  const observacao = String(formData.get("observacao") ?? "").trim() || null;
+  if (!itemId) throw new Error("Item inválido.");
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    throw new Error("Quantidade da peça deve ser maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("registrar_peca_dimensional", {
+    p_item_id: itemId,
+    p_quantidade: quantidade,
+    p_identificador: identificador,
+    p_observacao: observacao,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/estoque");
+}
+
+export async function consumirPecaDimensionalAction(formData: FormData) {
+  const pecaId = String(formData.get("peca_id") ?? "");
+  const quantidade = Number(formData.get("quantidade"));
+  const observacao = String(formData.get("observacao") ?? "").trim() || null;
+  if (!pecaId) throw new Error("Peça inválida.");
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    throw new Error("Quantidade a consumir deve ser maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("consumir_peca_dimensional", {
+    p_peca_id: pecaId,
+    p_quantidade: quantidade,
+    p_observacao: observacao,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/estoque");
+}
+
+// Conversão é consulta (exige só estoque.view) e devolve um número para a
+// tela mostrar — por isso usa estado de formulário, não redirecionamento.
+// O fator não é genérico: é a propriedade física do próprio item
+// (peso_por_unidade_dimensao), então converter item sem ela é recusado
+// pelo banco.
+export type ConversaoState =
+  | { resultado: number; unidade: string; error?: undefined }
+  | { error: string; resultado?: undefined; unidade?: undefined }
+  | undefined;
+
+export async function converterUnidadeDimensionalAction(
+  _prevState: ConversaoState,
+  formData: FormData,
+): Promise<ConversaoState> {
+  const itemId = String(formData.get("item_id") ?? "");
+  const sentido = String(formData.get("sentido") ?? "");
+  const quantidade = Number(formData.get("quantidade"));
+  if (!itemId) return { error: "Selecione um item com controle dimensional." };
+  if (sentido !== "para_peso" && sentido !== "de_peso") {
+    return { error: "Sentido de conversão inválido." };
+  }
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    return { error: "Quantidade deve ser maior que zero." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc(
+    sentido === "para_peso" ? "converter_item_para_peso" : "converter_item_de_peso",
+    { p_item_id: itemId, p_quantidade: quantidade },
+  );
+  if (error) return { error: error.message };
+
+  if (sentido === "para_peso") return { resultado: Number(data), unidade: "kg" };
+
+  // Convertendo de kg de volta, o resultado sai na unidade principal do
+  // próprio item (metro ou m²) — lida aqui em vez de viajar pelo
+  // formulário, para não depender de um campo que o cliente controla.
+  const { data: item } = await supabase
+    .from("itens")
+    .select("unidade_principal")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  return { resultado: Number(data), unidade: item?.unidade_principal ?? "un" };
+}

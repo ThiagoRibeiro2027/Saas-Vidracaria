@@ -284,6 +284,40 @@ export async function upsertItemAction(formData: FormData) {
   revalidatePath("/cadastros");
 }
 
+// Fase 2 da ADR-011 — controle dimensional do item (barra, chapa, bobina).
+// Fica separado de upsertItemAction porque é outra função no banco, com
+// regra própria: desligar o controle é recusado quando já existe peça
+// registrada, e é o banco que decide isso, não a tela.
+//
+// dimensao_tipo vazio significa item escalar, o padrão de todo o catálogo
+// (T6 inalterado) — por isso vira null, não string vazia. O peso só faz
+// sentido com um tipo definido, então é zerado junto.
+export async function definirPropriedadesDimensionaisItemAction(formData: FormData) {
+  const itemId = String(formData.get("item_id") ?? "");
+  const dimensaoTipo = String(formData.get("dimensao_tipo") ?? "").trim() || null;
+  const pesoRaw = String(formData.get("peso_por_unidade_dimensao") ?? "").trim();
+  if (!itemId) throw new Error("Item inválido.");
+  if (dimensaoTipo !== null && !["linear", "area"].includes(dimensaoTipo)) {
+    throw new Error("Tipo de dimensão inválido.");
+  }
+
+  const peso = dimensaoTipo === null || pesoRaw === "" ? null : Number(pesoRaw);
+  if (peso !== null && (!Number.isFinite(peso) || peso <= 0)) {
+    throw new Error("Peso por unidade de dimensão deve ser um número maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_propriedades_dimensionais_item", {
+    p_item_id: itemId,
+    p_dimensao_tipo: dimensaoTipo,
+    p_peso_por_unidade_dimensao: peso,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/cadastros");
+  revalidatePath("/estoque");
+}
+
 function normalizarResultadosPessoas(rows: {
   linha: number;
   documento: string | null;

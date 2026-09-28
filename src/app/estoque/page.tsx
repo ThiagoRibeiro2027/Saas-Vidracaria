@@ -3,7 +3,7 @@ import EstoqueSection from "./EstoqueSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { Tabs } from "@/components/ui/Tabs";
 
-type TabSlug = "saldo" | "reserva" | "sobra";
+type TabSlug = "saldo" | "reserva" | "sobra" | "dimensional";
 
 // TÓPICO 6 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // novembro: "o que a fábrica faz"). Só saldo, reserva para o pedido,
@@ -40,7 +40,10 @@ export default async function EstoquePage({
     { data: pessoas },
     { data: obras },
   ] = await Promise.all([
-    supabase.from("itens").select("id, codigo, descricao, tipo, unidade_principal").order("codigo"),
+    supabase
+      .from("itens")
+      .select("id, codigo, descricao, tipo, unidade_principal, dimensao_tipo, peso_por_unidade_dimensao")
+      .order("codigo"),
     supabase.from("estoque_saldos").select("*"),
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
@@ -48,6 +51,14 @@ export default async function EstoquePage({
     supabase.from("pessoas").select("id, nome"),
     supabase.from("obras").select("id, nome"),
   ]);
+
+  // Fase 2 da ADR-011 — peça física individual de item dimensional. A
+  // policy de SELECT já filtra por empresa; esgotadas vêm junto porque o
+  // histórico de consumo de uma barra é parte da leitura da posição.
+  const { data: pecasDimensionais } = await supabase
+    .from("itens_pecas_dimensionais")
+    .select("id, item_id, identificador, quantidade_original, quantidade_disponivel, situacao, observacao, created_at")
+    .order("created_at", { ascending: false });
 
   const saldoPorItem = new Map((saldos ?? []).map((s) => [s.item_id, s] as const));
 
@@ -69,6 +80,7 @@ export default async function EstoquePage({
     { slug: "saldo", label: "Saldo por item" },
     { slug: "reserva", label: "Reserva para pedidos" },
     ...(canManage ? [{ slug: "sobra" as const, label: "Registrar sobra" }] : []),
+    { slug: "dimensional", label: "Peças dimensionais" },
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "saldo";
 
@@ -96,6 +108,7 @@ export default async function EstoquePage({
           reservaAtivaPorPedidoItem={reservaAtivaPorPedidoItem}
           pessoas={pessoas ?? []}
           obras={obras ?? []}
+          pecasDimensionais={pecasDimensionais ?? []}
           canManage={!!canManage}
         />
       </div>
