@@ -3,10 +3,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import Papa from "papaparse";
+import { CAMPOS_PESSOAS, CAMPOS_ITENS } from "./importacao-campos";
 
 // TÓPICO 2 §28 / ADR-002 §4.2.1 — importação inicial de dados. Só CSV
 // nesta fase (decisão de escopo registrada na migration
-// 20260929000000_topico2_importacao_inicial.sql).
+// 20260929000000_topico2_importacao_inicial.sql). Histórico,
+// reprocessamento e mapeamento de colunas vieram depois, na Fase 7 do
+// TÓPICO 13 §29 (migration 20261201000000).
 export type ImportacaoLinha = Record<string, string>;
 export type ImportacaoResultadoLinha = {
   linha: number;
@@ -16,12 +19,42 @@ export type ImportacaoResultadoLinha = {
   erro: string | null;
   campos_alterados: string[] | null;
 };
+
 export type ImportacaoState =
-  | { linhas: ImportacaoLinha[]; resultados: ImportacaoResultadoLinha[]; confirmado: boolean; error?: undefined }
-  | { error: string; linhas?: undefined; resultados?: undefined; confirmado?: undefined }
+  | {
+      linhas: ImportacaoLinha[];
+      resultados: ImportacaoResultadoLinha[];
+      confirmado: boolean;
+      colunasArquivo?: string[];
+      mapeamento?: Record<string, string>;
+      arquivoNome?: string | null;
+      origemImportacaoId?: string | null;
+      error?: undefined;
+    }
+  | {
+      error: string;
+      linhas?: undefined;
+      resultados?: undefined;
+      confirmado?: undefined;
+      colunasArquivo?: undefined;
+      mapeamento?: undefined;
+      arquivoNome?: undefined;
+      origemImportacaoId?: undefined;
+    }
   | undefined;
 
-async function lerCsv(file: File): Promise<ImportacaoLinha[]> {
+// Regra 12 do CLAUDE.md (validar tamanho e tipo real, nunca só o MIME que
+// o cliente informa): o limite é checado aqui, e "é CSV mesmo?" é provado
+// pelo próprio parse — um binário renomeado para .csv não produz
+// cabeçalho nem linhas e cai nos erros abaixo.
+const TAMANHO_MAXIMO_BYTES = 5 * 1024 * 1024;
+
+async function lerCsv(file: File): Promise<{ colunas: string[]; linhas: ImportacaoLinha[] }> {
+  if (file.size > TAMANHO_MAXIMO_BYTES) {
+    throw new Error(
+      `Arquivo maior que o limite de ${TAMANHO_MAXIMO_BYTES / 1024 / 1024} MB. Divida a importação em partes.`,
+    );
+  }
   const texto = await file.text();
   const resultado = Papa.parse<ImportacaoLinha>(texto, {
     header: true,
@@ -35,7 +68,81 @@ async function lerCsv(file: File): Promise<ImportacaoLinha[]> {
   if (resultado.data.length === 0) {
     throw new Error("Arquivo CSV vazio ou sem linhas de dados.");
   }
-  return resultado.data;
+  const colunas = (resultado.meta.fields ?? []).filter((c) => c.trim() !== "");
+  if (colunas.length === 0) {
+    throw new Error("Não foi possível ler o cabeçalho do arquivo (primeira linha).");
+  }
+  return { colunas, linhas: resultado.data };
+}
+
+// Normalização só para COMPARAR nomes de coluna: minúsculas, sem acento e
+// sem separador. Faz "Nome Fantasia", "nome_fantasia" e "NOME-FANTASIA"
+// caírem no mesmo campo, sem obrigar quem exportou de outro sistema a
+// renomear coluna na mão.
+function chaveComparavel(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function sugerirMapeamento(colunas: string[], campos: readonly string[]): Record<string, string> {
+  const porChave = new Map(campos.map((c) => [chaveComparavel(c), c]));
+  const mapeamento: Record<string, string> = {};
+  const jaUsados = new Set<string>();
+  for (const coluna of colunas) {
+    const campo = porChave.get(chaveComparavel(coluna));
+    // Coluna sem correspondência fica com destino vazio — a tela mostra
+    // "(ignorar)" e o usuário escolhe, em vez de o sistema adivinhar.
+    if (campo && !jaUsados.has(campo)) {
+      mapeamento[coluna] = campo;
+      jaUsados.add(campo);
+    } else {
+      mapeamento[coluna] = "";
+    }
+  }
+  return mapeamento;
+}
+
+function aplicarMapeamento(
+  linhas: ImportacaoLinha[],
+  mapeamento: Record<string, string>,
+): ImportacaoLinha[] {
+  return linhas.map((linha) => {
+    const destino: ImportacaoLinha = {};
+    for (const [coluna, campo] of Object.entries(mapeamento)) {
+      if (!campo) continue;
+      destino[campo] = linha[coluna] ?? "";
+    }
+    return destino;
+  });
+}
+
+function lerMapeamentoDoForm(
+  formData: FormData,
+  colunas: string[],
+  campos: readonly string[],
+): Record<string, string> {
+  const bruto = formData.get("mapeamento");
+  if (typeof bruto !== "string" || bruto.trim() === "") {
+    return sugerirMapeamento(colunas, campos);
+  }
+  let informado: Record<string, unknown>;
+  try {
+    informado = JSON.parse(bruto);
+  } catch {
+    return sugerirMapeamento(colunas, campos);
+  }
+  const permitidos = new Set<string>(campos);
+  const mapeamento: Record<string, string> = {};
+  for (const coluna of colunas) {
+    const campo = informado[coluna];
+    // Destino que não seja um campo conhecido vira "ignorar" — o usuário
+    // não escolhe nome de campo livre, só um da lista.
+    mapeamento[coluna] = typeof campo === "string" && permitidos.has(campo) ? campo : "";
+  }
+  return mapeamento;
 }
 
 export type PessoaState = { error: string } | undefined;
@@ -220,18 +327,28 @@ export async function previsualizarImportacaoPessoasAction(
   const arquivo = formData.get("arquivo") as File | null;
   if (!arquivo || arquivo.size === 0) return { error: "Selecione um arquivo CSV." };
 
-  let linhas: ImportacaoLinha[];
+  let lido: { colunas: string[]; linhas: ImportacaoLinha[] };
   try {
-    linhas = await lerCsv(arquivo);
+    lido = await lerCsv(arquivo);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Falha ao ler o arquivo." };
   }
+
+  const mapeamento = lerMapeamentoDoForm(formData, lido.colunas, CAMPOS_PESSOAS);
+  const linhas = aplicarMapeamento(lido.linhas, mapeamento);
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("importar_pessoas", { p_linhas: linhas, p_dry_run: true });
   if (error) return { error: error.message };
 
-  return { linhas, resultados: normalizarResultadosPessoas(data ?? []), confirmado: false };
+  return {
+    linhas,
+    resultados: normalizarResultadosPessoas(data ?? []),
+    confirmado: false,
+    colunasArquivo: lido.colunas,
+    mapeamento,
+    arquivoNome: arquivo.name,
+  };
 }
 
 export async function confirmarImportacaoPessoasAction(
@@ -246,12 +363,26 @@ export async function confirmarImportacaoPessoasAction(
     return { error: "Sessão de importação inválida — reenvie o arquivo." };
   }
 
+  const arquivoNome = String(formData.get("arquivo_nome") ?? "") || null;
+  const origem = String(formData.get("origem_importacao_id") ?? "") || null;
+
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("importar_pessoas", { p_linhas: linhas, p_dry_run: false });
+  const { data, error } = await supabase.rpc("importar_pessoas", {
+    p_linhas: linhas,
+    p_dry_run: false,
+    p_arquivo_nome: arquivoNome,
+    p_origem_importacao_id: origem,
+  });
   if (error) return { error: error.message };
 
   revalidatePath("/cadastros");
-  return { linhas, resultados: normalizarResultadosPessoas(data ?? []), confirmado: true };
+  return {
+    linhas,
+    resultados: normalizarResultadosPessoas(data ?? []),
+    confirmado: true,
+    arquivoNome,
+    origemImportacaoId: origem,
+  };
 }
 
 export async function previsualizarImportacaoItensAction(
@@ -261,18 +392,28 @@ export async function previsualizarImportacaoItensAction(
   const arquivo = formData.get("arquivo") as File | null;
   if (!arquivo || arquivo.size === 0) return { error: "Selecione um arquivo CSV." };
 
-  let linhas: ImportacaoLinha[];
+  let lido: { colunas: string[]; linhas: ImportacaoLinha[] };
   try {
-    linhas = await lerCsv(arquivo);
+    lido = await lerCsv(arquivo);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Falha ao ler o arquivo." };
   }
+
+  const mapeamento = lerMapeamentoDoForm(formData, lido.colunas, CAMPOS_ITENS);
+  const linhas = aplicarMapeamento(lido.linhas, mapeamento);
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("importar_itens", { p_linhas: linhas, p_dry_run: true });
   if (error) return { error: error.message };
 
-  return { linhas, resultados: normalizarResultadosItens(data ?? []), confirmado: false };
+  return {
+    linhas,
+    resultados: normalizarResultadosItens(data ?? []),
+    confirmado: false,
+    colunasArquivo: lido.colunas,
+    mapeamento,
+    arquivoNome: arquivo.name,
+  };
 }
 
 export async function confirmarImportacaoItensAction(
@@ -287,10 +428,68 @@ export async function confirmarImportacaoItensAction(
     return { error: "Sessão de importação inválida — reenvie o arquivo." };
   }
 
+  const arquivoNome = String(formData.get("arquivo_nome") ?? "") || null;
+  const origem = String(formData.get("origem_importacao_id") ?? "") || null;
+
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("importar_itens", { p_linhas: linhas, p_dry_run: false });
+  const { data, error } = await supabase.rpc("importar_itens", {
+    p_linhas: linhas,
+    p_dry_run: false,
+    p_arquivo_nome: arquivoNome,
+    p_origem_importacao_id: origem,
+  });
   if (error) return { error: error.message };
 
   revalidatePath("/cadastros");
-  return { linhas, resultados: normalizarResultadosItens(data ?? []), confirmado: true };
+  return {
+    linhas,
+    resultados: normalizarResultadosItens(data ?? []),
+    confirmado: true,
+    arquivoNome,
+    origemImportacaoId: origem,
+  };
+}
+
+// Reprocessamento (TÓPICO 13 §29): traz de volta o payload original das
+// linhas que falharam numa importação anterior e roda a prévia com elas.
+// Não existe um caminho de gravação próprio — a confirmação usa as mesmas
+// actions acima, agora com origem_importacao_id preenchido, para o
+// histórico ligar a tentativa nova à original.
+export async function reprocessarImportacaoAction(
+  _prevState: ImportacaoState,
+  formData: FormData,
+): Promise<ImportacaoState> {
+  const importacaoId = String(formData.get("importacao_id") ?? "");
+  const entidade = String(formData.get("entidade") ?? "");
+  if (!importacaoId) return { error: "Importação não informada." };
+  if (entidade !== "pessoas" && entidade !== "itens") {
+    return { error: `Entidade de importação inválida: ${entidade}` };
+  }
+
+  const supabase = await createClient();
+  const { data: linhasComErro, error: erroLeitura } = await supabase.rpc("obter_linhas_com_erro", {
+    p_importacao_id: importacaoId,
+  });
+  if (erroLeitura) return { error: erroLeitura.message };
+
+  const linhas = (linhasComErro ?? []) as ImportacaoLinha[];
+  if (linhas.length === 0) {
+    return { error: "Esta importação não tem linhas com erro para reprocessar." };
+  }
+
+  const { data, error } = await supabase.rpc(
+    entidade === "pessoas" ? "importar_pessoas" : "importar_itens",
+    { p_linhas: linhas, p_dry_run: true },
+  );
+  if (error) return { error: error.message };
+
+  return {
+    linhas,
+    resultados:
+      entidade === "pessoas"
+        ? normalizarResultadosPessoas(data ?? [])
+        : normalizarResultadosItens(data ?? []),
+    confirmado: false,
+    origemImportacaoId: importacaoId,
+  };
 }

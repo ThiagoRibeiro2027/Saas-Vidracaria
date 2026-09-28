@@ -65,6 +65,21 @@ export default async function CadastrosPage({
     canViewItens ? supabase.from("itens").select("*").order("codigo") : Promise.resolve({ data: [] }),
   ]);
 
+  // Histórico de importações (TÓPICO 13 §29, Fase 7). A policy de SELECT
+  // de public.importacoes já filtra por empresa E pela permissão do módulo
+  // da entidade, então o que voltar aqui é só o que este usuário pode ver —
+  // o gate abaixo é só pra não consultar à toa quem nem enxerga a aba.
+  const { data: historicoImportacoes } =
+    canManagePessoas || canManageItens
+      ? await supabase
+          .from("importacoes")
+          .select(
+            "id, entidade, arquivo_nome, total_linhas, novos, atualizados, invalidos, duplicados, origem_importacao_id, created_at",
+          )
+          .order("created_at", { ascending: false })
+          .limit(20)
+      : { data: [] };
+
   const availableTabs: { slug: TabSlug; label: string }[] = [
     ...(canViewPessoas ? [{ slug: "pessoas" as const, label: "Pessoas" }] : []),
     ...(canViewObras ? [{ slug: "obras" as const, label: "Obras" }] : []),
@@ -109,7 +124,9 @@ export default async function CadastrosPage({
           />
         )}
         {activeTab === "itens" && canViewItens && <ItensSection rows={itens ?? []} canManage={!!canManageItens} />}
-        {activeTab === "importacao" && (canManagePessoas || canManageItens) && <ImportacaoSection />}
+        {activeTab === "importacao" && (canManagePessoas || canManageItens) && (
+          <ImportacaoSection historico={historicoImportacoes ?? []} />
+        )}
       </div>
     </div>
   );

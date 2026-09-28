@@ -181,6 +181,94 @@ async function main() {
     check("campos_alterados aponta descricao", previewAtualizacao?.[0]?.campos_alterados?.includes("descricao"));
   }
 
+  console.log("\n6. Histórico e reprocessamento (TÓPICO 13 §29, Fase 7)");
+  {
+    const linhas = [
+      { tipo_documento: "CNPJ", documento: "44.555.666/0001-77", nome: "Histórico Válido" },
+      { tipo_documento: "CNPJ", documento: "55.666.777/0001-88", nome: "" }, // inválido: sem nome
+    ];
+
+    const { data: antes } = await admin.from("importacoes").select("id").eq("company_id", admTenant.company.id);
+    await admTenant.client.rpc("importar_pessoas", { p_linhas: linhas, p_dry_run: true });
+    const { data: depoisPreview } = await admin.from("importacoes").select("id").eq("company_id", admTenant.company.id);
+    check("prévia NÃO registra no histórico", (depoisPreview ?? []).length === (antes ?? []).length);
+
+    await admTenant.client.rpc("importar_pessoas", {
+      p_linhas: linhas,
+      p_dry_run: false,
+      p_arquivo_nome: "clientes-teste.csv",
+    });
+    const { data: registro } = await admin
+      .from("importacoes")
+      .select("*")
+      .eq("company_id", admTenant.company.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    check("confirmação registra no histórico", !!registro);
+    check("histórico guarda o nome do arquivo", registro?.arquivo_nome === "clientes-teste.csv");
+    check(
+      "contadores do histórico batem com o lote",
+      registro?.total_linhas === 2 && registro?.novos === 1 && registro?.invalidos === 1,
+    );
+    check(
+      "linhas_com_erro guarda só a linha que falhou (payload original)",
+      Array.isArray(registro?.linhas_com_erro) &&
+        registro.linhas_com_erro.length === 1 &&
+        registro.linhas_com_erro[0]?.documento === "55.666.777/0001-88",
+    );
+    check("criado_por é o usuário que importou", registro?.criado_por === admTenant.userId);
+
+    const { error: semPermErro } = await noPermTenant.client.rpc("obter_linhas_com_erro", {
+      p_importacao_id: registro.id,
+    });
+    check("sem pessoas.manage não obtém as linhas com erro", !!semPermErro);
+
+    const { data: outroVeHistorico } = await otherTenant.client
+      .from("importacoes")
+      .select("id")
+      .eq("id", registro.id);
+    check("tenant B não enxerga o histórico de importação do tenant A", (outroVeHistorico ?? []).length === 0);
+
+    const { error: outroErroLinhas } = await otherTenant.client.rpc("obter_linhas_com_erro", {
+      p_importacao_id: registro.id,
+    });
+    check("tenant B não obtém as linhas com erro do tenant A", !!outroErroLinhas);
+
+    const { data: comErro } = await admTenant.client.rpc("obter_linhas_com_erro", {
+      p_importacao_id: registro.id,
+    });
+    check("obter_linhas_com_erro devolve o payload original para reprocessar", comErro?.length === 1);
+
+    const corrigidas = (comErro ?? []).map((l) => ({ ...l, nome: "Corrigido no Reprocessamento" }));
+    const { data: repro, error: reproErro } = await admTenant.client.rpc("importar_pessoas", {
+      p_linhas: corrigidas,
+      p_dry_run: false,
+      p_arquivo_nome: "clientes-teste.csv (reprocessamento)",
+      p_origem_importacao_id: registro.id,
+    });
+    check("reprocessamento executa sem erro", !reproErro);
+    check("linha corrigida entra como 'novo'", repro?.[0]?.status === "novo");
+
+    const { data: registroRepro } = await admin
+      .from("importacoes")
+      .select("id")
+      .eq("company_id", admTenant.company.id)
+      .eq("origem_importacao_id", registro.id)
+      .maybeSingle();
+    check("reprocessamento fica ligado à importação de origem", !!registroRepro);
+
+    // otherTenant é ADMIN (tem pessoas.manage), então a recusa abaixo vem
+    // da checagem de origem, não da permissão — é o ponto do teste.
+    const { error: origemAlheia } = await otherTenant.client.rpc("importar_pessoas", {
+      p_linhas: [{ tipo_documento: "CNPJ", documento: "66.777.888/0001-99", nome: "Origem Alheia" }],
+      p_dry_run: true,
+      p_origem_importacao_id: registro.id,
+    });
+    check("origem de importação de outra empresa é rejeitada", !!origemAlheia);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
