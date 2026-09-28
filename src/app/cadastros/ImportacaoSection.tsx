@@ -1,12 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   previsualizarImportacaoPessoasAction,
   confirmarImportacaoPessoasAction,
   previsualizarImportacaoItensAction,
   confirmarImportacaoItensAction,
-  reprocessarImportacaoAction,
   type ImportacaoState,
 } from "./actions";
 import { CAMPOS_PESSOAS, CAMPOS_ITENS } from "./importacao-campos";
@@ -61,8 +60,22 @@ function MapeamentoColunas({
   const [mapeamento, setMapeamento] = useState<Record<string, string>>(sugerido);
   const camposJaUsados = new Set(Object.values(mapeamento).filter(Boolean));
 
+  // O painel nasce como resultado do envio do formulário, e nesse ciclo o
+  // <select> controlado renderiza com o valor certo mas o DOM volta para a
+  // primeira opção — a sugestão automática aparecia como "(ignorar)" até o
+  // usuário tocar em algo, mostrando um mapeamento diferente do que seria
+  // enviado. Reescrever o valor no DOM a cada render mantém os dois em dia;
+  // é sincronização de DOM, não estado derivado.
+  const painelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    painelRef.current?.querySelectorAll<HTMLSelectElement>("select[data-coluna]").forEach((el) => {
+      const esperado = mapeamento[el.dataset.coluna ?? ""] ?? "";
+      if (el.value !== esperado) el.value = esperado;
+    });
+  });
+
   return (
-    <div className="mt-2.5 rounded border border-border p-2.5">
+    <div ref={painelRef} className="mt-2.5 rounded border border-border p-2.5">
       <p className="mb-1.5 text-xs font-medium text-text">Mapeamento de colunas</p>
       <p className="mb-2 text-xs text-text-muted">
         Cada coluna do arquivo vai para um campo do sistema. Coluna marcada como
@@ -80,6 +93,7 @@ function MapeamentoColunas({
               →
             </span>
             <select
+              data-coluna={coluna}
               className="flex-1 rounded border border-border bg-surface px-1.5 py-1 text-xs text-text"
               value={mapeamento[coluna] ?? ""}
               onChange={(e) => setMapeamento((atual) => ({ ...atual, [coluna]: e.target.value }))}
@@ -106,14 +120,12 @@ function MapeamentoColunas({
 
 function Bloco({
   titulo,
-  entidade,
   campos,
   previewAction,
   confirmAction,
   historico,
 }: {
   titulo: string;
-  entidade: "pessoas" | "itens";
   campos: readonly string[];
   previewAction: (state: ImportacaoState, formData: FormData) => Promise<ImportacaoState>;
   confirmAction: (state: ImportacaoState, formData: FormData) => Promise<ImportacaoState>;
@@ -127,12 +139,10 @@ function Bloco({
     confirmAction,
     undefined,
   );
-  const [reprocessState, reprocessFormAction, reprocessPending] = useActionState<ImportacaoState, FormData>(
-    reprocessarImportacaoAction,
-    undefined,
-  );
-
-  const estadoAtual = confirmState ?? reprocessState ?? previewState;
+  // Reprocessar passa pela MESMA action de prévia: com dois estados de
+  // formulário, o do reprocessamento continuava vencendo depois de o
+  // usuário subir um arquivo novo, e a tela mostrava a prévia errada.
+  const estadoAtual = confirmState ?? previewState;
   const resultados = estadoAtual && "resultados" in estadoAtual ? estadoAtual.resultados : undefined;
   const linhas = estadoAtual && "linhas" in estadoAtual ? estadoAtual.linhas : undefined;
   const confirmado = estadoAtual && "confirmado" in estadoAtual ? estadoAtual.confirmado : false;
@@ -145,6 +155,8 @@ function Bloco({
   // usuário vive dentro de MapeamentoColunas.
   const colunasArquivo = previewState && "colunasArquivo" in previewState ? previewState.colunasArquivo : undefined;
   const mapeamentoSugerido = previewState && "mapeamento" in previewState ? previewState.mapeamento : undefined;
+  const linhasBrutas = previewState && "linhasBrutas" in previewState ? previewState.linhasBrutas : undefined;
+  const arquivoCarregado = previewState && "arquivoNome" in previewState ? previewState.arquivoNome : null;
 
   const contagens = (resultados ?? []).reduce<Record<string, number>>((acc, r) => {
     const key = r.status ?? "invalido";
@@ -163,11 +175,36 @@ function Bloco({
       {!confirmado && (
         <form action={previewFormAction} className="my-2.5">
           <div className="flex items-center gap-1.5">
-            <input type="file" name="arquivo" accept=".csv,text/csv" required className="text-xs" />
+            <input
+              type="file"
+              name="arquivo"
+              accept=".csv,text/csv"
+              required={!linhasBrutas}
+              className="text-xs"
+            />
             <Button type="submit" variant="primary" disabled={previewPending}>
-              {previewPending ? "Lendo..." : colunasArquivo ? "Pré-visualizar novamente" : "Pré-visualizar"}
+              {previewPending ? "Lendo..." : linhasBrutas ? "Pré-visualizar novamente" : "Pré-visualizar"}
             </Button>
           </div>
+
+          {linhasBrutas && (
+            <>
+              {/* O React limpa o campo de arquivo depois da prévia, então a
+                  re-prévia (com o mapeamento ajustado) reenvia as linhas já
+                  lidas. Escolher outro arquivo acima substitui estas. */}
+              <input
+                type="hidden"
+                name="linhas_brutas"
+                value={JSON.stringify({ colunas: colunasArquivo ?? [], linhas: linhasBrutas })}
+              />
+              <input type="hidden" name="arquivo_nome" value={arquivoCarregado ?? ""} />
+              <p className="mt-1 text-xs text-text-muted">
+                Arquivo carregado: <strong>{arquivoCarregado ?? "(sem nome)"}</strong> ·{" "}
+                {linhasBrutas.length} linha(s). Ajuste o mapeamento e pré-visualize novamente, ou
+                escolha outro arquivo para substituir.
+              </p>
+            </>
+          )}
 
           {colunasArquivo && colunasArquivo.length > 0 && mapeamentoSugerido && (
             <MapeamentoColunas
@@ -278,11 +315,10 @@ function Bloco({
                       </Td>
                       <Td>
                         {comErro > 0 ? (
-                          <form action={reprocessFormAction}>
+                          <form action={previewFormAction}>
                             <input type="hidden" name="importacao_id" value={h.id} />
-                            <input type="hidden" name="entidade" value={entidade} />
-                            <Button type="submit" variant="secondary" disabled={reprocessPending}>
-                              {reprocessPending ? "Carregando..." : `Reprocessar ${comErro} linha(s)`}
+                            <Button type="submit" variant="secondary" disabled={previewPending}>
+                              {previewPending ? "Carregando..." : `Reprocessar ${comErro} linha(s)`}
                             </Button>
                           </form>
                         ) : (
@@ -314,7 +350,6 @@ export default function ImportacaoSection({ historico = [] }: { historico?: Impo
       <div className="mt-3">
         <Bloco
           titulo="Pessoas (clientes/fornecedores)"
-          entidade="pessoas"
           campos={CAMPOS_PESSOAS}
           previewAction={previsualizarImportacaoPessoasAction}
           confirmAction={confirmarImportacaoPessoasAction}
@@ -322,7 +357,6 @@ export default function ImportacaoSection({ historico = [] }: { historico?: Impo
         />
         <Bloco
           titulo="Itens (produtos/materiais)"
-          entidade="itens"
           campos={CAMPOS_ITENS}
           previewAction={previsualizarImportacaoItensAction}
           confirmAction={confirmarImportacaoItensAction}

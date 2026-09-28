@@ -154,10 +154,14 @@ export async function converterUnidadeDimensionalAction(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc(
-    sentido === "para_peso" ? "converter_item_para_peso" : "converter_item_de_peso",
-    { p_item_id: itemId, p_quantidade: quantidade },
-  );
+  // As duas funções não são simétricas no nome do parâmetro:
+  // converter_item_para_peso recebe p_quantidade (na unidade do item) e
+  // converter_item_de_peso recebe p_quantidade_kg. Passar o nome errado
+  // não falha na compilação — o PostgREST é que não acha a função.
+  const { data, error } =
+    sentido === "para_peso"
+      ? await supabase.rpc("converter_item_para_peso", { p_item_id: itemId, p_quantidade: quantidade })
+      : await supabase.rpc("converter_item_de_peso", { p_item_id: itemId, p_quantidade_kg: quantidade });
   if (error) return { error: error.message };
 
   if (sentido === "para_peso") return { resultado: Number(data), unidade: "kg" };

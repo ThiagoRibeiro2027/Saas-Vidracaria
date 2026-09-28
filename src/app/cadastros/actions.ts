@@ -26,6 +26,9 @@ export type ImportacaoState =
       resultados: ImportacaoResultadoLinha[];
       confirmado: boolean;
       colunasArquivo?: string[];
+      // Linhas como vieram do arquivo, antes do mapeamento — é o que a
+      // re-prévia reenvia, já que o React limpa o input de arquivo.
+      linhasBrutas?: ImportacaoLinha[];
       mapeamento?: Record<string, string>;
       arquivoNome?: string | null;
       origemImportacaoId?: string | null;
@@ -37,6 +40,7 @@ export type ImportacaoState =
       resultados?: undefined;
       confirmado?: undefined;
       colunasArquivo?: undefined;
+      linhasBrutas?: undefined;
       mapeamento?: undefined;
       arquivoNome?: undefined;
       origemImportacaoId?: undefined;
@@ -117,6 +121,42 @@ function aplicarMapeamento(
     }
     return destino;
   });
+}
+
+// O React limpa o <input type="file"> depois que a action do formulário
+// responde. Sem isto, "Pré-visualizar novamente" (o passo em que o usuário
+// ajusta o mapeamento) vai ao servidor sem arquivo nenhum — e o campo
+// being `required` faz o browser simplesmente engolir o clique. Por isso a
+// re-prévia reenvia as linhas JÁ LIDAS, e o arquivo só é obrigatório na
+// primeira leitura.
+type EntradaImportacao = { colunas: string[]; linhas: ImportacaoLinha[]; arquivoNome: string | null };
+
+async function lerEntrada(formData: FormData): Promise<EntradaImportacao | { error: string }> {
+  const arquivo = formData.get("arquivo") as File | null;
+  if (arquivo && arquivo.size > 0) {
+    try {
+      const { colunas, linhas } = await lerCsv(arquivo);
+      return { colunas, linhas, arquivoNome: arquivo.name };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Falha ao ler o arquivo." };
+    }
+  }
+
+  const brutasRaw = String(formData.get("linhas_brutas") ?? "");
+  if (brutasRaw === "") return { error: "Selecione um arquivo CSV." };
+  try {
+    const bruto = JSON.parse(brutasRaw) as { colunas: string[]; linhas: ImportacaoLinha[] };
+    if (!Array.isArray(bruto.colunas) || !Array.isArray(bruto.linhas) || bruto.linhas.length === 0) {
+      return { error: "Sessão de importação inválida — reenvie o arquivo." };
+    }
+    return {
+      colunas: bruto.colunas,
+      linhas: bruto.linhas,
+      arquivoNome: String(formData.get("arquivo_nome") ?? "") || null,
+    };
+  } catch {
+    return { error: "Sessão de importação inválida — reenvie o arquivo." };
+  }
 }
 
 function lerMapeamentoDoForm(
@@ -358,15 +398,12 @@ export async function previsualizarImportacaoPessoasAction(
   _prevState: ImportacaoState,
   formData: FormData,
 ): Promise<ImportacaoState> {
-  const arquivo = formData.get("arquivo") as File | null;
-  if (!arquivo || arquivo.size === 0) return { error: "Selecione um arquivo CSV." };
+  // A mesma action atende ao reprocessamento: os dois produzem uma prévia.
+  const reprocessamento = await previaDeReprocessamento(formData, "pessoas");
+  if (reprocessamento) return reprocessamento;
 
-  let lido: { colunas: string[]; linhas: ImportacaoLinha[] };
-  try {
-    lido = await lerCsv(arquivo);
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Falha ao ler o arquivo." };
-  }
+  const lido = await lerEntrada(formData);
+  if ("error" in lido) return { error: lido.error };
 
   const mapeamento = lerMapeamentoDoForm(formData, lido.colunas, CAMPOS_PESSOAS);
   const linhas = aplicarMapeamento(lido.linhas, mapeamento);
@@ -380,8 +417,9 @@ export async function previsualizarImportacaoPessoasAction(
     resultados: normalizarResultadosPessoas(data ?? []),
     confirmado: false,
     colunasArquivo: lido.colunas,
+    linhasBrutas: lido.linhas,
     mapeamento,
-    arquivoNome: arquivo.name,
+    arquivoNome: lido.arquivoNome,
   };
 }
 
@@ -423,15 +461,12 @@ export async function previsualizarImportacaoItensAction(
   _prevState: ImportacaoState,
   formData: FormData,
 ): Promise<ImportacaoState> {
-  const arquivo = formData.get("arquivo") as File | null;
-  if (!arquivo || arquivo.size === 0) return { error: "Selecione um arquivo CSV." };
+  // A mesma action atende ao reprocessamento: os dois produzem uma prévia.
+  const reprocessamento = await previaDeReprocessamento(formData, "itens");
+  if (reprocessamento) return reprocessamento;
 
-  let lido: { colunas: string[]; linhas: ImportacaoLinha[] };
-  try {
-    lido = await lerCsv(arquivo);
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Falha ao ler o arquivo." };
-  }
+  const lido = await lerEntrada(formData);
+  if ("error" in lido) return { error: lido.error };
 
   const mapeamento = lerMapeamentoDoForm(formData, lido.colunas, CAMPOS_ITENS);
   const linhas = aplicarMapeamento(lido.linhas, mapeamento);
@@ -445,8 +480,9 @@ export async function previsualizarImportacaoItensAction(
     resultados: normalizarResultadosItens(data ?? []),
     confirmado: false,
     colunasArquivo: lido.colunas,
+    linhasBrutas: lido.linhas,
     mapeamento,
-    arquivoNome: arquivo.name,
+    arquivoNome: lido.arquivoNome,
   };
 }
 
@@ -487,18 +523,20 @@ export async function confirmarImportacaoItensAction(
 // Reprocessamento (TÓPICO 13 §29): traz de volta o payload original das
 // linhas que falharam numa importação anterior e roda a prévia com elas.
 // Não existe um caminho de gravação próprio — a confirmação usa as mesmas
-// actions acima, agora com origem_importacao_id preenchido, para o
+// actions de confirmar, agora com origem_importacao_id preenchido, para o
 // histórico ligar a tentativa nova à original.
-export async function reprocessarImportacaoAction(
-  _prevState: ImportacaoState,
+//
+// Não é uma action separada de propósito: reprocessar produz uma PRÉVIA,
+// igual a subir um arquivo. Com dois estados de formulário concorrentes, a
+// tela mostrava a prévia do reprocessamento mesmo depois de o usuário
+// subir um arquivo novo — o estado velho vencia. Um estado só elimina a
+// disputa em vez de tentar arbitrá-la.
+async function previaDeReprocessamento(
   formData: FormData,
-): Promise<ImportacaoState> {
+  entidade: "pessoas" | "itens",
+): Promise<ImportacaoState | null> {
   const importacaoId = String(formData.get("importacao_id") ?? "");
-  const entidade = String(formData.get("entidade") ?? "");
-  if (!importacaoId) return { error: "Importação não informada." };
-  if (entidade !== "pessoas" && entidade !== "itens") {
-    return { error: `Entidade de importação inválida: ${entidade}` };
-  }
+  if (!importacaoId) return null;
 
   const supabase = await createClient();
   const { data: linhasComErro, error: erroLeitura } = await supabase.rpc("obter_linhas_com_erro", {
@@ -510,6 +548,15 @@ export async function reprocessarImportacaoAction(
   if (linhas.length === 0) {
     return { error: "Esta importação não tem linhas com erro para reprocessar." };
   }
+
+  // Carrega o nome do arquivo original para o reprocessamento herdar: sem
+  // isso a linha nova do histórico fica sem arquivo nenhum, e quem olha
+  // depois não liga a tentativa ao arquivo que a originou.
+  const { data: origem } = await supabase
+    .from("importacoes")
+    .select("arquivo_nome")
+    .eq("id", importacaoId)
+    .maybeSingle();
 
   const { data, error } = await supabase.rpc(
     entidade === "pessoas" ? "importar_pessoas" : "importar_itens",
@@ -524,6 +571,7 @@ export async function reprocessarImportacaoAction(
         ? normalizarResultadosPessoas(data ?? [])
         : normalizarResultadosItens(data ?? []),
     confirmado: false,
+    arquivoNome: origem?.arquivo_nome ?? null,
     origemImportacaoId: importacaoId,
   };
 }
