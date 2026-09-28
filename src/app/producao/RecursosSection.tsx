@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import {
   criarRecursoProdutivoAction,
   editarRecursoProdutivoAction,
   atualizarSituacaoRecursoAction,
   desativarRecursoProdutivoAction,
   programarManutencaoPreventivaAction,
+  editarManutencaoPreventivaAction,
   cancelarManutencaoPreventivaAction,
   iniciarManutencaoCorretivaAction,
   encerrarManutencaoCorretivaAction,
@@ -45,6 +47,9 @@ export type ManutencaoPreventivaRow = {
   periodicidade_dias: number | null;
   proxima_data: string;
   duracao_estimada_horas: number | null;
+  // Não aparece na tela, mas viaja no formulário de edição: o UPDATE do
+  // banco grava o parâmetro direto, então omitir apagaria o responsável.
+  responsavel_id: string | null;
 };
 export type ManutencaoCorretivaRow = {
   id: string;
@@ -409,22 +414,7 @@ export default function RecursosSection({
                     </thead>
                     <tbody>
                       {preventivas.map((p) => (
-                        <tr key={p.id}>
-                          <Td>{p.tipo}</Td>
-                          <Td>{new Date(p.proxima_data).toLocaleDateString("pt-BR")}</Td>
-                          <Td>{p.periodicidade_dias ?? "—"}</Td>
-                          <Td>{p.duracao_estimada_horas ?? "—"}</Td>
-                          {canManage && (
-                            <Td>
-                              <form action={cancelarManutencaoPreventivaAction}>
-                                <input type="hidden" name="id" value={p.id} />
-                                <Button type="submit" variant="danger" size="sm">
-                                  Cancelar
-                                </Button>
-                              </form>
-                            </Td>
-                          )}
-                        </tr>
+                        <PreventivaRow key={p.id} p={p} canManage={canManage} />
                       ))}
                       {preventivas.length === 0 && (
                         <tr>
@@ -531,5 +521,87 @@ export default function RecursosSection({
         {recursos.length === 0 && <p className="text-xs text-text-muted">Nenhum recurso produtivo cadastrado ainda.</p>}
       </div>
     </section>
+  );
+}
+
+// Linha da preventiva com edição no lugar. Antes só havia "Cancelar":
+// mudar a data de uma manutenção obrigava a cancelar e reprogramar, o que
+// descarta a original em vez de corrigi-la. O tipo não é editável porque
+// a função do banco não o aceita — trocar o tipo continua sendo cancelar
+// e programar outra.
+function PreventivaRow({ p, canManage }: { p: ManutencaoPreventivaRow; canManage: boolean }) {
+  const [editando, setEditando] = useState(false);
+
+  if (editando) {
+    return (
+      <tr>
+        <Td>{p.tipo}</Td>
+        <Td colSpan={canManage ? 4 : 3}>
+          <form
+            action={editarManutencaoPreventivaAction}
+            onSubmit={() => setEditando(false)}
+            className="flex flex-wrap items-center gap-1"
+          >
+            <input type="hidden" name="id" value={p.id} />
+            <input type="hidden" name="responsavel_id" value={p.responsavel_id ?? ""} />
+            <Input
+              name="proxima_data"
+              type="date"
+              defaultValue={p.proxima_data.slice(0, 10)}
+              required
+              className="w-32 text-xs"
+            />
+            <Input
+              name="periodicidade_dias"
+              type="number"
+              min="1"
+              step="1"
+              defaultValue={p.periodicidade_dias ?? ""}
+              placeholder="período (dias, opc.)"
+              className="w-28 text-xs"
+            />
+            <Input
+              name="duracao_estimada_horas"
+              type="number"
+              min="0"
+              step="0.5"
+              defaultValue={p.duracao_estimada_horas ?? ""}
+              placeholder="duração h (opc.)"
+              className="w-28 text-xs"
+            />
+            <Button type="submit" variant="primary" size="sm">
+              Salvar
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(false)}>
+              Cancelar edição
+            </Button>
+          </form>
+        </Td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <Td>{p.tipo}</Td>
+      <Td>{new Date(p.proxima_data).toLocaleDateString("pt-BR")}</Td>
+      <Td>{p.periodicidade_dias ?? "—"}</Td>
+      <Td>{p.duracao_estimada_horas ?? "—"}</Td>
+      {canManage && (
+        <Td>
+          <div className="flex items-center gap-1">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(true)}>
+              Editar
+            </Button>
+            <form action={cancelarManutencaoPreventivaAction}>
+              <input type="hidden" name="id" value={p.id} />
+              <Button type="submit" variant="danger" size="sm">
+                Cancelar
+              </Button>
+            </form>
+          </div>
+        </Td>
+      )}
+    </tr>
   );
 }

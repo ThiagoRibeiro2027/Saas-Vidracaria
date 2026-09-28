@@ -299,6 +299,18 @@ export default function ExpedicaoSection({
                       {expItens.length > 0 && (
                         <details className="mt-2">
                           <summary className="cursor-pointer text-xs text-primary">Romaneio</summary>
+                          {/* Documento para entregar impresso: sai por uma rota
+                              própria, fora do layout da aplicação, a partir de
+                              romaneio_expedicao() — não é esta tabela mandada
+                              para a impressora. */}
+                          <a
+                            href={`/expedicao/${exp.id}/romaneio`}
+                            target="_blank"
+                            rel="noopener"
+                            className="mt-1.5 inline-block text-xs text-primary underline"
+                          >
+                            Abrir romaneio para impressão
+                          </a>
                           <Table className="mt-1.5">
                             <thead>
                               <tr>
