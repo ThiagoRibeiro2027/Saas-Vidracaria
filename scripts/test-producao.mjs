@@ -98,6 +98,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -257,12 +269,17 @@ async function criarUsuarioComPermissoes(company, identifier, roleKey, acoes) {
     await admin.from("role_permissions").insert({ role_id: role.id, permission_id: perm.id });
   }
 
-  const email = `${identifier}@users.internal`;
+  // E-mail carrega o sufixo da execução, igual ao createTenant(): com e-mail
+  // fixo o createUser() da 2ª execução falha, e o fallback do listUsers() não
+  // acha o usuário antigo (o banco compartilhado tem centenas, e a 1ª página
+  // padrão traz 50). O client voltava SEM sessão, o que derruba as asserções
+  // positivas e — pior — faz as de negação passarem sem testar nada.
+  const email = `${identifier}.${RUN}@users.internal`;
   const password = "senha-de-teste-123456";
   const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
   let userId = created?.user?.id;
   if (!userId) {
-    const { data: list } = await admin.auth.admin.listUsers();
+    const { data: list } = await admin.auth.admin.listUsers({ perPage: 10000 });
     userId = list.users.find((u) => u.email === email)?.id;
   }
   await admin.from("profiles").upsert({ id: userId, company_id: company.id, login_identifier: identifier, display_name: roleKey }, { onConflict: "id" });
@@ -275,9 +292,9 @@ async function criarUsuarioComPermissoes(company, identifier, roleKey, acoes) {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão, outro tenant)...");
-  const admTenant = await createTenant("producao-test-admin", "Produção Admin Teste", "9c01", "ADMIN");
-  const noPermTenant = await createTenant("producao-test-noperm", "Produção SemPerm Teste", "9c02", "COMERCIAL");
-  const otherTenant = await createTenant("producao-test-other", "Produção Outro Teste", "9c03", "ADMIN");
+  const admTenant = await createTenant(`producao-test-admin-${RUN}`, "Produção Admin Teste", "9c01", "ADMIN");
+  const noPermTenant = await createTenant(`producao-test-noperm-${RUN}`, "Produção SemPerm Teste", "9c02", "COMERCIAL");
+  const otherTenant = await createTenant(`producao-test-other-${RUN}`, "Produção Outro Teste", "9c03", "ADMIN");
 
   console.log("\n0. Massa de dados — pedido liberado, item sem regra de medição (não bloqueia)");
   const massa = await prepararPedidoLiberado(admTenant, "1", { itemTipo: "materia_prima", quantidade: 5, comObra: true });
@@ -1304,6 +1321,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "producao.ordem_criada",
         "producao.apontamento_registrado",
@@ -1462,6 +1480,7 @@ async function main() {
     const { data: events20 } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["producao.prioridade_definida", "producao.operacao_programada"]);
     const actions20 = new Set((events20 ?? []).map((e) => e.action));
     check("prioridade_definida registrado", actions20.has("producao.prioridade_definida"));
@@ -1581,6 +1600,7 @@ async function main() {
     const { data: events21 } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .eq("action", "producao.peso_sequenciamento_definido");
     check("peso_sequenciamento_definido registrado", (events21 ?? []).length > 0);
   }
@@ -1688,7 +1708,7 @@ async function main() {
     const { data: crossDecisoes } = await otherTenant.client.rpc("listar_decisoes_sequenciamento", { p_op_lote_operacao_id: X.opLoteOperacaoId });
     check("tenant B não enxerga decisões do tenant A na própria consulta", (crossDecisoes ?? []).length === 0);
 
-    const { data: eventosDecisao } = await admin.from("activity_logs").select("action").eq("action", "producao.sequenciamento_decidido");
+    const { data: eventosDecisao } = await admin.from("activity_logs").select("action").eq("company_id", admTenant.company.id).eq("action", "producao.sequenciamento_decidido");
     check("sequenciamento_decidido registrado", (eventosDecisao ?? []).length >= 4);
 
     // --- §8: simular_alteracao_programacao ---
@@ -1770,11 +1790,11 @@ async function main() {
     const { data: manageP } = await admin.from("permissions").select("id").eq("resource", "producao").eq("action", "manage").single();
     await admin.from("role_permissions").insert({ role_id: soManageRole.data.id, permission_id: manageP.id });
 
-    const email23 = "23h01.producao-test-admin@users.internal";
+    const email23 = `23h01.producao-test-admin-${RUN}@users.internal`;
     const { data: created23 } = await admin.auth.admin.createUser({ email: email23, password: "senha-de-teste-123456", email_confirm: true });
     let userId23 = created23?.user?.id;
     if (!userId23) {
-      const { data: list } = await admin.auth.admin.listUsers();
+      const { data: list } = await admin.auth.admin.listUsers({ perPage: 10000 });
       userId23 = list.users.find((u) => u.email === email23)?.id;
     }
     await admin.from("profiles").upsert(
@@ -1864,6 +1884,7 @@ async function main() {
     const { data: eventosHorizonte } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["producao.horizonte_criado", "producao.horizonte_removido"]);
     check("horizonte_criado registrado", (eventosHorizonte ?? []).some((e) => e.action === "producao.horizonte_criado"));
     check("horizonte_removido registrado", (eventosHorizonte ?? []).some((e) => e.action === "producao.horizonte_removido"));

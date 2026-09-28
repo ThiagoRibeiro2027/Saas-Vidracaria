@@ -16,6 +16,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -113,11 +125,11 @@ async function createSoManageTenant(company, identifier) {
 async function main() {
   const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de contratos, só-manage, outro tenant)...");
-  const admTenant = await createTenant("contratos-test-admin", "Contratos Admin Teste", "18c01", "ADMIN");
+  const admTenant = await createTenant(`contratos-test-admin-${RUN}`, "Contratos Admin Teste", "18c01", "ADMIN");
   // QUALIDADE administra Qualidade, não Contratos — prova a autoridade separada.
-  const noPermTenant = await createTenant("contratos-test-admin", "Contratos SemPerm Teste", "18c02", "QUALIDADE", admTenant.company);
+  const noPermTenant = await createTenant(`contratos-test-admin-${RUN}`, "Contratos SemPerm Teste", "18c02", "QUALIDADE", admTenant.company);
   const soManageTenant = await createSoManageTenant(admTenant.company, "18c04");
-  const otherTenant = await createTenant("contratos-test-other", "Contratos Outro Teste", "18c03", "ADMIN");
+  const otherTenant = await createTenant(`contratos-test-other-${RUN}`, "Contratos Outro Teste", "18c03", "ADMIN");
 
   console.log("\n0. Massa de dados: numeração, cliente, fornecedor, obra, pedido, funcionário");
   await admTenant.client.rpc("upsert_numbering_sequence", {

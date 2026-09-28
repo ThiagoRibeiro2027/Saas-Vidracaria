@@ -19,6 +19,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -88,9 +100,9 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 async function main() {
   const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de fiscal, outro tenant)...");
-  const admTenant = await createTenant("fiscal-test-admin", "Fiscal Admin Teste", "adr4f01", "ADMIN");
-  const noPermTenant = await createTenant("fiscal-test-admin", "Fiscal SemPerm Teste", "adr4f02", "QUALIDADE", admTenant.company);
-  const otherTenant = await createTenant("fiscal-test-other", "Fiscal Outro Teste", "adr4f03", "ADMIN");
+  const admTenant = await createTenant(`fiscal-test-admin-${RUN}`, "Fiscal Admin Teste", "adr4f01", "ADMIN");
+  const noPermTenant = await createTenant(`fiscal-test-admin-${RUN}`, "Fiscal SemPerm Teste", "adr4f02", "QUALIDADE", admTenant.company);
+  const otherTenant = await createTenant(`fiscal-test-other-${RUN}`, "Fiscal Outro Teste", "adr4f03", "ADMIN");
 
   console.log("\n0. Massa de dados — item e necessidade de compra (T7) pra testar vínculo");
   const { data: itemId } = await admTenant.client.rpc("upsert_item", {
@@ -337,8 +349,12 @@ async function main() {
   }
 
   console.log("\n29. Massa de dados — documento fresco pra testar o fluxo de avaliação (§6)");
+  // Chave própria: a seção 17 já registrou a ...0077 nesta mesma execução e
+  // documentos_fiscais_chave_acesso_unique é por (company_id, chave_acesso) —
+  // reaproveitar a chave fazia o documento nascer nulo e derrubava as
+  // seções 29/31 mesmo num tenant virgem.
   const { data: docAvaliacaoId } = await admTenant.client.rpc("registrar_documento_fiscal", {
-    p_tipo: "nfe", p_numero: "777777", p_chave_acesso: "35270912345678000199550010000007770000000077",
+    p_tipo: "nfe", p_numero: "888888", p_chave_acesso: "35270912345678000199550010000008880000000088",
   });
   check("documento fresco criado", !!docAvaliacaoId);
 

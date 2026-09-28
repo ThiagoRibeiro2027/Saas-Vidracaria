@@ -23,6 +23,20 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarrava
+// em itens_company_codigo_unique logo na seção 0 (os `upsert_item` usam
+// `p_id: null` com código fixo), `itemPecaId`/`itemMaterialId` voltavam
+// nulos e daí praticamente toda seção seguinte falhava em cascata — dezenas
+// de ✗ que não representavam bug nenhum no produto. Tenant por execução
+// resolve a classe inteira do problema: cada rodada nasce num tenant vazio,
+// e as asserções podem continuar assumindo estado zerado (revisao_atual = 1,
+// "traz 1 revisão", "traz 1 linha"). O custo é acumular um tenant
+// `pecas-test-*-<sufixo>` por execução no banco da nuvem — limpeza é
+// separada e combinada com o responsável, nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -93,11 +107,11 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 }
 
 async function main() {
-  console.log("Preparando tenants (admin, sem-permissão de peças, outro tenant)...");
-  const admTenant = await createTenant("pecas-test-admin", "Peças Admin Teste", "pc01", "ADMIN");
+  console.log(`Preparando tenants (admin, sem-permissão de peças, outro tenant) — execução ${RUN}...`);
+  const admTenant = await createTenant(`pecas-test-admin-${RUN}`, "Peças Admin Teste", "pc01", "ADMIN");
   // QUALIDADE não administra Peças — prova a autoridade separada (mesmo padrão de test-suprimentos.mjs).
-  const noPermTenant = await createTenant("pecas-test-admin", "Peças SemPerm Teste", "pc02", "QUALIDADE", admTenant.company);
-  const otherTenant = await createTenant("pecas-test-other", "Peças Outro Teste", "pc03", "ADMIN");
+  const noPermTenant = await createTenant(`pecas-test-admin-${RUN}`, "Peças SemPerm Teste", "pc02", "QUALIDADE", admTenant.company);
+  const otherTenant = await createTenant(`pecas-test-other-${RUN}`, "Peças Outro Teste", "pc03", "ADMIN");
 
   console.log("\n0. Massa de dados — item peça (produto_acabado), item material (matéria-prima), item errado (serviço)");
   const { data: itemPecaId } = await admTenant.client.rpc("upsert_item", {
@@ -256,6 +270,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "pecas.peca_criada", "pecas.material_adicionado", "pecas.material_atualizado",
         "pecas.material_removido", "pecas.peca_inativada", "pecas.peca_reativada",
@@ -578,6 +593,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["pecas.caracteristica_definida", "engenharia.caracteristica_valor_definido"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("pecas.caracteristica_definida registrado", actions.has("pecas.caracteristica_definida"));
@@ -760,6 +776,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["pecas.regra_criada", "pecas.regra_desativada"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("pecas.regra_criada registrado", actions.has("pecas.regra_criada"));
@@ -939,6 +956,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["engenharia.bom_sugerida_gerada", "engenharia.bom_item_ajustado", "engenharia.bom_definitiva_aprovada"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("engenharia.bom_sugerida_gerada registrado", actions.has("engenharia.bom_sugerida_gerada"));
