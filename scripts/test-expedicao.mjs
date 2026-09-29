@@ -513,6 +513,13 @@ async function main() {
     check("registra saída de expedição conferida", !error);
     const { data: exp } = await admin.from("expedicoes").select("status").eq("id", expedicaoId).single();
     check("status vira 'expedida'", exp?.status === "expedida");
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", expedicaoId).maybeSingle();
+    check(
+      "evento interno expedição→financeiro registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "expedicao" && eventoLog?.metadata?.modulo_destino === "financeiro",
+    );
   }
 
   console.log("\n21. cancelar_expedicao() rejeita depois de 'expedida'");

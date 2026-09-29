@@ -329,6 +329,14 @@ async function main() {
     const { data: rowParcial } = await admin.from("itens_pecas_dimensionais").select("quantidade_disponivel, situacao").eq("id", pecaBarraId).single();
     check("sobra de 2m fica disponível na mesma linha (sem tabela/estado separado)", Number(rowParcial.quantidade_disponivel) === 2 && rowParcial.situacao === "disponivel");
 
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", pecaBarraId)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    check(
+      "evento interno estoque→produção registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "estoque" && eventoLog?.metadata?.modulo_destino === "producao",
+    );
+
     const { error: errTotal } = await admTenant.client.rpc("consumir_peca_dimensional", { p_peca_id: pecaBarraId, p_quantidade: 2, p_observacao: "sobra reaproveitada" });
     check("consome o restante", !errTotal);
     const { data: rowEsgotada } = await admin.from("itens_pecas_dimensionais").select("quantidade_disponivel, situacao").eq("id", pecaBarraId).single();
@@ -1175,6 +1183,13 @@ async function main() {
 
     const { data: mov } = await admin.from("estoque_movimentacoes").select("tipo, quantidade").eq("item_id", itemCotId).eq("tipo", "compra");
     check("movimentação registrada com tipo=compra (§27, novo valor de estoque_movimentacoes.tipo)", mov.length === 1 && Number(mov[0].quantidade) === 20);
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", rec1Id).maybeSingle();
+    check(
+      "evento interno compras→estoque registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "compras" && eventoLog?.metadata?.modulo_destino === "estoque",
+    );
 
     const { error: errRepete } = await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: rec1Id });
     check("rejeita finalizar de novo (já conferido)", !!errRepete);

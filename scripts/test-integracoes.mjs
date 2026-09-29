@@ -16,7 +16,14 @@
 // Fase 6 (ADR-002 §4.17, emenda de 26/09/2026): exportação genérica em
 // CSV (exportar_dados_csv) para pedidos/itens/pessoas/estoque/financeiro
 // — cada entidade exige a mesma permissão que a tela do módulo já exige,
-// nunca uma permissão nova de "exportação".
+// nunca uma permissão nova de "exportação". Fase 9 (§4 — Integrações
+// Internas entre Módulos): registrar_evento_integracao_interno(), testada
+// aqui só quanto a NÃO estar exposta à Data API — os 9 pontos de
+// transição que a chamam (comercial→pedidos, pedidos→produção,
+// engenharia→produção, compras→estoque, estoque→produção,
+// produção→estoque, expedição→financeiro, financeiro→pedidos,
+// qualidade→produção) são testados nos scripts de cada módulo de origem,
+// junto da fixture que já existe lá pra exercitar a função de negócio.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-integracoes.mjs
 
@@ -302,6 +309,18 @@ async function main() {
 
     const { data: log } = await admin.from("activity_logs").select("action, metadata").eq("id", logId).single();
     check("grava em activity_logs com metadata de módulo/nível", log?.action === "integracoes.evento_modulo" && log?.metadata?.nivel_automacao === "informativo" && log?.metadata?.modulo_origem === "pedidos");
+  }
+
+  console.log("\n14.1 registrar_evento_integracao_interno() (Fase 9, T13 §4) — nunca exposta à Data API");
+  {
+    // Sem `grant ... to authenticated` de propósito: só é chamável de
+    // dentro de outra função SECURITY DEFINER já autorizada (ver comentário
+    // na migration 20261208000000). Direto via RPC, mesmo ADMIN com
+    // integracoes.manage tem que falhar.
+    const { error: e1 } = await admTenant.client.rpc("registrar_evento_integracao_interno", {
+      p_company_id: admTenant.company.id, p_modulo_origem: "pedidos", p_modulo_destino: "producao", p_tipo_evento: "teste",
+    });
+    check("ninguém chama registrar_evento_integracao_interno() direto via Data API", !!e1);
   }
 
   console.log("\n15. SELECT exige integracoes.view em todas as tabelas do módulo");

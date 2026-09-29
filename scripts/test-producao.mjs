@@ -378,6 +378,14 @@ async function main() {
     const { data: v1 } = await admin.from("engenharia_versoes").select("*").eq("id", v1Id).single();
     check("primeira versão nasce com versao=1 e situação 'liberada'", v1?.versao === 1 && v1?.situacao === "liberada");
 
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_type", "pedido_item").eq("entity_id", massa.pedidoItemId)
+      .contains("metadata", { engenharia_versao_id: v1Id }).maybeSingle();
+    check(
+      "evento interno engenharia→produção registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "engenharia" && eventoLog?.metadata?.modulo_destino === "producao",
+    );
+
     const { data: v2Id } = await admTenant.client.rpc("liberar_engenharia", {
       p_pedido_item_id: massa.pedidoItemId, p_observacoes: "revisão",
     });
@@ -415,6 +423,13 @@ async function main() {
     // 4) — o que importa é que o formato (prefixo OP<n>- + 4 dígitos) saiu
     // de fato de next_document_number(), não um valor fixo.
     check("número da OP segue o formato configurado (prefixo + 4 dígitos)", /^OP\d+-\d{4}$/.test(op?.numero ?? ""));
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", opId).maybeSingle();
+    check(
+      "evento interno pedidos→produção registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "pedidos" && eventoLog?.metadata?.modulo_destino === "producao",
+    );
   }
 
   console.log("\n5. Produção parcial — soma das OPs nunca ultrapassa a quantidade do item (TÓPICO 4 §11-12)");

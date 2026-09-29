@@ -299,6 +299,16 @@ async function main() {
 
     const { data: op } = await admin.from("ordens_producao").select("status_qualidade").eq("id", parcial.opId).single();
     check("status_qualidade bloqueado mesmo com aprovação parcial", op?.status_qualidade === "bloqueado");
+
+    // OP também tem o evento pedidos→produção da própria criação — filtra
+    // por modulo_origem pra não colidir com ele no mesmo entity_id.
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", parcial.opId)
+      .contains("metadata", { modulo_origem: "qualidade" }).maybeSingle();
+    check(
+      "evento interno qualidade→produção registrado na reprovação (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "qualidade" && eventoLog?.metadata?.modulo_destino === "producao",
+    );
   }
 
   console.log("\n9. Inspeção 100% aprovada não abre NC");
@@ -312,6 +322,11 @@ async function main() {
 
     const { data: inspecao } = await admin.from("inspecoes_qualidade").select("resultado").eq("id", inspecaoId).single();
     check("resultado é 'aprovado'", inspecao?.resultado === "aprovado");
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("id")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", aprovada.opId)
+      .contains("metadata", { modulo_origem: "qualidade" }).maybeSingle();
+    check("aprovação 100% não dispara evento interno de qualidade (só a reprovação move módulos, T13 §4)", !eventoLog);
 
     const { data: ncs } = await admin.from("nao_conformidades").select("id").eq("ordem_producao_id", aprovada.opId);
     check("nenhuma NC criada", (ncs ?? []).length === 0);

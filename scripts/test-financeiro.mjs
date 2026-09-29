@@ -238,6 +238,15 @@ async function main() {
 
     const { data: recebimentos } = await admin.from("recebimentos_titulo").select("valor").eq("titulo_id", titulo1Id);
     check("2 recebimentos registrados no histórico", (recebimentos ?? []).length === 2);
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", titulo1Id)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    check(
+      "evento interno financeiro→pedidos registrado com status final 'pago' (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "financeiro" && eventoLog?.metadata?.modulo_destino === "pedidos" &&
+        eventoLog?.metadata?.status_resultante === "pago",
+    );
   }
 
   console.log("\n10. registrar_recebimento_titulo() rejeita título já pago");

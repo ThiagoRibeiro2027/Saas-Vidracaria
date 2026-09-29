@@ -247,6 +247,14 @@ async function main() {
     const { data: saldo } = await admin.from("estoque_saldos").select("quantidade_fisica").eq("item_id", massa.itemId).single();
     check("sobra volta a somar no saldo físico", Number(saldo?.quantidade_fisica) === 1.5);
 
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_type", "estoque_movimentacao")
+      .contains("metadata", { item_id: massa.itemId }).maybeSingle();
+    check(
+      "evento interno produção→estoque registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "producao" && eventoLog?.metadata?.modulo_destino === "estoque",
+    );
+
     const { error: quantidadeInvalidaError } = await admTenant.client.rpc("registrar_entrada_sobra", {
       p_item_id: massa.itemId, p_quantidade: 0, p_pedido_item_id: null, p_observacao: null,
     });
