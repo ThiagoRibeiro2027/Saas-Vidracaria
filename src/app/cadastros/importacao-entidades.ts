@@ -70,6 +70,18 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
       "Produto e material são o mesmo cadastro, diferenciados pelo tipo. O código é a chave.",
   },
   {
+    chave: "pessoa_papeis",
+    rotulo: "Papéis da pessoa (cliente / fornecedor)",
+    modulo: "Comercial",
+    rpc: "importar_pessoa_papeis",
+    campos: ["documento_pessoa", "papel", "ativo"],
+    colunaIdentificador: "documento",
+    colunaRotulo: "papel",
+    caminhoRevalidar: "/cadastros",
+    descricao:
+      "Define quem é CLIENTE e quem é FORNECEDOR. A mesma pessoa pode ter os dois papéis — nesse caso, uma linha para cada. Importe Pessoas antes.",
+  },
+  {
     chave: "obras",
     rotulo: "Obras",
     modulo: "Comercial",
@@ -80,6 +92,18 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     caminhoRevalidar: "/cadastros",
     descricao:
       "Exige que o cliente já exista e tenha o papel CLIENTE — importe Pessoas antes. A obra é identificada por cliente + nome.",
+  },
+  {
+    chave: "itens_dimensional",
+    rotulo: "Itens — controle dimensional",
+    modulo: "Cadastros",
+    rpc: "importar_itens_dimensional",
+    campos: ["codigo_item", "dimensao_tipo", "peso_por_unidade_dimensao"],
+    colunaIdentificador: "codigo",
+    colunaRotulo: "dimensao",
+    caminhoRevalidar: "/cadastros",
+    descricao:
+      "Só para item controlado por peça física: barra e perfil (linear, em metro) ou chapa, bobina e vidro (área, em m²). Não cria item — liga o controle num item que já existe.",
   },
 ];
 

@@ -362,6 +362,103 @@ async function main() {
     check("mapa de permissão: entidade desconhecida -> null", recursoInvalido === null);
   }
 
+  console.log("\n8. Papéis da pessoa e controle dimensional (Fase 8b)");
+  {
+    const DOC = "97531000000135";
+    const { data: pessoaId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CNPJ", p_documento: DOC, p_nome: "Pessoa da Fase 8b",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+      p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+
+    const linhasPapel = [
+      { documento_pessoa: DOC, papel: "CLIENTE" },
+      { documento_pessoa: DOC, papel: "fornecedor" }, // minúsculo é normalizado
+      { documento_pessoa: DOC, papel: "CLIENTE" }, // repetido no arquivo
+      { documento_pessoa: "00000000000191", papel: "CLIENTE" }, // pessoa não existe
+      { documento_pessoa: DOC, papel: "SOCIO" }, // papel fora do domínio
+    ];
+
+    const { error: semPermPapel } = await noPermTenant.client.rpc("importar_pessoa_papeis", {
+      p_linhas: linhasPapel, p_dry_run: true,
+    });
+    check("sem pessoas.manage não importa papéis", !!semPermPapel);
+
+    const { data: prevPapel } = await admTenant.client.rpc("importar_pessoa_papeis", {
+      p_linhas: linhasPapel, p_dry_run: true,
+    });
+    check("papel novo é 'novo'", prevPapel?.[0]?.status === "novo");
+    check(
+      "papel em minúsculo é normalizado para maiúsculo",
+      prevPapel?.[1]?.status === "novo" && prevPapel?.[1]?.papel === "FORNECEDOR",
+    );
+    check("mesma pessoa+papel repetida é 'duplicado_no_arquivo'", prevPapel?.[2]?.status === "duplicado_no_arquivo");
+    check("pessoa inexistente aponta a aba de Pessoas", prevPapel?.[3]?.status === "invalido");
+    check("papel fora de CLIENTE/FORNECEDOR é recusado", prevPapel?.[4]?.status === "invalido");
+
+    const { data: papeisAntes } = await admin.from("pessoa_papeis").select("papel").eq("pessoa_id", pessoaId);
+    check("prévia de papéis NÃO grava", (papeisAntes ?? []).length === 0);
+
+    await admTenant.client.rpc("importar_pessoa_papeis", { p_linhas: linhasPapel, p_dry_run: false });
+    const { data: papeisDepois } = await admin.from("pessoa_papeis").select("papel").eq("pessoa_id", pessoaId);
+    check("os dois papéis válidos são gravados", (papeisDepois ?? []).length === 2);
+
+    const { data: papelDeNovo } = await admTenant.client.rpc("importar_pessoa_papeis", {
+      p_linhas: [{ documento_pessoa: DOC, papel: "CLIENTE" }], p_dry_run: true,
+    });
+    check("reimportar o mesmo papel é 'atualizacao'", papelDeNovo?.[0]?.status === "atualizacao");
+
+    // ---- controle dimensional ----
+    const COD = "PRF-IMP-8B";
+    await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: COD, p_descricao: "Perfil da Fase 8b", p_tipo: "materia_prima",
+      p_classificacao: null, p_unidade_principal: "M", p_situacao: "ativo",
+    });
+
+    const linhasDim = [
+      { codigo_item: COD, dimensao_tipo: "linear", peso_por_unidade_dimensao: "1.85" },
+      { codigo_item: COD, dimensao_tipo: "area" }, // repetido no arquivo
+      { codigo_item: "NAO-EXISTE-8B", dimensao_tipo: "linear" }, // item não existe
+    ];
+
+    const { error: semPermDim } = await noPermTenant.client.rpc("importar_itens_dimensional", {
+      p_linhas: linhasDim, p_dry_run: true,
+    });
+    check("sem itens.manage não importa controle dimensional", !!semPermDim);
+
+    const { data: prevDim } = await admTenant.client.rpc("importar_itens_dimensional", {
+      p_linhas: linhasDim, p_dry_run: true,
+    });
+    check("item sem controle dimensional é 'novo'", prevDim?.[0]?.status === "novo");
+    check("código repetido é 'duplicado_no_arquivo'", prevDim?.[1]?.status === "duplicado_no_arquivo");
+    check("item inexistente aponta a aba de Itens", prevDim?.[2]?.status === "invalido");
+
+    const { data: itemAntes } = await admin
+      .from("itens").select("dimensao_tipo").eq("company_id", admTenant.company.id).eq("codigo", COD).single();
+    check("prévia dimensional NÃO grava", itemAntes.dimensao_tipo === null);
+
+    await admTenant.client.rpc("importar_itens_dimensional", {
+      p_linhas: [{ codigo_item: COD, dimensao_tipo: "linear", peso_por_unidade_dimensao: "1.85" }], p_dry_run: false,
+    });
+    const { data: itemDepois } = await admin
+      .from("itens").select("dimensao_tipo, peso_por_unidade_dimensao")
+      .eq("company_id", admTenant.company.id).eq("codigo", COD).single();
+    check(
+      "controle dimensional gravado com o peso",
+      itemDepois.dimensao_tipo === "linear" && Number(itemDepois.peso_por_unidade_dimensao) === 1.85,
+    );
+
+    const { data: dimDeNovo } = await admTenant.client.rpc("importar_itens_dimensional", {
+      p_linhas: [{ codigo_item: COD, dimensao_tipo: "area", peso_por_unidade_dimensao: "6" }], p_dry_run: true,
+    });
+    check("item que já tinha controle é 'atualizacao'", dimDeNovo?.[0]?.status === "atualizacao");
+
+    const { data: tipoRuim } = await admTenant.client.rpc("importar_itens_dimensional", {
+      p_linhas: [{ codigo_item: COD, dimensao_tipo: "cubica" }], p_dry_run: true,
+    });
+    check("tipo de dimensão inválido é recusado pela função do banco", tipoRuim?.[0]?.status === "invalido");
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
