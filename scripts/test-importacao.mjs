@@ -815,6 +815,124 @@ async function main() {
     );
   }
 
+  console.log("\n12. RH, financeiro e configurações (Fase 8f)");
+  {
+    // ---- funcionários ----
+    const NOME_FUNC = "Funcionário da Fase 8f";
+    const func = { nome: NOME_FUNC, cargo: "Montador", email: "f8f@exemplo.com", data_admissao: "2027-01-15", status: "ativo" };
+    const { error: semPermFunc } = await noPermTenant.client.rpc("importar_funcionarios", {
+      p_linhas: [func], p_dry_run: true,
+    });
+    check("sem rh.manage não importa funcionários", !!semPermFunc);
+
+    const { data: prevFunc } = await admTenant.client.rpc("importar_funcionarios", {
+      p_linhas: [func, { ...func }, { cargo: "sem nome" }, { nome: "Outro 8f", unidade: "Unidade Inexistente" }],
+      p_dry_run: true,
+    });
+    check("funcionário novo é 'novo'", prevFunc?.[0]?.status === "novo");
+    check("funcionário repetido é 'duplicado_no_arquivo'", prevFunc?.[1]?.status === "duplicado_no_arquivo");
+    check("funcionário sem nome é recusado", prevFunc?.[2]?.status === "invalido");
+    check("unidade inexistente é recusada", prevFunc?.[3]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_funcionarios", { p_linhas: [func], p_dry_run: false });
+    const { data: funcDb } = await admin
+      .from("funcionarios").select("cargo, status").eq("company_id", admTenant.company.id).eq("nome", NOME_FUNC).maybeSingle();
+    check("funcionário grava cargo e situação", funcDb?.cargo === "Montador" && funcDb?.status === "ativo");
+
+    // ---- equipes ----
+    const EQUIPE = "Equipe da Fase 8f";
+    const { data: prevEq } = await admTenant.client.rpc("importar_equipes_instalacao", {
+      p_linhas: [
+        { nome_equipe: EQUIPE, matricula_membro: "16a01" },
+        { nome_equipe: EQUIPE, matricula_membro: "16a01" },
+        { nome_equipe: EQUIPE, matricula_membro: "NAO-EXISTE-8F" },
+      ],
+      p_dry_run: true,
+    });
+    check("membro de equipe novo é 'novo'", prevEq?.[0]?.status === "novo");
+    check("mesmo membro repetido é 'duplicado_no_arquivo'", prevEq?.[1]?.status === "duplicado_no_arquivo");
+    check("matrícula inexistente é recusada", prevEq?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_equipes_instalacao", {
+      p_linhas: [{ nome_equipe: EQUIPE, matricula_membro: "16a01" }], p_dry_run: false,
+    });
+    const { data: equipeDb } = await admin
+      .from("equipes_instalacao").select("id").eq("company_id", admTenant.company.id).eq("nome", EQUIPE).maybeSingle();
+    const { count: membros } = await admin
+      .from("equipe_membros").select("id", { count: "exact", head: true }).eq("equipe_id", equipeDb.id);
+    check("equipe é criada junto com o primeiro membro", membros === 1);
+
+    // ---- contas bancárias ----
+    const conta = { banco: "001", agencia: "1234", conta: "55555-1", tipo_conta: "corrente", pix_chave: "chave@exemplo" };
+    const { data: prevConta } = await admTenant.client.rpc("importar_contas_bancarias", {
+      p_linhas: [conta, { ...conta }, { banco: "001", agencia: "1", conta: "2" }], p_dry_run: true,
+    });
+    check("conta bancária nova é 'novo'", prevConta?.[0]?.status === "novo");
+    check("mesma conta repetida é 'duplicado_no_arquivo'", prevConta?.[1]?.status === "duplicado_no_arquivo");
+    check("conta sem tipo é recusada", prevConta?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_contas_bancarias", { p_linhas: [conta], p_dry_run: false });
+    const { data: contaDb } = await admin
+      .from("contas_bancarias").select("tipo_conta, pix_chave")
+      .eq("company_id", admTenant.company.id).eq("agencia", "1234").maybeSingle();
+    check("conta grava tipo e chave PIX", contaDb?.tipo_conta === "corrente" && contaDb?.pix_chave === "chave@exemplo");
+
+    // ---- margem de quebra ----
+    const MATERIAL = "vidro_temperado_8f";
+    const { data: prevMargem } = await admTenant.client.rpc("importar_cutting_margin_settings", {
+      p_linhas: [
+        { material_tipo: MATERIAL, processo: "", percentual: "5" },
+        { material_tipo: MATERIAL, processo: "", percentual: "7" },
+        { material_tipo: MATERIAL, processo: "corte", percentual: "3" },
+      ],
+      p_dry_run: true,
+    });
+    check("margem nova é 'novo'", prevMargem?.[0]?.status === "novo");
+    check("mesmo material e processo repetidos é 'duplicado_no_arquivo'", prevMargem?.[1]?.status === "duplicado_no_arquivo");
+    // Processo vazio é um VALOR ("vale em qualquer processo"), não ausência:
+    // o mesmo material com processo diferente é outra linha legítima.
+    check("mesmo material com processo diferente é linha própria", prevMargem?.[2]?.status === "novo");
+
+    await admTenant.client.rpc("importar_cutting_margin_settings", {
+      p_linhas: [{ material_tipo: MATERIAL, processo: "", percentual: "5" }], p_dry_run: false,
+    });
+    const { data: margemDb } = await admin
+      .from("cutting_margin_settings").select("percentual, processo")
+      .eq("company_id", admTenant.company.id).eq("material_tipo", MATERIAL).maybeSingle();
+    check("margem grava percentual com processo vazio", Number(margemDb?.percentual) === 5 && margemDb?.processo === "");
+
+    // ---- regra de medição ----
+    const TIPO_ITEM = "tipo_medicao_8f";
+    await admTenant.client.rpc("importar_measurement_rules", {
+      p_linhas: [{ tipo_item: TIPO_ITEM, exige_medicao_confirmada: "" }], p_dry_run: false,
+    });
+    const { data: regraDb } = await admin
+      .from("measurement_rules").select("exige_medicao_confirmada")
+      .eq("company_id", admTenant.company.id).eq("tipo_item", TIPO_ITEM).maybeSingle();
+    // Ao contrário de exige_aprovacao (8e), aqui o vazio NÃO pode virar
+    // "sim": exigir medição confirmada trava produção.
+    check("exige_medicao_confirmada vazio assume NÃO", regraDb?.exige_medicao_confirmada === false);
+
+    // ---- feriados ----
+    const DIA = "2027-12-25";
+    const { data: prevFeriado } = await admTenant.client.rpc("importar_calendario_feriados", {
+      p_linhas: [{ data: DIA, descricao: "Natal" }, { data: DIA }, { data: "31/02/2027" }], p_dry_run: true,
+    });
+    check("feriado novo é 'novo'", prevFeriado?.[0]?.status === "novo");
+    check("mesma data repetida é 'duplicado_no_arquivo'", prevFeriado?.[1]?.status === "duplicado_no_arquivo");
+    check(
+      "data inválida é recusada com mensagem útil, não com erro cru do Postgres",
+      prevFeriado?.[2]?.status === "invalido" && /AAAA-MM-DD/.test(prevFeriado?.[2]?.erro ?? ""),
+    );
+
+    await admTenant.client.rpc("importar_calendario_feriados", {
+      p_linhas: [{ data: DIA, descricao: "Natal" }], p_dry_run: false,
+    });
+    const { data: feriadoDb } = await admin
+      .from("calendario_feriados").select("descricao").eq("company_id", admTenant.company.id).eq("data", DIA).maybeSingle();
+    check("feriado grava a descrição", feriadoDb?.descricao === "Natal");
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
