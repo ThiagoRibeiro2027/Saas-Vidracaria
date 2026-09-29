@@ -2,13 +2,11 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import {
-  previsualizarImportacaoPessoasAction,
-  confirmarImportacaoPessoasAction,
-  previsualizarImportacaoItensAction,
-  confirmarImportacaoItensAction,
+  previsualizarImportacaoAction,
+  confirmarImportacaoAction,
   type ImportacaoState,
 } from "./actions";
-import { CAMPOS_PESSOAS, CAMPOS_ITENS } from "./importacao-campos";
+import { ENTIDADES_IMPORTACAO, type EntidadeImportacao } from "./importacao-entidades";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Table, Th, Td } from "@/components/ui/Table";
@@ -28,7 +26,7 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger"> = {
 
 export type ImportacaoHistorico = {
   id: string;
-  entidade: "pessoas" | "itens";
+  entidade: string;
   arquivo_nome: string | null;
   total_linhas: number;
   novos: number;
@@ -43,8 +41,8 @@ function dataHora(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
-// Estado do mapeamento vive aqui, não no Bloco, para que a troca de
-// arquivo o reinicie via `key` (as colunas mudam) em vez de um useEffect
+// Estado do mapeamento vive aqui, não no Bloco, para que a troca de arquivo
+// o reinicie via `key` (as colunas mudam) em vez de um useEffect
 // sincronizando prop com estado — o que geraria render em cascata. Efeito
 // colateral desejado: re-prévia do MESMO arquivo preserva o que o usuário
 // ajustou, porque a key não muda.
@@ -119,29 +117,21 @@ function MapeamentoColunas({
 }
 
 function Bloco({
-  titulo,
-  campos,
-  previewAction,
-  confirmAction,
+  entidade,
   historico,
 }: {
-  titulo: string;
-  campos: readonly string[];
-  previewAction: (state: ImportacaoState, formData: FormData) => Promise<ImportacaoState>;
-  confirmAction: (state: ImportacaoState, formData: FormData) => Promise<ImportacaoState>;
+  entidade: EntidadeImportacao;
   historico: ImportacaoHistorico[];
 }) {
   const [previewState, previewFormAction, previewPending] = useActionState<ImportacaoState, FormData>(
-    previewAction,
+    previsualizarImportacaoAction,
     undefined,
   );
   const [confirmState, confirmFormAction, confirmPending] = useActionState<ImportacaoState, FormData>(
-    confirmAction,
+    confirmarImportacaoAction,
     undefined,
   );
-  // Reprocessar passa pela MESMA action de prévia: com dois estados de
-  // formulário, o do reprocessamento continuava vencendo depois de o
-  // usuário subir um arquivo novo, e a tela mostrava a prévia errada.
+
   const estadoAtual = confirmState ?? previewState;
   const resultados = estadoAtual && "resultados" in estadoAtual ? estadoAtual.resultados : undefined;
   const linhas = estadoAtual && "linhas" in estadoAtual ? estadoAtual.linhas : undefined;
@@ -151,8 +141,6 @@ function Bloco({
   const origemImportacaoId =
     estadoAtual && "origemImportacaoId" in estadoAtual ? estadoAtual.origemImportacaoId : null;
 
-  // O mapeamento sugerido vem do servidor a cada prévia; a edição do
-  // usuário vive dentro de MapeamentoColunas.
   const colunasArquivo = previewState && "colunasArquivo" in previewState ? previewState.colunasArquivo : undefined;
   const mapeamentoSugerido = previewState && "mapeamento" in previewState ? previewState.mapeamento : undefined;
   const linhasBrutas = previewState && "linhasBrutas" in previewState ? previewState.linhasBrutas : undefined;
@@ -166,14 +154,16 @@ function Bloco({
 
   return (
     <div className="mb-6">
-      <h3 className="mb-1 text-[13px] font-medium text-text">{titulo}</h3>
-      <p className="text-xs text-text-muted">
-        Campos do sistema: {campos.join(", ")}. A primeira linha do arquivo é o cabeçalho — se os nomes
-        das colunas forem diferentes, ajuste o destino de cada uma abaixo da prévia.
+      <h3 className="mb-1 text-[13px] font-medium text-text">{entidade.rotulo}</h3>
+      <p className="text-xs text-text-muted">{entidade.descricao}</p>
+      <p className="mt-0.5 text-xs text-text-muted">
+        Campos do sistema: {entidade.campos.join(", ")}. A primeira linha do arquivo é o cabeçalho —
+        se os nomes das colunas forem diferentes, ajuste o destino de cada uma abaixo da prévia.
       </p>
 
       {!confirmado && (
         <form action={previewFormAction} className="my-2.5">
+          <input type="hidden" name="entidade" value={entidade.chave} />
           <div className="flex items-center gap-1.5">
             <input
               type="file"
@@ -211,7 +201,7 @@ function Bloco({
               key={colunasArquivo.join("|")}
               colunas={colunasArquivo}
               sugerido={mapeamentoSugerido}
-              campos={campos}
+              campos={entidade.campos}
             />
           )}
         </form>
@@ -264,6 +254,7 @@ function Bloco({
 
           {!confirmado && linhas && (
             <form action={confirmFormAction}>
+              <input type="hidden" name="entidade" value={entidade.chave} />
               <input type="hidden" name="linhas" value={JSON.stringify(linhas)} />
               <input type="hidden" name="arquivo_nome" value={arquivoNome ?? ""} />
               <input type="hidden" name="origem_importacao_id" value={origemImportacaoId ?? ""} />
@@ -275,8 +266,8 @@ function Bloco({
 
           {confirmado && (
             <p className="text-xs text-primary">
-              Importação concluída. Recarregue a página pra ver os registros na lista acima e a
-              execução no histórico.
+              Importação concluída. Recarregue a página pra ver os registros na lista e a execução
+              no histórico.
             </p>
           )}
         </>
@@ -316,6 +307,7 @@ function Bloco({
                       <Td>
                         {comErro > 0 ? (
                           <form action={previewFormAction}>
+                            <input type="hidden" name="entidade" value={entidade.chave} />
                             <input type="hidden" name="importacao_id" value={h.id} />
                             <Button type="submit" variant="secondary" disabled={previewPending}>
                               {previewPending ? "Carregando..." : `Reprocessar ${comErro} linha(s)`}
@@ -338,31 +330,39 @@ function Bloco({
 }
 
 export default function ImportacaoSection({ historico = [] }: { historico?: ImportacaoHistorico[] }) {
+  // Agrupa por módulo para a tela não virar uma lista plana de vinte e
+  // poucos blocos iguais — a ordem dentro do registro já é a ordem de
+  // dependência entre eles.
+  const modulos = [...new Set(ENTIDADES_IMPORTACAO.map((e) => e.modulo))];
+
   return (
     <section>
-      <h2 className="text-sm font-semibold text-text">Importação inicial de dados (TÓPICO 2 §28)</h2>
+      <h2 className="text-sm font-semibold text-text">Importação de dados (TÓPICO 2 §28, TÓPICO 13 §29)</h2>
       <p className="mt-1 text-xs text-text-muted">
-        Aceita <strong>.csv</strong> e <strong>.xlsx</strong> (de uma planilha, só a primeira aba
-        é lida). Fluxo: ler arquivo → mapear colunas → validar → pré-visualizar (nada é gravado) →
+        Aceita <strong>.csv</strong> e <strong>.xlsx</strong> (de uma planilha, só a primeira aba é
+        lida). Fluxo: ler arquivo → mapear colunas → validar → pré-visualizar (nada é gravado) →
         confirmar. Linha inválida nunca é gravada silenciosamente — fica marcada, as demais são
         gravadas normalmente, e as que falharam podem ser reprocessadas depois pelo histórico.
       </p>
-      <div className="mt-3">
-        <Bloco
-          titulo="Pessoas (clientes/fornecedores)"
-          campos={CAMPOS_PESSOAS}
-          previewAction={previsualizarImportacaoPessoasAction}
-          confirmAction={confirmarImportacaoPessoasAction}
-          historico={historico.filter((h) => h.entidade === "pessoas")}
-        />
-        <Bloco
-          titulo="Itens (produtos/materiais)"
-          campos={CAMPOS_ITENS}
-          previewAction={previsualizarImportacaoItensAction}
-          confirmAction={confirmarImportacaoItensAction}
-          historico={historico.filter((h) => h.entidade === "itens")}
-        />
-      </div>
+      <p className="mt-1 text-xs text-text-muted">
+        Importe na ordem em que os blocos aparecem: Obras exige Pessoas já cadastradas, e assim por
+        diante.
+      </p>
+
+      {modulos.map((modulo) => (
+        <div key={modulo} className="mt-4">
+          <p className="mb-2 border-b border-border pb-1 font-mono text-[11px] uppercase tracking-wide text-primary">
+            {modulo}
+          </p>
+          {ENTIDADES_IMPORTACAO.filter((e) => e.modulo === modulo).map((entidade) => (
+            <Bloco
+              key={entidade.chave}
+              entidade={entidade}
+              historico={historico.filter((h) => h.entidade === entidade.chave)}
+            />
+          ))}
+        </div>
+      ))}
     </section>
   );
 }

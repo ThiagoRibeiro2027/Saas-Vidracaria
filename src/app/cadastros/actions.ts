@@ -2,8 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { CAMPOS_PESSOAS, CAMPOS_ITENS } from "./importacao-campos";
 import { lerPlanilha, type ImportacaoLinha } from "./importacao-arquivo";
+import { entidadePorChave, type EntidadeImportacao } from "./importacao-entidades";
 
 // TÓPICO 2 §28 / ADR-002 §4.2.1 — importação inicial de dados. Só CSV
 // nesta fase (decisão de escopo registrada na migration
@@ -326,182 +326,45 @@ export async function definirPropriedadesDimensionaisItemAction(formData: FormDa
   revalidatePath("/estoque");
 }
 
-function normalizarResultadosPessoas(rows: {
-  linha: number;
-  documento: string | null;
-  nome: string | null;
-  status: string | null;
-  erro: string | null;
-  campos_alterados: string[] | null;
-}[]): ImportacaoResultadoLinha[] {
+// =========================================================================
+// Importação — Fase 8a: uma action por etapa, não por entidade.
+//
+// A entidade chega pelo formulário e é resolvida contra o registro em
+// importacao-entidades.ts. Nome que não está no registro é recusado antes
+// de qualquer chamada ao banco, então o cliente não escolhe que função SQL
+// será executada — ele escolhe entre as que o registro permite.
+// =========================================================================
+
+// As funções importar_<x> devolvem sempre (linha, <identificador>,
+// <rotulo>, status, erro, campos_alterados). Quais são as duas colunas do
+// meio muda por entidade, e é o registro que diz.
+function normalizarResultados(
+  rows: Record<string, unknown>[],
+  entidade: EntidadeImportacao,
+): ImportacaoResultadoLinha[] {
   return rows.map((r) => ({
-    linha: r.linha,
-    identificador: r.documento,
-    rotulo: r.nome,
+    linha: Number(r.linha),
+    identificador: (r[entidade.colunaIdentificador] as string | null) ?? null,
+    rotulo: (r[entidade.colunaRotulo] as string | null) ?? null,
     status: r.status as ImportacaoResultadoLinha["status"],
-    erro: r.erro,
-    campos_alterados: r.campos_alterados,
+    erro: (r.erro as string | null) ?? null,
+    campos_alterados: (r.campos_alterados as string[] | null) ?? null,
   }));
-}
-
-function normalizarResultadosItens(rows: {
-  linha: number;
-  codigo: string | null;
-  descricao: string | null;
-  status: string | null;
-  erro: string | null;
-  campos_alterados: string[] | null;
-}[]): ImportacaoResultadoLinha[] {
-  return rows.map((r) => ({
-    linha: r.linha,
-    identificador: r.codigo,
-    rotulo: r.descricao,
-    status: r.status as ImportacaoResultadoLinha["status"],
-    erro: r.erro,
-    campos_alterados: r.campos_alterados,
-  }));
-}
-
-export async function previsualizarImportacaoPessoasAction(
-  _prevState: ImportacaoState,
-  formData: FormData,
-): Promise<ImportacaoState> {
-  // A mesma action atende ao reprocessamento: os dois produzem uma prévia.
-  const reprocessamento = await previaDeReprocessamento(formData, "pessoas");
-  if (reprocessamento) return reprocessamento;
-
-  const lido = await lerEntrada(formData);
-  if ("error" in lido) return { error: lido.error };
-
-  const mapeamento = lerMapeamentoDoForm(formData, lido.colunas, CAMPOS_PESSOAS);
-  const linhas = aplicarMapeamento(lido.linhas, mapeamento);
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("importar_pessoas", { p_linhas: linhas, p_dry_run: true });
-  if (error) return { error: error.message };
-
-  return {
-    linhas,
-    resultados: normalizarResultadosPessoas(data ?? []),
-    confirmado: false,
-    colunasArquivo: lido.colunas,
-    linhasBrutas: lido.linhas,
-    mapeamento,
-    arquivoNome: lido.arquivoNome,
-  };
-}
-
-export async function confirmarImportacaoPessoasAction(
-  _prevState: ImportacaoState,
-  formData: FormData,
-): Promise<ImportacaoState> {
-  const linhasRaw = String(formData.get("linhas") ?? "");
-  let linhas: ImportacaoLinha[];
-  try {
-    linhas = JSON.parse(linhasRaw);
-  } catch {
-    return { error: "Sessão de importação inválida — reenvie o arquivo." };
-  }
-
-  const arquivoNome = String(formData.get("arquivo_nome") ?? "") || null;
-  const origem = String(formData.get("origem_importacao_id") ?? "") || null;
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("importar_pessoas", {
-    p_linhas: linhas,
-    p_dry_run: false,
-    p_arquivo_nome: arquivoNome,
-    p_origem_importacao_id: origem,
-  });
-  if (error) return { error: error.message };
-
-  revalidatePath("/cadastros");
-  return {
-    linhas,
-    resultados: normalizarResultadosPessoas(data ?? []),
-    confirmado: true,
-    arquivoNome,
-    origemImportacaoId: origem,
-  };
-}
-
-export async function previsualizarImportacaoItensAction(
-  _prevState: ImportacaoState,
-  formData: FormData,
-): Promise<ImportacaoState> {
-  // A mesma action atende ao reprocessamento: os dois produzem uma prévia.
-  const reprocessamento = await previaDeReprocessamento(formData, "itens");
-  if (reprocessamento) return reprocessamento;
-
-  const lido = await lerEntrada(formData);
-  if ("error" in lido) return { error: lido.error };
-
-  const mapeamento = lerMapeamentoDoForm(formData, lido.colunas, CAMPOS_ITENS);
-  const linhas = aplicarMapeamento(lido.linhas, mapeamento);
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("importar_itens", { p_linhas: linhas, p_dry_run: true });
-  if (error) return { error: error.message };
-
-  return {
-    linhas,
-    resultados: normalizarResultadosItens(data ?? []),
-    confirmado: false,
-    colunasArquivo: lido.colunas,
-    linhasBrutas: lido.linhas,
-    mapeamento,
-    arquivoNome: lido.arquivoNome,
-  };
-}
-
-export async function confirmarImportacaoItensAction(
-  _prevState: ImportacaoState,
-  formData: FormData,
-): Promise<ImportacaoState> {
-  const linhasRaw = String(formData.get("linhas") ?? "");
-  let linhas: ImportacaoLinha[];
-  try {
-    linhas = JSON.parse(linhasRaw);
-  } catch {
-    return { error: "Sessão de importação inválida — reenvie o arquivo." };
-  }
-
-  const arquivoNome = String(formData.get("arquivo_nome") ?? "") || null;
-  const origem = String(formData.get("origem_importacao_id") ?? "") || null;
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("importar_itens", {
-    p_linhas: linhas,
-    p_dry_run: false,
-    p_arquivo_nome: arquivoNome,
-    p_origem_importacao_id: origem,
-  });
-  if (error) return { error: error.message };
-
-  revalidatePath("/cadastros");
-  return {
-    linhas,
-    resultados: normalizarResultadosItens(data ?? []),
-    confirmado: true,
-    arquivoNome,
-    origemImportacaoId: origem,
-  };
 }
 
 // Reprocessamento (TÓPICO 13 §29): traz de volta o payload original das
 // linhas que falharam numa importação anterior e roda a prévia com elas.
-// Não existe um caminho de gravação próprio — a confirmação usa as mesmas
-// actions de confirmar, agora com origem_importacao_id preenchido, para o
-// histórico ligar a tentativa nova à original.
+// Não tem caminho de gravação próprio — a confirmação usa a mesma action
+// de confirmar, agora com origem_importacao_id preenchido, para o histórico
+// ligar a tentativa nova à original.
 //
 // Não é uma action separada de propósito: reprocessar produz uma PRÉVIA,
 // igual a subir um arquivo. Com dois estados de formulário concorrentes, a
-// tela mostrava a prévia do reprocessamento mesmo depois de o usuário
-// subir um arquivo novo — o estado velho vencia. Um estado só elimina a
-// disputa em vez de tentar arbitrá-la.
+// tela mostrava a prévia do reprocessamento mesmo depois de o usuário subir
+// um arquivo novo — o estado velho vencia. Um estado só elimina a disputa.
 async function previaDeReprocessamento(
   formData: FormData,
-  entidade: "pessoas" | "itens",
+  entidade: EntidadeImportacao,
 ): Promise<ImportacaoState | null> {
   const importacaoId = String(formData.get("importacao_id") ?? "");
   if (!importacaoId) return null;
@@ -526,20 +389,85 @@ async function previaDeReprocessamento(
     .eq("id", importacaoId)
     .maybeSingle();
 
-  const { data, error } = await supabase.rpc(
-    entidade === "pessoas" ? "importar_pessoas" : "importar_itens",
-    { p_linhas: linhas, p_dry_run: true },
-  );
+  const { data, error } = await supabase.rpc(entidade.rpc, { p_linhas: linhas, p_dry_run: true });
   if (error) return { error: error.message };
 
   return {
     linhas,
-    resultados:
-      entidade === "pessoas"
-        ? normalizarResultadosPessoas(data ?? [])
-        : normalizarResultadosItens(data ?? []),
+    resultados: normalizarResultados((data ?? []) as Record<string, unknown>[], entidade),
     confirmado: false,
     arquivoNome: origem?.arquivo_nome ?? null,
     origemImportacaoId: importacaoId,
+  };
+}
+
+export async function previsualizarImportacaoAction(
+  _prevState: ImportacaoState,
+  formData: FormData,
+): Promise<ImportacaoState> {
+  const entidade = entidadePorChave(String(formData.get("entidade") ?? ""));
+  if (!entidade) return { error: "Entidade de importação inválida." };
+
+  // A mesma action atende ao reprocessamento: os dois produzem uma prévia.
+  const reprocessamento = await previaDeReprocessamento(formData, entidade);
+  if (reprocessamento) return reprocessamento;
+
+  const lido = await lerEntrada(formData);
+  if ("error" in lido) return { error: lido.error };
+
+  const mapeamento = lerMapeamentoDoForm(formData, lido.colunas, entidade.campos);
+  const linhas = aplicarMapeamento(lido.linhas, mapeamento);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc(entidade.rpc, { p_linhas: linhas, p_dry_run: true });
+  if (error) return { error: error.message };
+
+  return {
+    linhas,
+    resultados: normalizarResultados((data ?? []) as Record<string, unknown>[], entidade),
+    confirmado: false,
+    colunasArquivo: lido.colunas,
+    linhasBrutas: lido.linhas,
+    mapeamento,
+    arquivoNome: lido.arquivoNome,
+  };
+}
+
+export async function confirmarImportacaoAction(
+  _prevState: ImportacaoState,
+  formData: FormData,
+): Promise<ImportacaoState> {
+  const entidade = entidadePorChave(String(formData.get("entidade") ?? ""));
+  if (!entidade) return { error: "Entidade de importação inválida." };
+
+  const linhasRaw = String(formData.get("linhas") ?? "");
+  let linhas: ImportacaoLinha[];
+  try {
+    linhas = JSON.parse(linhasRaw);
+  } catch {
+    return { error: "Sessão de importação inválida — reenvie o arquivo." };
+  }
+
+  const arquivoNome = String(formData.get("arquivo_nome") ?? "") || null;
+  const origem = String(formData.get("origem_importacao_id") ?? "") || null;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc(entidade.rpc, {
+    p_linhas: linhas,
+    p_dry_run: false,
+    p_arquivo_nome: arquivoNome,
+    p_origem_importacao_id: origem,
+  });
+  if (error) return { error: error.message };
+
+  // Revalida a tela dona do dado, não sempre /cadastros: importar recurso
+  // produtivo precisa atualizar /producao para o usuário ver o resultado.
+  revalidatePath(entidade.caminhoRevalidar);
+  return {
+    linhas,
+    resultados: normalizarResultados((data ?? []) as Record<string, unknown>[], entidade),
+    confirmado: true,
+    arquivoNome,
+    origemImportacaoId: origem,
   };
 }

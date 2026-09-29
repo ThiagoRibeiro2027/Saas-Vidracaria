@@ -15,6 +15,16 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// Tenant por execução, mesmo padrão adotado em 28/09/2026 nos outros 12
+// harnesses. Este aqui tinha ficado de fora por parecer idempotente — as
+// funções de importação são upsert —, mas as ASSERÇÕES não são: "linha
+// nova é 'novo'" e "dry-run NÃO grava nada" só valem em tenant zerado, e
+// numa segunda execução voltavam 'atualizacao' e "já existe". Eram 10 ✗
+// que não representavam bug nenhum no produto. O custo é acumular um
+// tenant `import-test-*-<sufixo>` por rodada; a limpeza é combinada com o
+// responsável, nunca automática.
+const RUN = Date.now().toString(36);
+
 const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
@@ -73,9 +83,9 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN") {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão, outro tenant)...");
-  const admTenant = await createTenant("import-test-admin", "Import Admin Teste", "16a01", "ADMIN");
-  const noPermTenant = await createTenant("import-test-noperm", "Import SemPerm Teste", "16a02", "COMERCIAL");
-  const otherTenant = await createTenant("import-test-other", "Import Outro Teste", "16a03", "ADMIN");
+  const admTenant = await createTenant(`import-test-admin-${RUN}`, "Import Admin Teste", "16a01", "ADMIN");
+  const noPermTenant = await createTenant(`import-test-noperm-${RUN}`, "Import SemPerm Teste", "16a02", "COMERCIAL");
+  const otherTenant = await createTenant(`import-test-other-${RUN}`, "Import Outro Teste", "16a03", "ADMIN");
 
   console.log("\n1. importar_pessoas() — permissão, novo, dry-run não persiste");
   {
@@ -267,6 +277,89 @@ async function main() {
       p_origem_importacao_id: registro.id,
     });
     check("origem de importação de outra empresa é rejeitada", !!origemAlheia);
+  }
+
+  console.log("\n7. importar_obras() e o mapa de entidades (TÓPICO 13 §29, Fase 8a)");
+  {
+    // Obras é a primeira entidade do padrão genérico: prova que acrescentar
+    // um importador não exige caso especial no histórico nem na permissão.
+    const DOC_CLIENTE = "99888777000166";
+    const NOME_OBRA = "Obra do Harness";
+
+    // A seção precisa começar limpa para "novo" ser determinístico na
+    // segunda execução — o resto do arquivo é idempotente por upsert, esta
+    // parte é idempotente por limpeza.
+    const { data: pessoaExistente } = await admin
+      .from("pessoas").select("id").eq("company_id", admTenant.company.id).eq("documento", DOC_CLIENTE).maybeSingle();
+    if (pessoaExistente) {
+      await admin.from("obras").delete().eq("company_id", admTenant.company.id).eq("pessoa_id", pessoaExistente.id);
+    }
+
+    const { data: pessoaId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: pessoaExistente?.id ?? null, p_tipo_documento: "CNPJ", p_documento: DOC_CLIENTE,
+      p_nome: "Cliente do Harness", p_nome_fantasia: null, p_telefone: null, p_email: null,
+      p_logradouro: null, p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: pessoaId, p_papel: "CLIENTE", p_ativo: true });
+
+    const linhas = [
+      { documento_cliente: DOC_CLIENTE, nome: NOME_OBRA, cidade: "Blumenau", uf: "SC" },
+      { documento_cliente: DOC_CLIENTE, nome: NOME_OBRA, cidade: "Repetida" }, // duplicada no arquivo
+      { documento_cliente: "00000000000191", nome: "Cliente inexistente" },     // cliente não existe
+      { documento_cliente: DOC_CLIENTE, nome: "" },                             // sem nome
+    ];
+
+    const { error: semPermErro } = await noPermTenant.client.rpc("importar_obras", { p_linhas: linhas, p_dry_run: true });
+    check("sem obras.manage não importa obras", !!semPermErro);
+
+    const { data: previa, error: previaErro } = await admTenant.client.rpc("importar_obras", { p_linhas: linhas, p_dry_run: true });
+    check("prévia de obras executa sem erro", !previaErro);
+    check("obra nova é 'novo'", previa?.[0]?.status === "novo");
+    check("mesma obra repetida no arquivo é 'duplicado_no_arquivo'", previa?.[1]?.status === "duplicado_no_arquivo");
+    check(
+      "cliente inexistente é recusado apontando a aba de Pessoas",
+      previa?.[2]?.status === "invalido" && /Importe a aba de Pessoas/.test(previa?.[2]?.erro ?? ""),
+    );
+    check("obra sem nome é recusada", previa?.[3]?.status === "invalido");
+
+    const { data: naoGravou } = await admin
+      .from("obras").select("id").eq("company_id", admTenant.company.id).eq("nome", NOME_OBRA);
+    check("prévia de obras NÃO grava nada", (naoGravou ?? []).length === 0);
+
+    await admTenant.client.rpc("importar_obras", { p_linhas: linhas, p_dry_run: false, p_arquivo_nome: "obras.xlsx" });
+    const { data: gravada } = await admin
+      .from("obras").select("cidade, uf").eq("company_id", admTenant.company.id).eq("nome", NOME_OBRA).maybeSingle();
+    check("obra válida é gravada com o endereço", gravada?.cidade === "Blumenau" && gravada?.uf === "SC");
+
+    const { data: hist } = await admin
+      .from("importacoes").select("*").eq("company_id", admTenant.company.id).eq("entidade", "obras")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    check("histórico aceita a entidade 'obras'", !!hist);
+    check(
+      "contadores do histórico de obras batem",
+      hist?.total_linhas === 4 && hist?.novos === 1 && hist?.invalidos === 2 && hist?.duplicados === 1,
+    );
+
+    const { data: reimport } = await admTenant.client.rpc("importar_obras", {
+      p_linhas: [{ documento_cliente: DOC_CLIENTE, nome: NOME_OBRA, cidade: "Timbó" }], p_dry_run: true,
+    });
+    check("reimportar a mesma obra é 'atualizacao', não duplicata", reimport?.[0]?.status === "atualizacao");
+    check("campos_alterados aponta cidade", (reimport?.[0]?.campos_alterados ?? []).includes("cidade"));
+
+    const { data: comErro, error: comErroErr } = await admTenant.client.rpc("obter_linhas_com_erro", {
+      p_importacao_id: hist.id,
+    });
+    check("obter_linhas_com_erro atende obras pelo mapa novo", !comErroErr && comErro?.length === 3);
+
+    const { data: outroVe } = await otherTenant.client.from("importacoes").select("id").eq("id", hist.id);
+    check("tenant B não enxerga o histórico de obras do tenant A", (outroVe ?? []).length === 0);
+
+    // O mapa entidade -> recurso é a fonte única da permissão: se ele
+    // devolver null para uma entidade, o CHECK do histórico a rejeita.
+    const { data: recursoObras } = await admin.rpc("recurso_permissao_importacao", { p_entidade: "obras" });
+    check("mapa de permissão: obras -> obras", recursoObras === "obras");
+    const { data: recursoInvalido } = await admin.rpc("recurso_permissao_importacao", { p_entidade: "nao_existe" });
+    check("mapa de permissão: entidade desconhecida -> null", recursoInvalido === null);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
