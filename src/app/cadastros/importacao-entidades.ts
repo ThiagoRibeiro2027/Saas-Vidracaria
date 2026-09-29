@@ -178,6 +178,83 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     descricao:
       "Regra automática do configurador. Importe Características antes. Reimportar o mesmo arquivo não duplica regra: regra ativa equivalente é reconhecida e mantida.",
   },
+  {
+    chave: "recursos_produtivos",
+    rotulo: "Recursos produtivos",
+    modulo: "Produção",
+    rpc: "importar_recursos_produtivos",
+    campos: ["codigo", "nome", "tipo", "setor", "capacidade_horas_dia", "localizacao", "custo_hora"],
+    colunaIdentificador: "codigo",
+    colunaRotulo: "nome",
+    caminhoRevalidar: "/producao",
+    descricao:
+      "Máquinas, postos, equipes e ferramentas que executam as operações. O custo por hora alimenta a mão de obra automática. O tipo não é alterável depois de criado.",
+  },
+  {
+    chave: "roteiros_produtivos",
+    rotulo: "Roteiros produtivos",
+    modulo: "Produção",
+    rpc: "importar_roteiros_produtivos",
+    campos: ["codigo_item", "nome", "ativo"],
+    colunaIdentificador: "item",
+    colunaRotulo: "roteiro",
+    caminhoRevalidar: "/producao",
+    descricao: "Um roteiro por item fabricado. Importe Itens antes; as operações vêm no bloco seguinte.",
+  },
+  {
+    chave: "roteiro_operacoes",
+    rotulo: "Operações do roteiro",
+    modulo: "Produção",
+    rpc: "importar_roteiro_operacoes",
+    campos: [
+      "codigo_item",
+      "nome_roteiro",
+      "sequencia",
+      "descricao",
+      "codigo_recurso",
+      "tempo_previsto_minutos",
+      "requisitos",
+      "criterios_qualidade",
+      "perfil",
+      "ferramenta",
+      "processo",
+    ],
+    colunaIdentificador: "roteiro",
+    colunaRotulo: "operacao",
+    caminhoRevalidar: "/producao",
+    descricao:
+      "Passo a passo da fabricação, na ordem da sequência. Importe Roteiros e Recursos antes. Sequência já ocupada é reportada, nunca sobrescrita.",
+  },
+  {
+    chave: "estoque_saldos",
+    rotulo: "Estoque inicial",
+    modulo: "Estoque",
+    rpc: "importar_estoque_saldos",
+    campos: ["codigo_item", "quantidade_fisica"],
+    colunaIdentificador: "codigo",
+    colunaRotulo: "quantidade",
+    caminhoRevalidar: "/estoque",
+    descricao:
+      "Saldo do dia da virada, na unidade principal do item. A quantidade é o valor final desejado, não um acréscimo: reimportar o mesmo arquivo não soma de novo.",
+  },
+  {
+    chave: "itens_pecas_dimensionais",
+    rotulo: "Peças em estoque (dimensional)",
+    modulo: "Estoque",
+    rpc: "importar_itens_pecas_dimensionais",
+    campos: [
+      "codigo_item",
+      "identificador",
+      "quantidade_original",
+      "quantidade_disponivel",
+      "observacao",
+    ],
+    colunaIdentificador: "codigo",
+    colunaRotulo: "identificacao",
+    caminhoRevalidar: "/estoque",
+    descricao:
+      "Cada barra ou chapa individual. Sem identificador, duas linhas iguais são duas peças distintas — que é o caso legítimo de duas barras iguais. Importe Itens - Controle Dimensional antes.",
+  },
 ];
 
 export function entidadePorChave(chave: string): EntidadeImportacao | undefined {

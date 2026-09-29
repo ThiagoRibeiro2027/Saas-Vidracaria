@@ -593,6 +593,118 @@ async function main() {
     check("importar as mesmas regras duas vezes não duplica", regrasAtivas === 2);
   }
 
+  console.log("\n10. Produção e estoque (Fase 8d)");
+  {
+    const COD_ITEM = "ITM-IMP-8D";
+    const COD_REC = "REC-IMP-8D";
+    const COD_DIM = "DIM-IMP-8D";
+    for (const [codigo, descricao, tipo, unidade] of [
+      [COD_ITEM, "Item da Fase 8d", "produto_acabado", "UN"],
+      [COD_DIM, "Perfil da Fase 8d", "materia_prima", "M"],
+    ]) {
+      await admTenant.client.rpc("upsert_item", {
+        p_id: null, p_codigo: codigo, p_descricao: descricao, p_tipo: tipo,
+        p_classificacao: null, p_unidade_principal: unidade, p_situacao: "ativo",
+      });
+    }
+    const itemId = async (codigo) =>
+      (await admin.from("itens").select("id").eq("company_id", admTenant.company.id).eq("codigo", codigo).single()).data.id;
+    const saldoDe = async (codigo) =>
+      Number(
+        (await admin.from("estoque_saldos").select("quantidade_fisica")
+          .eq("company_id", admTenant.company.id).eq("item_id", await itemId(codigo)).single()).data.quantidade_fisica,
+      );
+
+    // ---- recursos ----
+    const rec = { codigo: COD_REC, nome: "Serra da Fase 8d", tipo: "maquina", setor: "corte", custo_hora: "45.50" };
+    const { error: semPermRec } = await noPermTenant.client.rpc("importar_recursos_produtivos", {
+      p_linhas: [rec], p_dry_run: true,
+    });
+    check("sem producao.manage não importa recursos", !!semPermRec);
+
+    const { data: prevRec } = await admTenant.client.rpc("importar_recursos_produtivos", {
+      p_linhas: [rec, { ...rec }, { codigo: "SEM-TIPO-8D", nome: "sem tipo" }], p_dry_run: true,
+    });
+    check("recurso novo é 'novo'", prevRec?.[0]?.status === "novo");
+    check("código de recurso repetido é 'duplicado_no_arquivo'", prevRec?.[1]?.status === "duplicado_no_arquivo");
+    check("recurso sem tipo é recusado", prevRec?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_recursos_produtivos", { p_linhas: [rec], p_dry_run: false });
+    const { data: recDb } = await admin
+      .from("recursos_produtivos").select("custo_hora").eq("company_id", admTenant.company.id).eq("codigo", COD_REC).maybeSingle();
+    check("recurso grava o custo por hora", Number(recDb?.custo_hora) === 45.5);
+
+    const { data: tipoTrocadoRec } = await admTenant.client.rpc("importar_recursos_produtivos", {
+      p_linhas: [{ ...rec, tipo: "posto" }], p_dry_run: true,
+    });
+    check("trocar o tipo de um recurso existente é recusado", tipoTrocadoRec?.[0]?.status === "invalido");
+
+    // ---- roteiro e operações ----
+    await admTenant.client.rpc("importar_roteiros_produtivos", {
+      p_linhas: [{ codigo_item: COD_ITEM, nome: "Roteiro padrão" }], p_dry_run: false,
+    });
+    const op = {
+      codigo_item: COD_ITEM, nome_roteiro: "Roteiro padrão", sequencia: "1",
+      descricao: "Cortar", codigo_recurso: COD_REC, tempo_previsto_minutos: "12",
+    };
+    const { data: prevOp } = await admTenant.client.rpc("importar_roteiro_operacoes", {
+      p_linhas: [op, { ...op }, { ...op, sequencia: "2", codigo_recurso: "NAO-EXISTE-8D" }, { ...op, sequencia: "3", nome_roteiro: "inexistente" }],
+      p_dry_run: true,
+    });
+    check("operação nova é 'novo'", prevOp?.[0]?.status === "novo");
+    check("mesma sequência repetida é 'duplicado_no_arquivo'", prevOp?.[1]?.status === "duplicado_no_arquivo");
+    check("recurso inexistente na operação é recusado", prevOp?.[2]?.status === "invalido");
+    check("roteiro inexistente é recusado", prevOp?.[3]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_roteiro_operacoes", { p_linhas: [op], p_dry_run: false });
+    const { data: opDeNovo } = await admTenant.client.rpc("importar_roteiro_operacoes", { p_linhas: [op], p_dry_run: true });
+    check("sequência já ocupada vira 'atualizacao', não sobrescreve", opDeNovo?.[0]?.status === "atualizacao");
+
+    // ---- estoque inicial: a armadilha do delta ----
+    // ajustar_saldo() recebe DELTA e a planilha dá valor ABSOLUTO. Sem o
+    // cálculo da diferença, a 2ª importação do mesmo arquivo dobraria o
+    // estoque sem erro nenhum na tela.
+    await admTenant.client.rpc("importar_estoque_saldos", {
+      p_linhas: [{ codigo_item: COD_ITEM, quantidade_fisica: "100" }], p_dry_run: false,
+    });
+    check("estoque inicial grava a quantidade informada", (await saldoDe(COD_ITEM)) === 100);
+    await admTenant.client.rpc("importar_estoque_saldos", {
+      p_linhas: [{ codigo_item: COD_ITEM, quantidade_fisica: "100" }], p_dry_run: false,
+    });
+    check("reimportar o mesmo saldo NÃO dobra o estoque", (await saldoDe(COD_ITEM)) === 100);
+    await admTenant.client.rpc("importar_estoque_saldos", {
+      p_linhas: [{ codigo_item: COD_ITEM, quantidade_fisica: "70" }], p_dry_run: false,
+    });
+    check("corrigir o saldo aplica só a diferença", (await saldoDe(COD_ITEM)) === 70);
+
+    // ---- peças dimensionais ----
+    const { data: semControle } = await admTenant.client.rpc("importar_itens_pecas_dimensionais", {
+      p_linhas: [{ codigo_item: COD_DIM, quantidade_original: "6" }], p_dry_run: true,
+    });
+    check("peça de item sem controle dimensional é recusada", semControle?.[0]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_itens_dimensional", {
+      p_linhas: [{ codigo_item: COD_DIM, dimensao_tipo: "linear", peso_por_unidade_dimensao: "1.85" }], p_dry_run: false,
+    });
+    const peca = { codigo_item: COD_DIM, identificador: "BARRA-8D", quantidade_original: "6", quantidade_disponivel: "4" };
+    const { data: prevPeca } = await admTenant.client.rpc("importar_itens_pecas_dimensionais", {
+      p_linhas: [peca, { ...peca }, { codigo_item: COD_DIM, quantidade_original: "6", quantidade_disponivel: "9" }],
+      p_dry_run: true,
+    });
+    check("peça dimensional nova é 'novo'", prevPeca?.[0]?.status === "novo");
+    check("mesmo identificador repetido é 'duplicado_no_arquivo'", prevPeca?.[1]?.status === "duplicado_no_arquivo");
+    check("disponível maior que original é recusado", prevPeca?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_itens_pecas_dimensionais", { p_linhas: [peca], p_dry_run: false });
+    const { data: pecaDb } = await admin
+      .from("itens_pecas_dimensionais").select("quantidade_original, quantidade_disponivel")
+      .eq("company_id", admTenant.company.id).eq("identificador", "BARRA-8D").maybeSingle();
+    check(
+      "peça entra com o consumo já aplicado (6 original, 4 disponível)",
+      Number(pecaDb?.quantidade_original) === 6 && Number(pecaDb?.quantidade_disponivel) === 4,
+    );
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
