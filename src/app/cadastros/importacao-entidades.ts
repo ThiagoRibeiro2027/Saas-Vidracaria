@@ -105,6 +105,79 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     descricao:
       "Só para item controlado por peça física: barra e perfil (linear, em metro) ou chapa, bobina e vidro (área, em m²). Não cria item — liga o controle num item que já existe.",
   },
+  {
+    chave: "pecas",
+    rotulo: "Peças",
+    modulo: "Engenharia",
+    rpc: "importar_pecas",
+    campos: ["codigo_item", "descricao_tecnica"],
+    colunaIdentificador: "codigo",
+    colunaRotulo: "descricao",
+    caminhoRevalidar: "/pecas",
+    descricao:
+      "Transforma um item existente em peça (a que tem composição e configurador). Importe Itens antes. A descrição técnica não é alterável por importação depois de criada.",
+  },
+  {
+    chave: "peca_composicao",
+    rotulo: "Composição da peça (lista de materiais)",
+    modulo: "Engenharia",
+    rpc: "importar_peca_composicao",
+    campos: [
+      "codigo_peca",
+      "codigo_material",
+      "quantidade_por_unidade",
+      "tipo_calculo",
+      "percentual_perda",
+      "observacao",
+    ],
+    colunaIdentificador: "peca",
+    colunaRotulo: "material",
+    caminhoRevalidar: "/pecas",
+    descricao:
+      "Uma linha por material que entra na peça. tipo_calculo fixo/linear/area define se a quantidade é fixa ou calculada pela dimensão. Importe Peças antes.",
+  },
+  {
+    chave: "peca_caracteristicas",
+    rotulo: "Características da peça (configurador)",
+    modulo: "Engenharia",
+    rpc: "importar_peca_caracteristicas",
+    campos: [
+      "codigo_peca",
+      "nome",
+      "tipo",
+      "unidade",
+      "opcoes",
+      "obrigatoria",
+      "papel_dimensional",
+    ],
+    colunaIdentificador: "peca",
+    colunaRotulo: "caracteristica",
+    caminhoRevalidar: "/pecas",
+    descricao:
+      "Campos que o vendedor preenche ao configurar a peça. Em tipo opcao, a coluna opcoes recebe os valores separados por vírgula. O tipo não é alterável depois de criado.",
+  },
+  {
+    chave: "peca_regras",
+    rotulo: "Regras da peça (configurador)",
+    modulo: "Engenharia",
+    rpc: "importar_peca_regras",
+    campos: [
+      "codigo_peca",
+      "nome_caracteristica",
+      "operador",
+      "valor_comparacao_numero",
+      "valor_comparacao_texto",
+      "acao",
+      "codigo_material_acao",
+      "acao_quantidade",
+      "motivo",
+    ],
+    colunaIdentificador: "peca",
+    colunaRotulo: "caracteristica",
+    caminhoRevalidar: "/pecas",
+    descricao:
+      "Regra automática do configurador. Importe Características antes. Reimportar o mesmo arquivo não duplica regra: regra ativa equivalente é reconhecida e mantida.",
+  },
 ];
 
 export function entidadePorChave(chave: string): EntidadeImportacao | undefined {

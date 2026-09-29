@@ -459,6 +459,140 @@ async function main() {
     check("tipo de dimensão inválido é recusado pela função do banco", tipoRuim?.[0]?.status === "invalido");
   }
 
+  console.log("\n9. Engenharia: peças, composição, características e regras (Fase 8c)");
+  {
+    const COD_PECA = "PEC-IMP-8C";
+    const COD_MAT = "MAT-IMP-8C";
+    const COD_EXTRA = "REF-IMP-8C";
+    for (const [codigo, descricao, tipo, unidade] of [
+      [COD_PECA, "Peça da Fase 8c", "produto_acabado", "UN"],
+      [COD_MAT, "Material da Fase 8c", "materia_prima", "M"],
+      [COD_EXTRA, "Reforço da Fase 8c", "materia_prima", "M"],
+    ]) {
+      await admTenant.client.rpc("upsert_item", {
+        p_id: null, p_codigo: codigo, p_descricao: descricao, p_tipo: tipo,
+        p_classificacao: null, p_unidade_principal: unidade, p_situacao: "ativo",
+      });
+    }
+
+    // ---- peças ----
+    const { error: semPermPeca } = await noPermTenant.client.rpc("importar_pecas", {
+      p_linhas: [{ codigo_item: COD_PECA }], p_dry_run: true,
+    });
+    check("sem pecas.manage não importa peças", !!semPermPeca);
+
+    const { data: prevPeca } = await admTenant.client.rpc("importar_pecas", {
+      p_linhas: [{ codigo_item: COD_PECA, descricao_tecnica: "Técnica A" }, { codigo_item: COD_PECA }, { codigo_item: "NAO-EXISTE-8C" }],
+      p_dry_run: true,
+    });
+    check("peça nova é 'novo'", prevPeca?.[0]?.status === "novo");
+    check("código de peça repetido é 'duplicado_no_arquivo'", prevPeca?.[1]?.status === "duplicado_no_arquivo");
+    check("item inexistente aponta a aba de Itens", prevPeca?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_pecas", {
+      p_linhas: [{ codigo_item: COD_PECA, descricao_tecnica: "Técnica A" }], p_dry_run: false,
+    });
+    const { data: pecaDeNovo } = await admTenant.client.rpc("importar_pecas", {
+      p_linhas: [{ codigo_item: COD_PECA, descricao_tecnica: "OUTRA" }], p_dry_run: true,
+    });
+    check(
+      "descrição técnica diferente é recusada, não ignorada em silêncio",
+      pecaDeNovo?.[0]?.status === "invalido" && /não é alterável/.test(pecaDeNovo?.[0]?.erro ?? ""),
+    );
+
+    // ---- composição ----
+    const linhaComp = {
+      codigo_peca: COD_PECA, codigo_material: COD_MAT,
+      quantidade_por_unidade: "2.5", tipo_calculo: "linear", percentual_perda: "5",
+    };
+    const { data: prevComp } = await admTenant.client.rpc("importar_peca_composicao", {
+      p_linhas: [linhaComp], p_dry_run: true,
+    });
+    check("composição nova é 'novo'", prevComp?.[0]?.status === "novo");
+
+    await admTenant.client.rpc("importar_peca_composicao", { p_linhas: [linhaComp], p_dry_run: false });
+    const { data: itemMat } = await admin
+      .from("itens").select("id").eq("company_id", admTenant.company.id).eq("codigo", COD_MAT).single();
+    const { data: comp } = await admin
+      .from("peca_composicao").select("quantidade_por_unidade, tipo_calculo, percentual_perda")
+      .eq("company_id", admTenant.company.id).eq("material_item_id", itemMat.id).maybeSingle();
+    check(
+      "composição grava quantidade, tipo de cálculo e perda",
+      Number(comp?.quantidade_por_unidade) === 2.5 && comp?.tipo_calculo === "linear" && Number(comp?.percentual_perda) === 5,
+    );
+
+    // ---- características ----
+    const { data: prevCar } = await admTenant.client.rpc("importar_peca_caracteristicas", {
+      p_linhas: [
+        { codigo_peca: COD_PECA, nome: "largura", tipo: "numero", unidade: "mm", papel_dimensional: "largura" },
+        { codigo_peca: COD_PECA, nome: "vidro", tipo: "opcao", opcoes: "temperado, laminado" },
+        { codigo_peca: COD_PECA, nome: "vidro", tipo: "opcao", opcoes: "x" },
+      ],
+      p_dry_run: true,
+    });
+    check("característica nova é 'novo'", prevCar?.[0]?.status === "novo");
+    check("nome de característica repetido é 'duplicado_no_arquivo'", prevCar?.[2]?.status === "duplicado_no_arquivo");
+
+    await admTenant.client.rpc("importar_peca_caracteristicas", {
+      p_linhas: [
+        { codigo_peca: COD_PECA, nome: "largura", tipo: "numero", unidade: "mm", papel_dimensional: "largura" },
+        { codigo_peca: COD_PECA, nome: "vidro", tipo: "opcao", opcoes: "temperado, laminado" },
+      ],
+      p_dry_run: false,
+    });
+    const { data: itemPeca } = await admin
+      .from("itens").select("id").eq("company_id", admTenant.company.id).eq("codigo", COD_PECA).single();
+    const { data: pecaRow } = await admin
+      .from("pecas").select("id").eq("company_id", admTenant.company.id).eq("item_id", itemPeca.id).single();
+    const { data: caracteristicas } = await admin
+      .from("peca_caracteristicas").select("nome, opcoes, papel_dimensional").eq("peca_id", pecaRow.id);
+    check("as duas características são gravadas", (caracteristicas ?? []).length === 2);
+    check(
+      "lista de opções separada por vírgula vira array",
+      (caracteristicas ?? []).find((c) => c.nome === "vidro")?.opcoes?.length === 2,
+    );
+    check(
+      "papel dimensional é aplicado",
+      (caracteristicas ?? []).find((c) => c.nome === "largura")?.papel_dimensional === "largura",
+    );
+
+    const { data: tipoTrocado } = await admTenant.client.rpc("importar_peca_caracteristicas", {
+      p_linhas: [{ codigo_peca: COD_PECA, nome: "largura", tipo: "texto" }], p_dry_run: true,
+    });
+    check("trocar o tipo de uma característica existente é recusado", tipoTrocado?.[0]?.status === "invalido");
+
+    // ---- regras ----
+    // adicionar_material exige material FORA da composição base; ajustar_quantidade,
+    // um que esteja nela. As duas formas são exercitadas de propósito.
+    const regraAdd = {
+      codigo_peca: COD_PECA, nome_caracteristica: "largura", operador: ">",
+      valor_comparacao_numero: "2000", acao: "adicionar_material",
+      codigo_material_acao: COD_EXTRA, acao_quantidade: "1", motivo: "reforço",
+    };
+    const regraAjuste = {
+      codigo_peca: COD_PECA, nome_caracteristica: "largura", operador: ">=",
+      valor_comparacao_numero: "3000", acao: "ajustar_quantidade",
+      codigo_material_acao: COD_MAT, acao_quantidade: "3",
+    };
+
+    const { data: prevRegra } = await admTenant.client.rpc("importar_peca_regras", {
+      p_linhas: [regraAdd, regraAjuste, { ...regraAdd }, { ...regraAdd, nome_caracteristica: "inexistente" }],
+      p_dry_run: true,
+    });
+    check("regra de adicionar_material é 'novo'", prevRegra?.[0]?.status === "novo");
+    check("regra de ajustar_quantidade é 'novo'", prevRegra?.[1]?.status === "novo");
+    check("regra repetida no arquivo é 'duplicado_no_arquivo'", prevRegra?.[2]?.status === "duplicado_no_arquivo");
+    check("característica inexistente na regra é recusada", prevRegra?.[3]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_peca_regras", { p_linhas: [regraAdd, regraAjuste], p_dry_run: false });
+    await admTenant.client.rpc("importar_peca_regras", { p_linhas: [regraAdd, regraAjuste], p_dry_run: false });
+    const { count: regrasAtivas } = await admin
+      .from("peca_regras").select("id", { count: "exact", head: true }).eq("peca_id", pecaRow.id).eq("ativo", true);
+    // Regras são versionadas e criar_regra_peca() sempre cria versão nova:
+    // sem o reconhecimento de regra equivalente, importar duas vezes daria 4.
+    check("importar as mesmas regras duas vezes não duplica", regrasAtivas === 2);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
