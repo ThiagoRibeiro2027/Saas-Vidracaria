@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ajustarSaldoAction,
   reservarParaPedidoItemAction,
@@ -8,6 +9,7 @@ import {
   registrarEntradaSobraAction,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -50,6 +52,9 @@ export default function EstoqueSection({
     const it = itens.find((i) => i.id === id);
     return it ? `${it.codigo} — ${it.descricao}` : "(item removido)";
   };
+
+  const [selectedPedidoId, setSelectedPedidoId] = useState<string | null>(null);
+  const pedidoSelecionado = pedidos.find((p) => p.id === selectedPedidoId) ?? null;
 
   return (
     <>
@@ -122,88 +127,123 @@ export default function EstoqueSection({
       {activeTab === "reserva" && (
       <section>
         <h2 className="text-sm font-semibold text-text">Reserva para pedidos liberados</h2>
-        <div className="mt-2 flex flex-col gap-4">
-          {pedidos.map((ped) => {
-            const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
-            return (
-              <Card key={ped.id} padding="xs">
-                <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
-                  <strong className="text-[13px] text-text">{ped.numero}</strong>
-                  <span>{pessoaNome(ped.pessoa_id)}</span>
-                  <span className="text-text-muted">{obraNome(ped.obra_id)}</span>
-                </div>
 
-                <Table className="mt-2">
-                  <thead>
-                    <tr>
-                      <Th>Item</Th>
-                      <Th>Necessário</Th>
-                      <Th>Reservado</Th>
-                      <Th>Falta</Th>
-                      {canManage && <Th />}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {itensDoPedido.map((pi) => {
-                      const reserva = reservaAtivaPorPedidoItem.get(pi.id);
-                      const reservado = reserva?.quantidade ?? 0;
-                      const falta = pi.quantidade - reservado;
-                      return (
-                        <tr key={pi.id}>
-                          <Td>{itemLabel(pi.item_id)}</Td>
-                          <Td>{num(pi.quantidade)}</Td>
-                          <Td>{num(reservado)}</Td>
-                          <Td>
-                            <span className={falta > 0 ? "text-warning" : "text-success"}>{num(falta)}</span>
-                          </Td>
-                          {canManage && (
-                            <Td>
-                              {reserva ? (
-                                <div className="flex gap-1">
-                                  <form action={consumirReservaAction}>
-                                    <input type="hidden" name="id" value={reserva.id} />
-                                    <Button type="submit" variant="primary">
-                                      Consumir
-                                    </Button>
-                                  </form>
-                                  <form action={liberarReservaAction}>
-                                    <input type="hidden" name="id" value={reserva.id} />
-                                    <Button type="submit" variant="secondary">
-                                      Liberar
-                                    </Button>
-                                  </form>
-                                </div>
-                              ) : (
-                                <form action={reservarParaPedidoItemAction}>
-                                  <input type="hidden" name="pedido_item_id" value={pi.id} />
-                                  <Button type="submit" variant="primary">
-                                    Reservar
-                                  </Button>
-                                </form>
-                              )}
-                            </Td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                    {itensDoPedido.length === 0 && (
-                      <tr>
-                        <Td colSpan={canManage ? 5 : 4}>
-                          <span className="text-text-muted">Pedido sem itens.</span>
-                        </Td>
-                      </tr>
-                    )}
-                  </tbody>
-                </Table>
-              </Card>
-            );
-          })}
-          {pedidos.length === 0 && (
-            <p className="text-xs text-text-muted">
-              Nenhum pedido liberado ainda — a reserva só entra depois da liberação (TÓPICO 3).
-            </p>
-          )}
+        <div className="mt-2 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Número</Th>
+                <Th>Cliente</Th>
+                <Th>Obra</Th>
+                <Th>Itens</Th>
+                <Th>Situação</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {pedidos.map((ped) => {
+                const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
+                const faltantes = itensDoPedido.filter((pi) => {
+                  const reservado = reservaAtivaPorPedidoItem.get(pi.id)?.quantidade ?? 0;
+                  return pi.quantidade - reservado > 0;
+                }).length;
+                return (
+                  <tr
+                    key={ped.id}
+                    onClick={() => setSelectedPedidoId((prev) => (prev === ped.id ? null : ped.id))}
+                    className={`cursor-pointer ${selectedPedidoId === ped.id ? "bg-primary-soft" : "hover:bg-page-bg"}`}
+                  >
+                    <Td className="font-medium text-text">{ped.numero}</Td>
+                    <Td>{pessoaNome(ped.pessoa_id)}</Td>
+                    <Td className="text-text-muted">{obraNome(ped.obra_id)}</Td>
+                    <Td className="text-text-muted">{itensDoPedido.length}</Td>
+                    <Td>
+                      {faltantes > 0 ? (
+                        <Badge variant="warning">{faltantes} com falta</Badge>
+                      ) : (
+                        <Badge variant="success">Completo</Badge>
+                      )}
+                    </Td>
+                  </tr>
+                );
+              })}
+              {pedidos.length === 0 && (
+                <tr>
+                  <Td colSpan={5} className="text-text-muted">
+                    Nenhum pedido liberado ainda — a reserva só entra depois da liberação (TÓPICO 3).
+                  </Td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
         </div>
+
+        {pedidoSelecionado && (
+          <Card padding="xs" className="mt-3">
+            <strong className="text-sm text-text">Itens do pedido {pedidoSelecionado.numero}</strong>
+            <Table className="mt-2">
+              <thead>
+                <tr>
+                  <Th>Item</Th>
+                  <Th>Necessário</Th>
+                  <Th>Reservado</Th>
+                  <Th>Falta</Th>
+                  {canManage && <Th />}
+                </tr>
+              </thead>
+              <tbody>
+                {(pedidoItensPorPedido.get(pedidoSelecionado.id) ?? []).map((pi) => {
+                  const reserva = reservaAtivaPorPedidoItem.get(pi.id);
+                  const reservado = reserva?.quantidade ?? 0;
+                  const falta = pi.quantidade - reservado;
+                  return (
+                    <tr key={pi.id}>
+                      <Td>{itemLabel(pi.item_id)}</Td>
+                      <Td>{num(pi.quantidade)}</Td>
+                      <Td>{num(reservado)}</Td>
+                      <Td>
+                        <span className={falta > 0 ? "text-warning" : "text-success"}>{num(falta)}</span>
+                      </Td>
+                      {canManage && (
+                        <Td>
+                          {reserva ? (
+                            <div className="flex gap-1">
+                              <form action={consumirReservaAction}>
+                                <input type="hidden" name="id" value={reserva.id} />
+                                <Button type="submit" variant="primary">
+                                  Consumir
+                                </Button>
+                              </form>
+                              <form action={liberarReservaAction}>
+                                <input type="hidden" name="id" value={reserva.id} />
+                                <Button type="submit" variant="secondary">
+                                  Liberar
+                                </Button>
+                              </form>
+                            </div>
+                          ) : (
+                            <form action={reservarParaPedidoItemAction}>
+                              <input type="hidden" name="pedido_item_id" value={pi.id} />
+                              <Button type="submit" variant="primary">
+                                Reservar
+                              </Button>
+                            </form>
+                          )}
+                        </Td>
+                      )}
+                    </tr>
+                  );
+                })}
+                {(pedidoItensPorPedido.get(pedidoSelecionado.id) ?? []).length === 0 && (
+                  <tr>
+                    <Td colSpan={canManage ? 5 : 4}>
+                      <span className="text-text-muted">Pedido sem itens.</span>
+                    </Td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </Card>
+        )}
       </section>
       )}
 

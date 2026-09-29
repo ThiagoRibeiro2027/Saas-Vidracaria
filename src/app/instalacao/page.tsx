@@ -2,7 +2,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import InstalacaoSection from "./InstalacaoSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { Tabs } from "@/components/ui/Tabs";
 
 type TabSlug = "equipes" | "agenda" | "danos";
 
@@ -157,10 +156,6 @@ export default async function InstalacaoPage({
         </Link>
         .
       </p>
-
-      <div className="mt-6">
-        <Tabs tabs={availableTabs} active={activeTab} basePath="/instalacao" />
-      </div>
 
       <div className="mt-6">
         <InstalacaoSection

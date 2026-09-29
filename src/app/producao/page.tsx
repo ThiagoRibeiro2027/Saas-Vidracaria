@@ -20,7 +20,6 @@ import HorizontesSection, { type HorizonteProgramacao } from "./HorizontesSectio
 import ReplanejamentoSection, { type EventoReplanejamento } from "./ReplanejamentoSection";
 import RotulosStatusSection, { type RotuloStatusRow } from "./RotulosStatusSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { Tabs } from "@/components/ui/Tabs";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -163,10 +162,6 @@ export default async function ProducaoPage({
         lista de corte. Divisão por recurso/transferência (§13) já existe no backend, ainda sem
         tela. Sem sequenciamento, priorização, simulação ou replanejamento automáticos (§6-10).
       </p>
-
-      <div className="mt-6">
-        <Tabs tabs={availableTabs} active={activeTab} basePath="/producao" />
-      </div>
 
       <div className="mt-6">
         {activeTab === "ordens" && <OrdensTab supabase={supabase} canManage={canManageBool} />}

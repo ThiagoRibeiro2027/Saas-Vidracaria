@@ -4,7 +4,6 @@ import CuttingMarginsSection from "./CuttingMarginsSection";
 import MeasurementRulesSection from "./MeasurementRulesSection";
 import ApprovalThresholdsSection from "./ApprovalThresholdsSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { Tabs } from "@/components/ui/Tabs";
 
 type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada";
 
@@ -80,10 +79,6 @@ export default async function ConfiguracoesPage({
         Recorte mínimo do M1: numeração, margem de quebra, regra de medição e alçada de
         aprovação. Não substitui os cadastros dos módulos operacionais (item 1 do TÓPICO 15).
       </p>
-
-      <div className="mt-6">
-        <Tabs tabs={availableTabs} active={activeTab} basePath="/configuracoes" />
-      </div>
 
       <div className="mt-6">
         {activeTab === "numeracao" && (

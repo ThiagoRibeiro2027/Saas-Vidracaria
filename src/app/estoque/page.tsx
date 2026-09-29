@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import EstoqueSection from "./EstoqueSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { Tabs } from "@/components/ui/Tabs";
 
 type TabSlug = "saldo" | "reserva" | "sobra";
 
@@ -81,10 +80,6 @@ export default async function EstoquePage({
         falta disponível), consumo e registro de sobra. Sem localização, lote/serial ou
         inventário.
       </p>
-
-      <div className="mt-6">
-        <Tabs tabs={availableTabs} active={activeTab} basePath="/estoque" />
-      </div>
 
       <div className="mt-6">
         <EstoqueSection

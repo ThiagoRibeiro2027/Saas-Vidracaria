@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import MapaComprasSection from "./MapaComprasSection";
-import ComprasTabs from "../ComprasTabs";
 
 // TÓPICO 7 — Compras, Fase 3 da ADR-011: mapa de compras futuras (§12),
 // motor de necessidades por política de abastecimento (§1/§8) e
@@ -37,7 +36,6 @@ export default async function MapaComprasPage() {
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
-        <ComprasTabs />
         <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 3 da ADR-011)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Mapa de compras futuras</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>

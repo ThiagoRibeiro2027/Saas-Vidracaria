@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import UsuariosSection, { type Profile, type Role, type UserRoleRow } from "./UsuariosSection";
 import PapeisSection, { type Permission } from "./PapeisSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { Tabs } from "@/components/ui/Tabs";
 
 type TabSlug = "usuarios" | "papeis";
 
@@ -90,10 +89,6 @@ export default async function UsuariosPage({
         reset de senha; papéis próprios da empresa com permissão configurável. Sem alçadas de
         aprovação, SSO, integrações de identidade ou acesso emergencial (fase futura).
       </p>
-
-      <div className="mt-6">
-        <Tabs tabs={availableTabs} active={activeTab} basePath="/usuarios" />
-      </div>
 
       <div className="mt-6">
         {activeTab === "usuarios" && (

@@ -4,7 +4,6 @@ import ObrasSection from "./ObrasSection";
 import ItensSection from "./ItensSection";
 import ImportacaoSection from "./ImportacaoSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { Tabs } from "@/components/ui/Tabs";
 
 type TabSlug = "pessoas" | "obras" | "itens" | "importacao";
 
@@ -81,10 +80,6 @@ export default async function CadastrosPage({
         Recorte mínimo do M1: pessoas (clientes e fornecedores são papéis da mesma pessoa),
         obras e itens (produtos e materiais são o mesmo cadastro, diferenciados por tipo).
       </p>
-
-      <div className="mt-6">
-        <Tabs tabs={availableTabs} active={activeTab} basePath="/cadastros" />
-      </div>
 
       <div className="mt-6">
         {activeTab === "pessoas" && canViewPessoas && (

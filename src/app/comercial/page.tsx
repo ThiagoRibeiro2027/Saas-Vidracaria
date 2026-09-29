@@ -3,7 +3,6 @@ import OrcamentosSection from "./OrcamentosSection";
 import OportunidadesSection from "./OportunidadesSection";
 import PropostasSection from "./PropostasSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { Tabs } from "@/components/ui/Tabs";
 
 type TabSlug = "orcamentos" | "oportunidades" | "propostas";
 
@@ -141,10 +140,6 @@ export default async function ComercialPage({
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 10 — Comercial</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Comercial</h1>
-
-      <div className="mt-6">
-        <Tabs tabs={availableTabs} active={activeTab} basePath="/comercial" />
-      </div>
 
       {activeTab === "orcamentos" && (
         <div className="mt-6">

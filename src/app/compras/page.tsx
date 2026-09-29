@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import ComprasSection from "./ComprasSection";
-import ComprasTabs from "./ComprasTabs";
 
 // TÓPICO 7 — Compras, Fase 1 da ADR-011 (docs/ADR-011 — Compras v1.0.md,
 // aprovada 23/09/2026): escopo literal completo do módulo de Compras,
@@ -61,7 +60,6 @@ export default async function ComprasPage() {
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
-        <ComprasTabs />
         <p style={eyebrowStyle}>TÓPICO 7 — Compras (escopo completo, ADR-011, 9 fases)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Fornecedores e políticas de abastecimento</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>

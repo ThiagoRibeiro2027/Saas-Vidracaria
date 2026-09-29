@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   upsertOrcamentoAction,
   upsertOrcamentoItemAction,
@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Modal } from "@/components/ui/Modal";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string; pessoa_id: string; situacao: "ativo" | "inativo" };
@@ -111,7 +112,21 @@ export default function OrcamentosSection({
   const obraNome = (id: string | null) => (id ? obras.find((o) => o.id === id)?.nome ?? "(obra removida)" : "—");
   const obrasAtivas = obras.filter((o) => o.situacao === "ativo");
   const itensAtivos = itens.filter((i) => i.situacao === "ativo");
-  const [novoState, novoFormAction] = useActionState(upsertOrcamentoAction, undefined);
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [modal, setModal] = useState<{ mode: "create" } | { mode: "edit"; orcamento: Orcamento } | null>(null);
+
+  const selected = orcamentos.find((o) => o.id === selectedId) ?? null;
+  const editavelSelecionado = canManage && selected?.status === "rascunho";
+  const podeCancelarSelecionado = canManage && !!selected && (selected.status === "rascunho" || selected.status === "aprovado");
+
+  function closeModal() {
+    setModal(null);
+  }
+
+  function selectRow(id: string) {
+    setSelectedId((prev) => (prev === id ? null : id));
+  }
 
   return (
     <section>
@@ -125,217 +140,179 @@ export default function OrcamentosSection({
       </p>
 
       {canManage && (
-        <div className="mb-4">
-          <h3 className="mb-1.5 text-[13px] font-medium text-text">Novo orçamento</h3>
-          {clientesElegiveis.length === 0 ? (
-            <p className="text-xs text-text-muted">
-              Nenhuma pessoa com papel Cliente ativo — cadastre um em Cadastros antes.
-            </p>
-          ) : (
-            <form action={novoFormAction} className="flex flex-wrap items-center gap-1.5">
-              <Select name="pessoa_id" defaultValue="" required>
-                <option value="" disabled>
-                  Cliente
-                </option>
-                {clientesElegiveis.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nome}
-                  </option>
-                ))}
-              </Select>
-              <Select name="obra_id" defaultValue="">
-                <option value="">Sem obra</option>
-                {obrasAtivas.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nome} ({pessoaNome(o.pessoa_id)})
-                  </option>
-                ))}
-              </Select>
-              <label className="flex items-center gap-1 text-xs text-text">
-                Validade
-                <Input name="validade" type="date" />
-              </label>
-              <Input name="condicao_comercial" placeholder="condição comercial" className="w-40" />
-              <Input name="observacoes" placeholder="observações" className="w-44" />
-              <Button type="submit" variant="primary">
-                Criar orçamento
-              </Button>
-            </form>
-          )}
-          {novoState?.error && <p className="mt-1 text-xs text-danger">{novoState.error}</p>}
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <Button type="button" variant="primary" onClick={() => setModal({ mode: "create" })}>
+            + Incluir
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!editavelSelecionado}
+            onClick={() => selected && setModal({ mode: "edit", orcamento: selected })}
+          >
+            Editar
+          </Button>
+          <form action={decidirOrcamentoAction}>
+            <input type="hidden" name="id" value={selected?.id ?? ""} />
+            <input type="hidden" name="decisao" value="aprovado" />
+            <Button type="submit" variant="primary" disabled={!editavelSelecionado}>
+              Aprovar
+            </Button>
+          </form>
+          <form action={decidirOrcamentoAction}>
+            <input type="hidden" name="id" value={selected?.id ?? ""} />
+            <input type="hidden" name="decisao" value="rejeitado" />
+            <Button type="submit" variant="danger" disabled={!editavelSelecionado}>
+              Rejeitar
+            </Button>
+          </form>
+          <form action={cancelarOrcamentoAction}>
+            <input type="hidden" name="id" value={selected?.id ?? ""} />
+            <Button type="submit" variant="danger" disabled={!podeCancelarSelecionado}>
+              Cancelar
+            </Button>
+          </form>
+          <span className="ml-auto text-xs text-text-muted">
+            {selected ? `${selected.numero} selecionado` : "nenhum orçamento selecionado"}
+          </span>
         </div>
       )}
 
-      <div className="flex flex-col gap-4">
-        {orcamentos.map((orc) => {
-          const orcItens = itensPorOrcamento.get(orc.id) ?? [];
-          const total = totais.get(orc.id) ?? 0;
-          const editavel = canManage && orc.status === "rascunho";
-          // Guard de seleção atual: cliente/obra do orçamento podem ter saído
-          // da lista elegível (papel desligado / obra inativada) depois que o
-          // orçamento foi criado. Sem incluir a opção atual, o <select> cai
-          // silenciosamente na primeira opção da lista e salvar qualquer
-          // outro campo do cabeçalho reatribui o orçamento por engano (mesmo
-          // problema já resolvido em cadastros/ObrasSection.tsx).
-          const pessoaAtual = todasPessoas.find((p) => p.id === orc.pessoa_id);
-          const pessoaOpcoes =
-            pessoaAtual && !clientesElegiveis.some((p) => p.id === pessoaAtual.id)
-              ? [pessoaAtual, ...clientesElegiveis]
-              : clientesElegiveis;
-          const obraAtual = orc.obra_id ? obras.find((o) => o.id === orc.obra_id) : undefined;
-          const obraOpcoes =
-            obraAtual && !obrasAtivas.some((o) => o.id === obraAtual.id) ? [obraAtual, ...obrasAtivas] : obrasAtivas;
-
-          return (
-            <Card key={orc.id} padding="xs">
-              <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
-                <strong className="text-[13px] text-text">{orc.numero}</strong>
-                <span>{pessoaNome(orc.pessoa_id)}</span>
-                <span className="text-text-muted">{obraNome(orc.obra_id)}</span>
-                <span className="text-text-muted">{orc.data_orcamento}</span>
-                <Badge variant={STATUS_TONE[orc.status]}>{STATUS_LABEL[orc.status]}</Badge>
-                <span className="ml-auto font-semibold text-text">{currency(total)}</span>
-              </div>
-
-              {editavel && (
-                <OrcamentoHeaderForm
-                  orcamento={orc}
-                  pessoaOpcoes={pessoaOpcoes}
-                  clientesElegiveis={clientesElegiveis}
-                  obraOpcoes={obraOpcoes}
-                  obrasAtivas={obrasAtivas}
-                  pessoaAtual={pessoaAtual}
-                  obraAtual={obraAtual}
-                  pessoaNome={pessoaNome}
-                />
-              )}
-
-              {editavel && (
-                <OportunidadeVinculoForm
-                  orcamentoId={orc.id}
-                  oportunidadeAtualId={orc.oportunidade_id}
-                  oportunidades={oportunidadesAbertas.filter((o) => o.pessoa_id === orc.pessoa_id)}
-                />
-              )}
-
-              <Table className="mt-2">
-                <thead>
-                  <tr>
-                    <Th>Item</Th>
-                    <Th>Qtd</Th>
-                    <Th>Preço unit.</Th>
-                    <Th>Subtotal</Th>
-                    {canManage && <Th>Custo / margem</Th>}
-                    {editavel && <Th />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {orcItens.map((oi) => (
-                    <OrcamentoItemRow
-                      key={oi.id}
-                      item={oi}
-                      itensAtivos={itensAtivos}
-                      itemAtualFallback={itens.find((i) => i.id === oi.item_id)}
-                      itens={itens}
-                      editavel={editavel}
-                      canManage={canManage}
-                      pecaId={pecaIdPorItemId.get(oi.item_id)}
-                      caracteristicas={caracteristicasPorOrcamentoItem.get(oi.id) ?? []}
-                    />
-                  ))}
-                  {editavel && (
-                    <OrcamentoItemRow
-                      item={null}
-                      orcamentoId={orc.id}
-                      itensAtivos={itensAtivos}
-                      itens={itens}
-                      editavel={editavel}
-                      canManage={canManage}
-                      caracteristicas={[]}
-                    />
-                  )}
-                </tbody>
-              </Table>
-
-              {canManage && orc.status === "rascunho" && (
-                <div className="mt-2 flex gap-1.5">
-                  <form action={decidirOrcamentoAction}>
-                    <input type="hidden" name="id" value={orc.id} />
-                    <input type="hidden" name="decisao" value="aprovado" />
-                    <Button type="submit" variant="primary">
-                      Aprovar
-                    </Button>
-                  </form>
-                  <form action={decidirOrcamentoAction}>
-                    <input type="hidden" name="id" value={orc.id} />
-                    <input type="hidden" name="decisao" value="rejeitado" />
-                    <Button type="submit" variant="danger">
-                      Rejeitar
-                    </Button>
-                  </form>
-                  <form action={cancelarOrcamentoAction}>
-                    <input type="hidden" name="id" value={orc.id} />
-                    <Button type="submit" variant="danger">
-                      Cancelar
-                    </Button>
-                  </form>
-                </div>
-              )}
-              {canManage && orc.status === "aprovado" && (
-                <div className="mt-2">
-                  <form action={cancelarOrcamentoAction}>
-                    <input type="hidden" name="id" value={orc.id} />
-                    <Button type="submit" variant="danger">
-                      Cancelar
-                    </Button>
-                  </form>
-                </div>
-              )}
-            </Card>
-          );
-        })}
-        {orcamentos.length === 0 && <p className="text-xs text-text-muted">Nenhum orçamento ainda.</p>}
+      <div className="overflow-x-auto">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Número</Th>
+              <Th>Cliente</Th>
+              <Th>Obra</Th>
+              <Th>Data</Th>
+              <Th>Status</Th>
+              <Th className="text-right">Total</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {orcamentos.map((orc) => (
+              <tr
+                key={orc.id}
+                onClick={() => selectRow(orc.id)}
+                className={`cursor-pointer ${selectedId === orc.id ? "bg-primary-soft" : "hover:bg-page-bg"}`}
+              >
+                <Td className="font-medium text-text">{orc.numero}</Td>
+                <Td>{pessoaNome(orc.pessoa_id)}</Td>
+                <Td className="text-text-muted">{obraNome(orc.obra_id)}</Td>
+                <Td className="text-text-muted">{orc.data_orcamento}</Td>
+                <Td>
+                  <Badge variant={STATUS_TONE[orc.status]}>{STATUS_LABEL[orc.status]}</Badge>
+                </Td>
+                <Td className="text-right font-semibold text-text">{currency(totais.get(orc.id) ?? 0)}</Td>
+              </tr>
+            ))}
+            {orcamentos.length === 0 && (
+              <tr>
+                <Td colSpan={6} className="text-text-muted">
+                  Nenhum orçamento ainda.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
       </div>
+
+      {selected && (
+        <OrcamentoDetalhe
+          orcamento={selected}
+          orcItens={itensPorOrcamento.get(selected.id) ?? []}
+          editavel={!!editavelSelecionado}
+          canManage={canManage}
+          itensAtivos={itensAtivos}
+          itens={itens}
+          pecaIdPorItemId={pecaIdPorItemId}
+          caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
+          oportunidadesAbertas={oportunidadesAbertas.filter((o) => o.pessoa_id === selected.pessoa_id)}
+        />
+      )}
+
+      <Modal open={modal !== null} onClose={closeModal} title={modal?.mode === "edit" ? "Editar orçamento" : "Novo orçamento"}>
+        {modal && (
+          <OrcamentoForm
+            orcamento={modal.mode === "edit" ? modal.orcamento : undefined}
+            clientesElegiveis={clientesElegiveis}
+            obrasAtivas={obrasAtivas}
+            todasPessoas={todasPessoas}
+            obras={obras}
+            onSuccess={closeModal}
+          />
+        )}
+      </Modal>
     </section>
   );
 }
 
-function OrcamentoHeaderForm({
+function OrcamentoForm({
   orcamento,
-  pessoaOpcoes,
   clientesElegiveis,
-  obraOpcoes,
   obrasAtivas,
-  pessoaAtual,
-  obraAtual,
-  pessoaNome,
+  todasPessoas,
+  obras,
+  onSuccess,
 }: {
-  orcamento: Orcamento;
-  pessoaOpcoes: Pessoa[];
+  orcamento?: Orcamento;
   clientesElegiveis: Pessoa[];
-  obraOpcoes: Obra[];
   obrasAtivas: Obra[];
-  pessoaAtual: Pessoa | undefined;
-  obraAtual: Obra | undefined;
-  pessoaNome: (id: string) => string;
+  todasPessoas: Pessoa[];
+  obras: Obra[];
+  onSuccess: () => void;
 }) {
-  const [state, formAction] = useActionState(upsertOrcamentoAction, undefined);
+  const [state, formAction, isPending] = useActionState(upsertOrcamentoAction, undefined);
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (wasPending.current && !isPending && !state?.error) onSuccess();
+    wasPending.current = isPending;
+  }, [isPending, state, onSuccess]);
+
+  const pessoaNome = (id: string) => todasPessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
+  // Guard de seleção atual: cliente/obra do orçamento podem ter saído da
+  // lista elegível (papel desligado / obra inativada) depois que o
+  // orçamento foi criado — sem incluir a opção atual, o <select> cai
+  // silenciosamente na primeira opção da lista e salvar reatribui o
+  // orçamento por engano.
+  const pessoaAtual = orcamento ? todasPessoas.find((p) => p.id === orcamento.pessoa_id) : undefined;
+  const pessoaOpcoes =
+    pessoaAtual && !clientesElegiveis.some((p) => p.id === pessoaAtual.id) ? [pessoaAtual, ...clientesElegiveis] : clientesElegiveis;
+  const obraAtual = orcamento?.obra_id ? obras.find((o) => o.id === orcamento.obra_id) : undefined;
+  const obraOpcoes =
+    obraAtual && !obrasAtivas.some((o) => o.id === obraAtual.id) ? [obraAtual, ...obrasAtivas] : obrasAtivas;
+
+  if (!orcamento && clientesElegiveis.length === 0) {
+    return (
+      <p className="text-xs text-text-muted">
+        Nenhuma pessoa com papel Cliente ativo — cadastre um em Cadastros antes.
+      </p>
+    );
+  }
 
   return (
-    <>
-      <form action={formAction} className="mt-2 flex flex-wrap items-center gap-1.5">
-        <input type="hidden" name="id" value={orcamento.id} />
-        <Select name="pessoa_id" defaultValue={orcamento.pessoa_id} required>
+    <form action={formAction} className="flex flex-col gap-2.5">
+      {orcamento && <input type="hidden" name="id" value={orcamento.id} />}
+      <div>
+        <label className="mb-1 block text-xs text-text-muted">Cliente</label>
+        <Select name="pessoa_id" defaultValue={orcamento?.pessoa_id ?? ""} required className="w-full">
+          {!orcamento && (
+            <option value="" disabled>
+              Selecione...
+            </option>
+          )}
           {pessoaOpcoes.map((p) => (
             <option key={p.id} value={p.id}>
               {p.nome}
-              {pessoaAtual?.id === p.id && !clientesElegiveis.some((c) => c.id === p.id)
-                ? " (papel desligado)"
-                : ""}
+              {pessoaAtual?.id === p.id && !clientesElegiveis.some((c) => c.id === p.id) ? " (papel desligado)" : ""}
             </option>
           ))}
         </Select>
-        <Select name="obra_id" defaultValue={orcamento.obra_id ?? ""}>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs text-text-muted">Obra</label>
+        <Select name="obra_id" defaultValue={orcamento?.obra_id ?? ""} className="w-full">
           <option value="">Sem obra</option>
           {obraOpcoes.map((o) => (
             <option key={o.id} value={o.id}>
@@ -344,25 +321,106 @@ function OrcamentoHeaderForm({
             </option>
           ))}
         </Select>
-        <Input name="validade" type="date" defaultValue={orcamento.validade ?? ""} />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs text-text-muted">Validade</label>
+        <Input name="validade" type="date" defaultValue={orcamento?.validade ?? ""} className="w-full" />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs text-text-muted">Condição comercial</label>
         <Input
           name="condicao_comercial"
-          placeholder="condição comercial"
-          defaultValue={orcamento.condicao_comercial ?? ""}
-          className="w-40"
+          placeholder="ex.: 30/60/90 dias"
+          defaultValue={orcamento?.condicao_comercial ?? ""}
+          className="w-full"
         />
-        <Input
-          name="observacoes"
-          placeholder="observações"
-          defaultValue={orcamento.observacoes ?? ""}
-          className="w-44"
+      </div>
+      <div>
+        <label className="mb-1 block text-xs text-text-muted">Observações</label>
+        <Input name="observacoes" placeholder="observações" defaultValue={orcamento?.observacoes ?? ""} className="w-full" />
+      </div>
+      {state?.error && <p className="text-xs text-danger">{state.error}</p>}
+      <Button type="submit" variant="primary" disabled={isPending} className="mt-1 w-fit">
+        {isPending ? "Salvando..." : "Salvar"}
+      </Button>
+    </form>
+  );
+}
+
+function OrcamentoDetalhe({
+  orcamento,
+  orcItens,
+  editavel,
+  canManage,
+  itensAtivos,
+  itens,
+  pecaIdPorItemId,
+  caracteristicasPorOrcamentoItem,
+  oportunidadesAbertas,
+}: {
+  orcamento: Orcamento;
+  orcItens: OrcamentoItem[];
+  editavel: boolean;
+  canManage: boolean;
+  itensAtivos: Item[];
+  itens: Item[];
+  pecaIdPorItemId: Map<string, string>;
+  caracteristicasPorOrcamentoItem: Map<string, Caracteristica[]>;
+  oportunidadesAbertas: OportunidadeResumo[];
+}) {
+  return (
+    <Card padding="xs" className="mt-3">
+      <strong className="text-sm text-text">Itens do orçamento {orcamento.numero}</strong>
+
+      {editavel && (
+        <OportunidadeVinculoForm
+          orcamentoId={orcamento.id}
+          oportunidadeAtualId={orcamento.oportunidade_id}
+          oportunidades={oportunidadesAbertas}
         />
-        <Button type="submit" variant="primary">
-          Salvar cabeçalho
-        </Button>
-      </form>
-      {state?.error && <p className="mt-1 text-xs text-danger">{state.error}</p>}
-    </>
+      )}
+
+      <div className="mt-2 overflow-x-auto">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Item</Th>
+              <Th>Qtd</Th>
+              <Th>Preço unit.</Th>
+              <Th>Subtotal</Th>
+              {canManage && <Th>Custo / margem</Th>}
+              {editavel && <Th />}
+            </tr>
+          </thead>
+          <tbody>
+            {orcItens.map((oi) => (
+              <OrcamentoItemRow
+                key={oi.id}
+                item={oi}
+                itensAtivos={itensAtivos}
+                itemAtualFallback={itens.find((i) => i.id === oi.item_id)}
+                itens={itens}
+                editavel={editavel}
+                canManage={canManage}
+                pecaId={pecaIdPorItemId.get(oi.item_id)}
+                caracteristicas={caracteristicasPorOrcamentoItem.get(oi.id) ?? []}
+              />
+            ))}
+            {editavel && (
+              <OrcamentoItemRow
+                item={null}
+                orcamentoId={orcamento.id}
+                itensAtivos={itensAtivos}
+                itens={itens}
+                editavel={editavel}
+                canManage={canManage}
+                caracteristicas={[]}
+              />
+            )}
+          </tbody>
+        </Table>
+      </div>
+    </Card>
   );
 }
 

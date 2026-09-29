@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import ComprasDashboard from "./ComprasDashboard";
-import ComprasTabs from "../ComprasTabs";
 import { inputStyle, buttonStyle } from "../../configuracoes/styles";
 
 // TÓPICO 7 — Compras, Fase 9 da ADR-011 (docs/ADR-011 — Compras v1.0.md):
@@ -43,7 +42,6 @@ export default async function ComprasDashboardPage({
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
-        <ComprasTabs />
         <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 9 da ADR-011)</p>
         <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Dashboard de Compras</h1>
         <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>

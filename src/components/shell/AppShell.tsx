@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -36,7 +37,9 @@ export function AppShell({
 
   return (
     <div className="flex h-full min-h-dvh">
-      <Sidebar />
+      <Suspense fallback={<aside className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar-bg md:flex" />}>
+        <Sidebar />
+      </Suspense>
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar displayName={displayName} companyName={companyName} notificacoes={notificacoes} />
         <main className="flex-1 overflow-y-auto bg-page-bg">{children}</main>

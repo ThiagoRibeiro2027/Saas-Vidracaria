@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import PedidosSection from "./PedidosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { Tabs } from "@/components/ui/Tabs";
 
 type TabSlug = "pedidos" | "conversao";
 
@@ -103,10 +102,6 @@ export default async function PedidosPage({
         liberação. Sem cadastro direto de pedido, importação ou acompanhamento de produção
         (TÓPICO 4).
       </p>
-
-      <div className="mt-6">
-        <Tabs tabs={availableTabs} active={activeTab} basePath="/pedidos" />
-      </div>
 
       <div className="mt-6">
         <PedidosSection
