@@ -2,6 +2,7 @@
 
 import { upsertOrcamentoCompraAction } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { formatarData } from "@/lib/formato/data";
 
 type Linha = {
   id: string;
@@ -12,10 +13,6 @@ type Linha = {
   comprometido: number;
   realizado: number;
 };
-
-function formatarData(data: string) {
-  return new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR");
-}
 
 export default function OrcamentoComprasSection({ linhas, canManage }: { linhas: Linha[]; canManage: boolean }) {
   return (

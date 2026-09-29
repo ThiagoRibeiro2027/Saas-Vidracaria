@@ -9,6 +9,7 @@ import {
   atualizarMaterialPecaAction,
   removerMaterialPecaAction,
   definirCaracteristicaPecaAction,
+  atualizarCaracteristicaPecaAction,
   removerCaracteristicaPecaAction,
   definirPapelDimensionalAction,
   definirTipoCalculoComposicaoAction,
@@ -421,42 +422,7 @@ function CaracteristicasPeca({
       ) : (
         <ul style={{ ...hintStyle, margin: "0 0 6px", paddingLeft: "18px" }}>
           {caracteristicas.map((c) => (
-            <li key={c.id} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-              <span>
-                {c.nome} ({CARACTERISTICA_TIPOS.find(([v]) => v === c.tipo)?.[1] ?? c.tipo}
-                {c.unidade ? `, ${c.unidade}` : ""}
-                {c.opcoes ? `: ${c.opcoes.join(", ")}` : ""}
-                {c.obrigatoria ? ", obrigatória" : ""})
-              </span>
-              {c.tipo === "numero" && (canManage ? (
-                <form action={definirPapelDimensionalAction} style={{ display: "flex", alignItems: "center" }}>
-                  <input type="hidden" name="caracteristica_id" value={c.id} />
-                  <select
-                    name="papel_dimensional"
-                    defaultValue={c.papel_dimensional ?? ""}
-                    onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                    style={{ ...inputStyle, fontSize: "10px", padding: "1px 4px" }}
-                    title="Papel dimensional (ADR-012) — alimenta a fórmula de perímetro/área"
-                  >
-                    <option value="">sem papel dimensional</option>
-                    <option value="largura">largura</option>
-                    <option value="altura">altura</option>
-                  </select>
-                </form>
-              ) : (
-                c.papel_dimensional && (
-                  <span style={{ fontSize: "10px", color: "#1f5d57", fontFamily: "monospace" }}>{c.papel_dimensional}</span>
-                )
-              ))}
-              {canManage && (
-                <form action={removerCaracteristicaPecaAction}>
-                  <input type="hidden" name="id" value={c.id} />
-                  <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#9b2c2c" }}>
-                    Remover
-                  </button>
-                </form>
-              )}
-            </li>
+            <CaracteristicaItem key={c.id} c={c} canManage={canManage} />
           ))}
         </ul>
       )}
@@ -489,6 +455,111 @@ function CaracteristicasPeca({
         </form>
       )}
     </div>
+  );
+}
+
+// Editar era o buraco: a tela só tinha "Remover", então corrigir a unidade
+// ou acrescentar uma opção obrigava a apagar e recadastrar — e remover é
+// bloqueado assim que existe valor informado em algum pedido, o que
+// deixava a característica sem conserto. Nome e tipo continuam imutáveis
+// (a função do banco não os aceita): valores já gravados em orçamento e
+// pedido foram registrados sob aquele tipo.
+function CaracteristicaItem({ c, canManage }: { c: Caracteristica; canManage: boolean }) {
+  const [editando, setEditando] = useState(false);
+  const tipoLabel = CARACTERISTICA_TIPOS.find(([v]) => v === c.tipo)?.[1] ?? c.tipo;
+
+  if (editando) {
+    return (
+      <li style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+        <form
+          action={atualizarCaracteristicaPecaAction}
+          onSubmit={() => setEditando(false)}
+          style={{ display: "flex", gap: "4px", alignItems: "center", flexWrap: "wrap" }}
+        >
+          <input type="hidden" name="id" value={c.id} />
+          <input type="hidden" name="tipo" value={c.tipo} />
+          <span style={{ fontWeight: 600 }}>{c.nome}</span>
+          <span style={{ fontSize: "10px", color: "#6b7a76" }}>({tipoLabel} — nome e tipo não mudam)</span>
+          <input
+            name="unidade"
+            defaultValue={c.unidade ?? ""}
+            placeholder="unidade (opcional)"
+            style={{ ...inputStyle, width: "90px" }}
+          />
+          {c.tipo === "opcao" && (
+            <input
+              name="opcoes"
+              defaultValue={c.opcoes?.join(", ") ?? ""}
+              placeholder="opções, separadas por vírgula"
+              required
+              style={{ ...inputStyle, width: "180px" }}
+            />
+          )}
+          <label style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "11px", color: "#3e4d49" }}>
+            <input type="checkbox" name="obrigatoria" defaultChecked={c.obrigatoria} />
+            obrigatória
+          </label>
+          <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px" }}>
+            Salvar
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditando(false)}
+            style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
+          >
+            Cancelar
+          </button>
+        </form>
+      </li>
+    );
+  }
+
+  return (
+    <li style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+      <span>
+        {c.nome} ({tipoLabel}
+        {c.unidade ? `, ${c.unidade}` : ""}
+        {c.opcoes ? `: ${c.opcoes.join(", ")}` : ""}
+        {c.obrigatoria ? ", obrigatória" : ""})
+      </span>
+      {c.tipo === "numero" && (canManage ? (
+        <form action={definirPapelDimensionalAction} style={{ display: "flex", alignItems: "center" }}>
+          <input type="hidden" name="caracteristica_id" value={c.id} />
+          <select
+            name="papel_dimensional"
+            defaultValue={c.papel_dimensional ?? ""}
+            onChange={(e) => e.currentTarget.form?.requestSubmit()}
+            style={{ ...inputStyle, fontSize: "10px", padding: "1px 4px" }}
+            title="Papel dimensional (ADR-012) — alimenta a fórmula de perímetro/área"
+          >
+            <option value="">sem papel dimensional</option>
+            <option value="largura">largura</option>
+            <option value="altura">altura</option>
+          </select>
+        </form>
+      ) : (
+        c.papel_dimensional && (
+          <span style={{ fontSize: "10px", color: "#1f5d57", fontFamily: "monospace" }}>{c.papel_dimensional}</span>
+        )
+      ))}
+      {canManage && (
+        <>
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
+          >
+            Editar
+          </button>
+          <form action={removerCaracteristicaPecaAction}>
+            <input type="hidden" name="id" value={c.id} />
+            <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#9b2c2c" }}>
+              Remover
+            </button>
+          </form>
+        </>
+      )}
+    </li>
   );
 }
 

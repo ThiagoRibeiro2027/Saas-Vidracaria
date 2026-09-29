@@ -2,6 +2,7 @@
 
 import { gerarNecessidadesPoliticaAction, upsertFeriadoAction, removerFeriadoAction } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { formatarData } from "@/lib/formato/data";
 
 type LinhaMapa = {
   item_id: string;
@@ -20,10 +21,6 @@ type Feriado = { id: string; data: string; descricao: string | null };
 
 const RISCO_LABEL: Record<string, string> = { critico: "🔴 Crítico", atencao: "🟡 Atenção", ok: "🟢 Ok" };
 const RISCO_COLOR: Record<string, string> = { critico: "#9b2c2c", atencao: "#8a6d1a", ok: "#1f5d57" };
-
-function formatarData(data: string | null) {
-  return data ? new Date(`${data}T00:00:00`).toLocaleDateString("pt-BR") : "—";
-}
 
 export default function MapaComprasSection({
   mapa,

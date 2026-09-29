@@ -121,6 +121,35 @@ export async function definirCaracteristicaPecaAction(formData: FormData) {
   revalidatePath("/pecas");
 }
 
+// A função do banco só deixa mexer em unidade, opções e obrigatoriedade —
+// nome e tipo são imutáveis depois de criados, porque valores já
+// informados em orçamento/pedido foram gravados sob aquele tipo. A tela
+// reflete isso: os dois aparecem como texto fixo no formulário de edição.
+export async function atualizarCaracteristicaPecaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const tipo = String(formData.get("tipo") ?? "");
+  const unidade = String(formData.get("unidade") ?? "").trim() || null;
+  const opcoesRaw = String(formData.get("opcoes") ?? "").trim();
+  const obrigatoria = formData.get("obrigatoria") === "on";
+  if (!id) throw new Error("Característica inválida.");
+
+  const opcoes = tipo === "opcao" ? opcoesRaw.split(",").map((v) => v.trim()).filter(Boolean) : null;
+  if (tipo === "opcao" && (!opcoes || opcoes.length === 0)) {
+    throw new Error("Característica do tipo opção precisa de pelo menos um valor permitido.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("atualizar_caracteristica_peca", {
+    p_id: id,
+    p_unidade: unidade,
+    p_opcoes: opcoes,
+    p_obrigatoria: obrigatoria,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
+
 export async function removerCaracteristicaPecaAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) throw new Error("Característica inválida.");

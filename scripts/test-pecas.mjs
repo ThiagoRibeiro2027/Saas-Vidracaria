@@ -23,6 +23,20 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarrava
+// em itens_company_codigo_unique logo na seção 0 (os `upsert_item` usam
+// `p_id: null` com código fixo), `itemPecaId`/`itemMaterialId` voltavam
+// nulos e daí praticamente toda seção seguinte falhava em cascata — dezenas
+// de ✗ que não representavam bug nenhum no produto. Tenant por execução
+// resolve a classe inteira do problema: cada rodada nasce num tenant vazio,
+// e as asserções podem continuar assumindo estado zerado (revisao_atual = 1,
+// "traz 1 revisão", "traz 1 linha"). O custo é acumular um tenant
+// `pecas-test-*-<sufixo>` por execução no banco da nuvem — limpeza é
+// separada e combinada com o responsável, nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -93,11 +107,11 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 }
 
 async function main() {
-  console.log("Preparando tenants (admin, sem-permissão de peças, outro tenant)...");
-  const admTenant = await createTenant("pecas-test-admin", "Peças Admin Teste", "pc01", "ADMIN");
+  console.log(`Preparando tenants (admin, sem-permissão de peças, outro tenant) — execução ${RUN}...`);
+  const admTenant = await createTenant(`pecas-test-admin-${RUN}`, "Peças Admin Teste", "pc01", "ADMIN");
   // QUALIDADE não administra Peças — prova a autoridade separada (mesmo padrão de test-suprimentos.mjs).
-  const noPermTenant = await createTenant("pecas-test-admin", "Peças SemPerm Teste", "pc02", "QUALIDADE", admTenant.company);
-  const otherTenant = await createTenant("pecas-test-other", "Peças Outro Teste", "pc03", "ADMIN");
+  const noPermTenant = await createTenant(`pecas-test-admin-${RUN}`, "Peças SemPerm Teste", "pc02", "QUALIDADE", admTenant.company);
+  const otherTenant = await createTenant(`pecas-test-other-${RUN}`, "Peças Outro Teste", "pc03", "ADMIN");
 
   console.log("\n0. Massa de dados — item peça (produto_acabado), item material (matéria-prima), item errado (serviço)");
   const { data: itemPecaId } = await admTenant.client.rpc("upsert_item", {
@@ -256,6 +270,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "pecas.peca_criada", "pecas.material_adicionado", "pecas.material_atualizado",
         "pecas.material_removido", "pecas.peca_inativada", "pecas.peca_reativada",
@@ -433,6 +448,50 @@ async function main() {
     check("sem pecas.manage não define característica", !!error);
   }
 
+  console.log("\n29b. atualizar_caracteristica_peca() — editar sem apagar e recriar");
+  {
+    // A função existia desde 20261016000000 e nunca tinha sido coberta:
+    // a tela só oferecia "Remover", então ninguém a exercitava. Coberta
+    // junto da tela de edição (Bloco A da auditoria de 27/09/2026).
+    const { error: semPermErr } = await noPermTenant.client.rpc("atualizar_caracteristica_peca", {
+      p_id: caractLarguraId, p_unidade: "cm", p_opcoes: null, p_obrigatoria: false,
+    });
+    check("sem pecas.manage não atualiza característica", !!semPermErr);
+
+    const { error: outroErr } = await otherTenant.client.rpc("atualizar_caracteristica_peca", {
+      p_id: caractLarguraId, p_unidade: "cm", p_opcoes: null, p_obrigatoria: false,
+    });
+    check("característica de outra empresa não é encontrada", !!outroErr);
+
+    const { error: opcaoSemListaErr } = await admTenant.client.rpc("atualizar_caracteristica_peca", {
+      p_id: caractVidroId, p_unidade: null, p_opcoes: null, p_obrigatoria: true,
+    });
+    check("atualizar tipo opcao sem lista é rejeitado", !!opcaoSemListaErr);
+
+    const { error: numeroComListaErr } = await admTenant.client.rpc("atualizar_caracteristica_peca", {
+      p_id: caractLarguraId, p_unidade: "mm", p_opcoes: ["x"], p_obrigatoria: true,
+    });
+    check("atualizar tipo numero com lista é rejeitado", !!numeroComListaErr);
+
+    const { error: okErr } = await admTenant.client.rpc("atualizar_caracteristica_peca", {
+      p_id: caractLarguraId, p_unidade: "cm", p_opcoes: null, p_obrigatoria: false,
+    });
+    check("atualização válida executa sem erro", !okErr);
+    const { data: depois } = await admin
+      .from("peca_caracteristicas").select("nome, tipo, unidade, obrigatoria").eq("id", caractLarguraId).maybeSingle();
+    check("unidade e obrigatoriedade foram gravadas", depois?.unidade === "cm" && depois?.obrigatoria === false);
+    check("nome e tipo permanecem imutáveis", depois?.nome === "largura" && depois?.tipo === "numero");
+
+    // Restaura o estado original: as seções seguintes deste arquivo
+    // dependem de "largura" em mm e obrigatória.
+    await admTenant.client.rpc("atualizar_caracteristica_peca", {
+      p_id: caractLarguraId, p_unidade: "mm", p_opcoes: null, p_obrigatoria: true,
+    });
+    const { data: restaurada } = await admin
+      .from("peca_caracteristicas").select("unidade, obrigatoria").eq("id", caractLarguraId).maybeSingle();
+    check("estado original restaurado para as seções seguintes", restaurada?.unidade === "mm" && restaurada?.obrigatoria === true);
+  }
+
   console.log("\n30. Pedido com item configurável — captura de valores");
   await admTenant.client.rpc("upsert_numbering_sequence", {
     p_document_type: "orcamento", p_prefixo: "ORCPCF-", p_sufixo: "", p_digitos: 4,
@@ -534,6 +593,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["pecas.caracteristica_definida", "engenharia.caracteristica_valor_definido"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("pecas.caracteristica_definida registrado", actions.has("pecas.caracteristica_definida"));
@@ -716,6 +776,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["pecas.regra_criada", "pecas.regra_desativada"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("pecas.regra_criada registrado", actions.has("pecas.regra_criada"));
@@ -895,6 +956,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["engenharia.bom_sugerida_gerada", "engenharia.bom_item_ajustado", "engenharia.bom_definitiva_aprovada"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("engenharia.bom_sugerida_gerada registrado", actions.has("engenharia.bom_sugerida_gerada"));

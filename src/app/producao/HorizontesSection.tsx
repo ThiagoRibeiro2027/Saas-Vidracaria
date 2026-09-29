@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Badge } from "@/components/ui/Badge";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { formatarData } from "@/lib/formato/data";
 
 export type HorizonteProgramacao = {
   id: string;
@@ -26,8 +27,6 @@ const TIPO_TONE: Record<HorizonteProgramacao["tipo"], "neutral" | "success" | "d
   flexivel: "success",
   congelado: "danger",
 };
-
-const fmt = (v: string) => new Date(`${v}T00:00:00`).toLocaleDateString("pt-BR");
 
 export default function HorizontesSection({
   horizontes,
@@ -82,7 +81,7 @@ export default function HorizontesSection({
                   <Badge variant={TIPO_TONE[h.tipo]}>{TIPO_LABEL[h.tipo]}</Badge>
                 </Td>
                 <Td>
-                  {fmt(h.data_inicio)} – {fmt(h.data_fim)}
+                  {formatarData(h.data_inicio)} – {formatarData(h.data_fim)}
                 </Td>
                 <Td>{h.motivo ?? "—"}</Td>
                 {canManage && (

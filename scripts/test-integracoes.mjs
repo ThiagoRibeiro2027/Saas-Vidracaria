@@ -30,6 +30,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -99,10 +111,10 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 async function main() {
   const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de integrações, outro tenant)...");
-  const admTenant = await createTenant("integracoes-test-admin", "Integrações Admin Teste", "13i01", "ADMIN");
+  const admTenant = await createTenant(`integracoes-test-admin-${RUN}`, "Integrações Admin Teste", "13i01", "ADMIN");
   // QUALIDADE administra Qualidade, não Integrações — prova a autoridade separada.
-  const noPermTenant = await createTenant("integracoes-test-admin", "Integrações SemPerm Teste", "13i02", "QUALIDADE", admTenant.company);
-  const otherTenant = await createTenant("integracoes-test-other", "Integrações Outro Teste", "13i03", "ADMIN");
+  const noPermTenant = await createTenant(`integracoes-test-admin-${RUN}`, "Integrações SemPerm Teste", "13i02", "QUALIDADE", admTenant.company);
+  const otherTenant = await createTenant(`integracoes-test-other-${RUN}`, "Integrações Outro Teste", "13i03", "ADMIN");
 
   console.log("\n0. Catálogo global — visível a qualquer autenticado, mesmo sem integracoes.view");
   {
@@ -194,7 +206,10 @@ async function main() {
     });
     check("mesma chave de idempotência devolve a mesma operação, sem duplicar (§18)", !e2 && repetida === operacaoId);
 
-    const { count } = await admin.from("integracao_operacoes").select("id", { count: "exact", head: true }).eq("chave_idempotencia", "chave-abc");
+    // Escopado na empresa da execução: a chave de idempotência é única por
+    // tenant, mas a consulta via service role enxerga a tabela inteira e
+    // contava também as linhas deixadas por execuções anteriores.
+    const { count } = await admin.from("integracao_operacoes").select("id", { count: "exact", head: true }).eq("company_id", admTenant.company.id).eq("chave_idempotencia", "chave-abc");
     check("só existe uma linha na fila para essa chave", count === 1);
 
     const { error: e3 } = await noPermTenant.client.rpc("enfileirar_operacao", { p_integracao_id: integracaoId, p_tipo: "x" });

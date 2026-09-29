@@ -17,6 +17,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -105,10 +117,10 @@ async function upsertItem(tenant, codigo, tipo) {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão de compras, outro tenant)...");
-  const admTenant = await createTenant("compras-test-admin", "Compras Admin Teste", "cp01", "ADMIN");
+  const admTenant = await createTenant(`compras-test-admin-${RUN}`, "Compras Admin Teste", "cp01", "ADMIN");
   // QUALIDADE não administra Compras — prova a autoridade separada (mesmo padrão dos demais test-*.mjs).
-  const noPermTenant = await createTenant("compras-test-admin", "Compras SemPerm Teste", "cp02", "QUALIDADE", admTenant.company);
-  const otherTenant = await createTenant("compras-test-other", "Compras Outro Teste", "cp03", "ADMIN");
+  const noPermTenant = await createTenant(`compras-test-admin-${RUN}`, "Compras SemPerm Teste", "cp02", "QUALIDADE", admTenant.company);
+  const otherTenant = await createTenant(`compras-test-other-${RUN}`, "Compras Outro Teste", "cp03", "ADMIN");
 
   console.log("\n0. Massa de dados — fornecedores, cliente sem papel fornecedor, itens materiais");
   const fornAlfaId = await upsertPessoa(admTenant, "1", "Fornecedor Alfa Ltda", "FORNECEDOR");
@@ -685,8 +697,8 @@ async function main() {
   // Aprovadores precisam do papel específico da etapa (checado por decidir_etapa_aprovacao_compra)
   // E de compras.manage como gate de base (assert_tenant_write) -- por isso também ganham ADMIN,
   // mesmo padrão usado no cenário SQL standalone que validou este fluxo antes deste commit.
-  const aprov1Tenant = await createTenant("compras-test-admin", "Compras Aprovador Etapa 1", "cp10", "COMERCIAL", admTenant.company);
-  const aprov2Tenant = await createTenant("compras-test-admin", "Compras Aprovador Etapa 2", "cp11", "PRODUCAO", admTenant.company);
+  const aprov1Tenant = await createTenant(`compras-test-admin-${RUN}`, "Compras Aprovador Etapa 1", "cp10", "COMERCIAL", admTenant.company);
+  const aprov2Tenant = await createTenant(`compras-test-admin-${RUN}`, "Compras Aprovador Etapa 2", "cp11", "PRODUCAO", admTenant.company);
   const { data: adminRoleRow } = await admin.from("roles").select("id").is("company_id", null).eq("key", "ADMIN").single();
   await admin.from("user_roles").insert({ profile_id: aprov1Tenant.userId, role_id: adminRoleRow.id });
   await admin.from("user_roles").insert({ profile_id: aprov2Tenant.userId, role_id: adminRoleRow.id });

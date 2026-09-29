@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { formatarData } from "@/lib/formato/data";
 
 export type RecomendacaoRow = {
   op_lote_operacao_id: string;
@@ -169,7 +170,7 @@ function OperacaoRecomendadaRow({
           <div className="text-text-muted">{l.descricao_operacao}</div>
         </Td>
         <Td>
-          {l.previsao_entrega ? new Date(`${l.previsao_entrega}T00:00:00`).toLocaleDateString("pt-BR") : "—"}
+          {formatarData(l.previsao_entrega)}
           {l.dias_para_prazo != null && l.dias_para_prazo < 0 && (
             <div className="text-danger">{Math.abs(l.dias_para_prazo)}d atrasada</div>
           )}

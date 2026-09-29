@@ -10,6 +10,7 @@ import {
   registrarDevolucaoCompraAction,
 } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "../../configuracoes/styles";
+import { formatarData } from "@/lib/formato/data";
 
 const STATUS_RECEBIMENTO_LABEL: Record<string, string> = { em_conferencia: "Em conferência", conferido: "Conferido", cancelado: "Cancelado" };
 const STATUS_ITEM_LABEL: Record<string, string> = { pendente: "Pendente", quarentena: "Quarentena", conferido: "Conferido" };
@@ -212,7 +213,7 @@ function RecebimentoCard({
         <span style={{ color: "#6b7a75" }}>PC: {pedidoCompra?.numero ?? recebimento.pedido_compra_id}</span>
         {recebimento.numero_nf && <span style={{ color: "#6b7a75" }}>NF: {recebimento.numero_nf}</span>}
         {recebimento.transportadora && <span style={{ color: "#6b7a75" }}>Transp.: {recebimento.transportadora}</span>}
-        <span style={{ color: "#6b7a75" }}>{new Date(`${recebimento.data_recebimento}T00:00:00`).toLocaleDateString("pt-BR")}</span>
+        <span style={{ color: "#6b7a75" }}>{formatarData(recebimento.data_recebimento)}</span>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "8px" }}>

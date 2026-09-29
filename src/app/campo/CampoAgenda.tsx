@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCampo } from "./CampoProvider";
 import { STATUS_LABEL, type PacoteInstalacao } from "./types";
+import { formatarData } from "@/lib/formato/data";
 
 export default function CampoAgenda() {
   const { pacote, fila } = useCampo();
@@ -32,7 +33,7 @@ export default function CampoAgenda() {
                   {inst.obra?.nome ?? "Obra não definida"} — {inst.pessoa.nome}
                 </div>
                 <div style={{ fontSize: "12px", color: "#6b7a75", marginTop: "2px" }}>
-                  Agendada para {new Date(`${inst.data_agendada}T00:00:00`).toLocaleDateString("pt-BR")} · Pedido {inst.pedido.numero}
+                  Agendada para {formatarData(inst.data_agendada)} · Pedido {inst.pedido.numero}
                 </div>
                 {pendenciasFila > 0 && (
                   <div style={{ fontSize: "12px", color: "#b7791f", marginTop: "4px" }}>{pendenciasFila} ação(ões) local(is) aguardando envio</div>

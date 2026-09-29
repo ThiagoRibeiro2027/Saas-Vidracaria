@@ -19,6 +19,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -155,12 +167,12 @@ async function prepararOrdemConcluida(tenant, sufixo, quantidade = 10) {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão de qualidade, outro tenant)...");
-  const admTenant = await createTenant("qualidade-test-admin", "Qualidade Admin Teste", "9d01", "ADMIN");
+  const admTenant = await createTenant(`qualidade-test-admin-${RUN}`, "Qualidade Admin Teste", "9d01", "ADMIN");
   // PRODUCAO administra Produção, não Qualidade — prova a autoridade
   // paralela: quem cria/apontar/conclui OP não pode, só por isso,
   // inspecionar a qualidade dela.
-  const noPermTenant = await createTenant("qualidade-test-admin", "Qualidade SemPerm Teste", "9d02", "PRODUCAO", admTenant.company);
-  const otherTenant = await createTenant("qualidade-test-other", "Qualidade Outro Teste", "9d03", "ADMIN");
+  const noPermTenant = await createTenant(`qualidade-test-admin-${RUN}`, "Qualidade SemPerm Teste", "9d02", "PRODUCAO", admTenant.company);
+  const otherTenant = await createTenant(`qualidade-test-other-${RUN}`, "Qualidade Outro Teste", "9d03", "ADMIN");
 
   console.log("\n0. Massa de dados — OP concluída com 10 unidades produzidas");
   const massa = await prepararOrdemConcluida(admTenant, "1", 10);
@@ -470,6 +482,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "qualidade.inspecao_registrada",
         "qualidade.retrabalho_executado",

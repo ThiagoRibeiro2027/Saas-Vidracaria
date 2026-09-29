@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { formatarData } from "@/lib/formato/data";
 
 export type ProgramacaoRow = {
   op_lote_operacao_id: string;
@@ -35,8 +36,6 @@ const PRIORIDADE_LABEL: Record<number, string> = {
   4: "4",
   5: "5 — menos urgente",
 };
-
-const fmtData = (v: string | null) => (v ? new Date(`${v}T00:00:00`).toLocaleDateString("pt-BR") : "—");
 
 export default function ProgramacaoSection({
   linhas,
@@ -116,7 +115,7 @@ export default function ProgramacaoSection({
                     {l.item_codigo} — {l.item_descricao}
                   </div>
                 </Td>
-                <Td>{fmtData(l.previsao_entrega)}</Td>
+                <Td>{formatarData(l.previsao_entrega)}</Td>
                 <Td>
                   {canManage ? (
                     <form action={definirPrioridadeOpAction} className="flex items-center gap-1">
@@ -172,7 +171,7 @@ export default function ProgramacaoSection({
                       </Button>
                     </form>
                   ) : (
-                    `${fmtData(l.data_planejada_inicio)} – ${fmtData(l.data_planejada_fim)}`
+                    `${formatarData(l.data_planejada_inicio)} – ${formatarData(l.data_planejada_fim)}`
                   )}
                 </Td>
               </tr>

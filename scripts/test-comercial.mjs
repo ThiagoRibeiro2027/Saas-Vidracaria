@@ -15,6 +15,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -112,9 +124,9 @@ async function grantOnlyPermission(tenant, resource, action, roleKeySuffix) {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão, outro tenant)...");
-  const admTenant = await createTenant("comercial-test-admin", "Comercial Admin Teste", "9801", "ADMIN");
-  const noPermTenant = await createTenant("comercial-test-noperm", "Comercial SemPerm Teste", "9802", "COMERCIAL");
-  const otherTenant = await createTenant("comercial-test-other", "Comercial Outro Teste", "9803", "ADMIN");
+  const admTenant = await createTenant(`comercial-test-admin-${RUN}`, "Comercial Admin Teste", "9801", "ADMIN");
+  const noPermTenant = await createTenant(`comercial-test-noperm-${RUN}`, "Comercial SemPerm Teste", "9802", "COMERCIAL");
+  const otherTenant = await createTenant(`comercial-test-other-${RUN}`, "Comercial Outro Teste", "9803", "ADMIN");
 
   console.log("\n0. Massa de dados (numeração, pessoa, obra, item) via ADMIN");
   await admTenant.client.rpc("upsert_numbering_sequence", {
@@ -249,7 +261,7 @@ async function main() {
     // Para testar o bloqueio de fato, um segundo usuário no MESMO tenant
     // com orcamentos.manage mas sem o papel ADMIN (o aprovador da alçada
     // acima).
-    const semAlcadaTenant = await createTenant("comercial-test-semalcada", "Sem Alçada", "9804", "COMERCIAL");
+    const semAlcadaTenant = await createTenant(`comercial-test-semalcada-${RUN}`, "Sem Alçada", "9804", "COMERCIAL");
     await admin.from("profiles").update({ company_id: admTenant.company.id }).eq("id", semAlcadaTenant.userId);
     await grantOnlyPermission({ company: admTenant.company, userId: semAlcadaTenant.userId }, "orcamentos", "manage", "ORC_MANAGE");
 
@@ -320,6 +332,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "comercial.orcamento_upserted",
         "comercial.orcamento_item_upserted",
@@ -483,6 +496,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "comercial.oportunidade_upserted",
         "comercial.oportunidade_estagio_mudado",
@@ -691,6 +705,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "comercial.proposta_gerada",
         "comercial.proposta_enviada",

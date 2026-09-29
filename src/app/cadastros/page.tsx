@@ -4,6 +4,7 @@ import ObrasSection from "./ObrasSection";
 import ItensSection from "./ItensSection";
 import ImportacaoSection from "./ImportacaoSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { ENTIDADES_IMPORTACAO, RECURSOS_IMPORTACAO } from "./importacao-entidades";
 
 type TabSlug = "pessoas" | "obras" | "itens" | "importacao";
 
@@ -64,6 +65,36 @@ export default async function CadastrosPage({
     canViewItens ? supabase.from("itens").select("*").order("codigo") : Promise.resolve({ data: [] }),
   ]);
 
+  // Quais blocos de importação este usuário pode usar. Sem isto a aba
+  // oferecia os 24 a qualquer um que a enxergasse, e quem tem só
+  // itens.manage descobria que não podia importar RH ao tentar. O gate
+  // real continua no banco — aqui é só não oferecer o que vai falhar.
+  const permissoesImportacao = await Promise.all(
+    RECURSOS_IMPORTACAO.map(async (recurso) => {
+      const { data } = await supabase.rpc("has_permission", { p_resource: recurso, p_action: "manage" });
+      return [recurso, !!data] as const;
+    }),
+  );
+  const recursosPermitidos = new Set(permissoesImportacao.filter(([, pode]) => pode).map(([r]) => r));
+  const entidadesPermitidas = ENTIDADES_IMPORTACAO.filter((e) =>
+    recursosPermitidos.has(e.recursoPermissao),
+  ).map((e) => e.chave);
+
+  // Histórico de importações (TÓPICO 13 §29, Fase 7). A policy de SELECT
+  // de public.importacoes já filtra por empresa E pela permissão do módulo
+  // da entidade, então o que voltar aqui é só o que este usuário pode ver —
+  // o gate abaixo é só pra não consultar à toa quem nem enxerga a aba.
+  const { data: historicoImportacoes } =
+    canManagePessoas || canManageItens
+      ? await supabase
+          .from("importacoes")
+          .select(
+            "id, entidade, arquivo_nome, total_linhas, novos, atualizados, invalidos, duplicados, origem_importacao_id, created_at",
+          )
+          .order("created_at", { ascending: false })
+          .limit(20)
+      : { data: [] };
+
   const availableTabs: { slug: TabSlug; label: string }[] = [
     ...(canViewPessoas ? [{ slug: "pessoas" as const, label: "Pessoas" }] : []),
     ...(canViewObras ? [{ slug: "obras" as const, label: "Obras" }] : []),
@@ -104,7 +135,12 @@ export default async function CadastrosPage({
           />
         )}
         {activeTab === "itens" && canViewItens && <ItensSection rows={itens ?? []} canManage={!!canManageItens} />}
-        {activeTab === "importacao" && (canManagePessoas || canManageItens) && <ImportacaoSection />}
+        {activeTab === "importacao" && (canManagePessoas || canManageItens) && (
+          <ImportacaoSection
+            historico={historicoImportacoes ?? []}
+            entidadesPermitidas={entidadesPermitidas}
+          />
+        )}
       </div>
     </div>
   );

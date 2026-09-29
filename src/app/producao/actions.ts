@@ -287,6 +287,44 @@ export async function programarManutencaoPreventivaAction(formData: FormData) {
   revalidatePath("/producao");
 }
 
+// Antes só existia programar e cancelar: mudar a data de uma preventiva
+// obrigava a cancelar e reprogramar, perdendo o histórico da original. O
+// tipo não é editável porque a função do banco não o aceita — para trocar
+// o tipo, o certo continua sendo cancelar e programar outra.
+//
+// responsavel_id vem por campo oculto, e não como null: o UPDATE do banco
+// grava o parâmetro direto, então omitir apagaria um responsável já
+// atribuído (hoje a tela nunca atribui um, mas a função aceita).
+export async function editarManutencaoPreventivaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const proximaData = String(formData.get("proxima_data") ?? "").trim();
+  const periodicidadeRaw = String(formData.get("periodicidade_dias") ?? "").trim();
+  const duracaoRaw = String(formData.get("duracao_estimada_horas") ?? "").trim();
+  const responsavelId = String(formData.get("responsavel_id") ?? "").trim() || null;
+  if (!id) throw new Error("Manutenção preventiva inválida.");
+  if (!proximaData) throw new Error("Próxima data é obrigatória.");
+  const periodicidade = periodicidadeRaw ? Number(periodicidadeRaw) : null;
+  if (periodicidade !== null && (!Number.isInteger(periodicidade) || periodicidade <= 0)) {
+    throw new Error("Periodicidade deve ser um número inteiro maior que zero.");
+  }
+  const duracao = duracaoRaw ? Number(duracaoRaw) : null;
+  if (duracao !== null && (!Number.isFinite(duracao) || duracao <= 0)) {
+    throw new Error("Duração estimada deve ser um número maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("editar_manutencao_preventiva", {
+    p_id: id,
+    p_proxima_data: proximaData,
+    p_periodicidade_dias: periodicidade,
+    p_duracao_estimada_horas: duracao,
+    p_responsavel_id: responsavelId,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
 export async function cancelarManutencaoPreventivaAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) throw new Error("Manutenção preventiva inválida.");
