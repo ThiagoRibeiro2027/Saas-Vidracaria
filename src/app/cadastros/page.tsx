@@ -5,6 +5,7 @@ import ItensSection from "./ItensSection";
 import ImportacaoSection from "./ImportacaoSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { Tabs } from "@/components/ui/Tabs";
+import { ENTIDADES_IMPORTACAO, RECURSOS_IMPORTACAO } from "./importacao-entidades";
 
 type TabSlug = "pessoas" | "obras" | "itens" | "importacao";
 
@@ -64,6 +65,21 @@ export default async function CadastrosPage({
     canViewObras ? supabase.from("obras").select("*").order("nome") : Promise.resolve({ data: [] }),
     canViewItens ? supabase.from("itens").select("*").order("codigo") : Promise.resolve({ data: [] }),
   ]);
+
+  // Quais blocos de importação este usuário pode usar. Sem isto a aba
+  // oferecia os 24 a qualquer um que a enxergasse, e quem tem só
+  // itens.manage descobria que não podia importar RH ao tentar. O gate
+  // real continua no banco — aqui é só não oferecer o que vai falhar.
+  const permissoesImportacao = await Promise.all(
+    RECURSOS_IMPORTACAO.map(async (recurso) => {
+      const { data } = await supabase.rpc("has_permission", { p_resource: recurso, p_action: "manage" });
+      return [recurso, !!data] as const;
+    }),
+  );
+  const recursosPermitidos = new Set(permissoesImportacao.filter(([, pode]) => pode).map(([r]) => r));
+  const entidadesPermitidas = ENTIDADES_IMPORTACAO.filter((e) =>
+    recursosPermitidos.has(e.recursoPermissao),
+  ).map((e) => e.chave);
 
   // Histórico de importações (TÓPICO 13 §29, Fase 7). A policy de SELECT
   // de public.importacoes já filtra por empresa E pela permissão do módulo
@@ -125,7 +141,10 @@ export default async function CadastrosPage({
         )}
         {activeTab === "itens" && canViewItens && <ItensSection rows={itens ?? []} canManage={!!canManageItens} />}
         {activeTab === "importacao" && (canManagePessoas || canManageItens) && (
-          <ImportacaoSection historico={historicoImportacoes ?? []} />
+          <ImportacaoSection
+            historico={historicoImportacoes ?? []}
+            entidadesPermitidas={entidadesPermitidas}
+          />
         )}
       </div>
     </div>

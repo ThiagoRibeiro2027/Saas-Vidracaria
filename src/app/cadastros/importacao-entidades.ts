@@ -18,6 +18,15 @@
 export type EntidadeImportacao = {
   /** Gravado em importacoes.entidade. Precisa existir no mapa da migration. */
   chave: string;
+  /**
+   * Recurso de permissão exigido (<recurso>.manage). Espelha o mapa
+   * recurso_permissao_importacao() da migration 20261202000000, e serve
+   * só para a tela não oferecer um bloco que o usuário não pode usar.
+   * Quem decide de fato é o banco: a função de importação carrega o gate
+   * de verdade, então divergir aqui esconde ou mostra um bloco, nunca
+   * concede acesso.
+   */
+  recursoPermissao: string;
   rotulo: string;
   modulo: string;
   /** Função SQL importar_<x>(p_linhas, p_dry_run, p_arquivo_nome, p_origem_importacao_id). */
@@ -36,6 +45,7 @@ export type EntidadeImportacao = {
 export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   {
     chave: "pessoas",
+    recursoPermissao: "pessoas",
     rotulo: "Pessoas (clientes/fornecedores)",
     modulo: "Comercial",
     rpc: "importar_pessoas",
@@ -59,6 +69,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "itens",
+    recursoPermissao: "itens",
     rotulo: "Itens (produtos/materiais)",
     modulo: "Cadastros",
     rpc: "importar_itens",
@@ -71,6 +82,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "pessoa_papeis",
+    recursoPermissao: "pessoas",
     rotulo: "Papéis da pessoa (cliente / fornecedor)",
     modulo: "Comercial",
     rpc: "importar_pessoa_papeis",
@@ -83,6 +95,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "obras",
+    recursoPermissao: "obras",
     rotulo: "Obras",
     modulo: "Comercial",
     rpc: "importar_obras",
@@ -95,6 +108,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "itens_dimensional",
+    recursoPermissao: "itens",
     rotulo: "Itens — controle dimensional",
     modulo: "Cadastros",
     rpc: "importar_itens_dimensional",
@@ -107,6 +121,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "pecas",
+    recursoPermissao: "pecas",
     rotulo: "Peças",
     modulo: "Engenharia",
     rpc: "importar_pecas",
@@ -119,6 +134,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "peca_composicao",
+    recursoPermissao: "pecas",
     rotulo: "Composição da peça (lista de materiais)",
     modulo: "Engenharia",
     rpc: "importar_peca_composicao",
@@ -138,6 +154,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "peca_caracteristicas",
+    recursoPermissao: "pecas",
     rotulo: "Características da peça (configurador)",
     modulo: "Engenharia",
     rpc: "importar_peca_caracteristicas",
@@ -158,6 +175,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "peca_regras",
+    recursoPermissao: "pecas",
     rotulo: "Regras da peça (configurador)",
     modulo: "Engenharia",
     rpc: "importar_peca_regras",
@@ -180,6 +198,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "recursos_produtivos",
+    recursoPermissao: "producao",
     rotulo: "Recursos produtivos",
     modulo: "Produção",
     rpc: "importar_recursos_produtivos",
@@ -192,6 +211,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "roteiros_produtivos",
+    recursoPermissao: "producao",
     rotulo: "Roteiros produtivos",
     modulo: "Produção",
     rpc: "importar_roteiros_produtivos",
@@ -203,6 +223,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "roteiro_operacoes",
+    recursoPermissao: "producao",
     rotulo: "Operações do roteiro",
     modulo: "Produção",
     rpc: "importar_roteiro_operacoes",
@@ -227,6 +248,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "estoque_saldos",
+    recursoPermissao: "estoque",
     rotulo: "Estoque inicial",
     modulo: "Estoque",
     rpc: "importar_estoque_saldos",
@@ -239,6 +261,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "itens_pecas_dimensionais",
+    recursoPermissao: "estoque",
     rotulo: "Peças em estoque (dimensional)",
     modulo: "Estoque",
     rpc: "importar_itens_pecas_dimensionais",
@@ -257,6 +280,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "item_fornecedores",
+    recursoPermissao: "compras",
     rotulo: "Fornecedor por item",
     modulo: "Suprimentos",
     rpc: "importar_item_fornecedores",
@@ -277,6 +301,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "item_materiais_alternativos",
+    recursoPermissao: "compras",
     rotulo: "Materiais alternativos",
     modulo: "Suprimentos",
     rpc: "importar_item_materiais_alternativos",
@@ -294,6 +319,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "fornecedor_dados",
+    recursoPermissao: "compras",
     rotulo: "Dados do fornecedor",
     modulo: "Suprimentos",
     rpc: "importar_fornecedor_dados",
@@ -316,6 +342,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "politicas_abastecimento",
+    recursoPermissao: "compras",
     rotulo: "Política de abastecimento",
     modulo: "Suprimentos",
     rpc: "importar_politicas_abastecimento",
@@ -338,6 +365,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "funcionarios",
+    recursoPermissao: "rh",
     rotulo: "Funcionários",
     modulo: "RH",
     rpc: "importar_funcionarios",
@@ -361,6 +389,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "equipes_instalacao",
+    recursoPermissao: "instalacao",
     rotulo: "Equipes de instalação",
     modulo: "Instalação",
     rpc: "importar_equipes_instalacao",
@@ -373,6 +402,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "contas_bancarias",
+    recursoPermissao: "financeiro",
     rotulo: "Contas bancárias",
     modulo: "Financeiro",
     rpc: "importar_contas_bancarias",
@@ -384,6 +414,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "cutting_margin_settings",
+    recursoPermissao: "configuracoes",
     rotulo: "Margem de quebra",
     modulo: "Configurações",
     rpc: "importar_cutting_margin_settings",
@@ -396,6 +427,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "measurement_rules",
+    recursoPermissao: "configuracoes",
     rotulo: "Regra de medição",
     modulo: "Configurações",
     rpc: "importar_measurement_rules",
@@ -408,6 +440,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
   },
   {
     chave: "calendario_feriados",
+    recursoPermissao: "configuracoes",
     rotulo: "Feriados",
     modulo: "Configurações",
     rpc: "importar_calendario_feriados",
@@ -422,3 +455,8 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
 export function entidadePorChave(chave: string): EntidadeImportacao | undefined {
   return ENTIDADES_IMPORTACAO.find((e) => e.chave === chave);
 }
+
+/** Recursos distintos exigidos — o que a página precisa consultar. */
+export const RECURSOS_IMPORTACAO: readonly string[] = [
+  ...new Set(ENTIDADES_IMPORTACAO.map((e) => e.recursoPermissao)),
+];

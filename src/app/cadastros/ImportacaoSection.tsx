@@ -329,11 +329,32 @@ function Bloco({
   );
 }
 
-export default function ImportacaoSection({ historico = [] }: { historico?: ImportacaoHistorico[] }) {
+export default function ImportacaoSection({
+  historico = [],
+  entidadesPermitidas,
+}: {
+  historico?: ImportacaoHistorico[];
+  /** Chaves que este usuário pode importar, resolvidas no servidor. */
+  entidadesPermitidas: string[];
+}) {
+  const permitidas = new Set(entidadesPermitidas);
+  const entidades = ENTIDADES_IMPORTACAO.filter((e) => permitidas.has(e.chave));
+
   // Agrupa por módulo para a tela não virar uma lista plana de vinte e
   // poucos blocos iguais — a ordem dentro do registro já é a ordem de
   // dependência entre eles.
-  const modulos = [...new Set(ENTIDADES_IMPORTACAO.map((e) => e.modulo))];
+  const modulos = [...new Set(entidades.map((e) => e.modulo))];
+
+  if (entidades.length === 0) {
+    return (
+      <section>
+        <h2 className="text-sm font-semibold text-text">Importação de dados</h2>
+        <p className="mt-1 text-xs text-text-muted">
+          Você não tem permissão de gestão em nenhum módulo com importação disponível.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section>
@@ -354,7 +375,7 @@ export default function ImportacaoSection({ historico = [] }: { historico?: Impo
           <p className="mb-2 border-b border-border pb-1 font-mono text-[11px] uppercase tracking-wide text-primary">
             {modulo}
           </p>
-          {ENTIDADES_IMPORTACAO.filter((e) => e.modulo === modulo).map((entidade) => (
+          {entidades.filter((e) => e.modulo === modulo).map((entidade) => (
             <Bloco
               key={entidade.chave}
               entidade={entidade}
