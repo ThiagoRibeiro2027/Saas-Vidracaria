@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.16\
+**Versão:** 2.17\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -22,7 +22,10 @@ com contas a pagar/cobrança/conciliação; §4.16 revisado em 2026-09-26 —
 Fase 3 do TÓPICO 12, dashboards por área com dados já existentes; §4.17
 revisado em 2026-09-26 — Fase 6 do TÓPICO 13, exportação genérica em
 CSV; §4.3 revisado em 2026-09-26 — TÓPICO 10 §9, configurador de peça
-ligado ao orçamento)\
+ligado ao orçamento; §4.17 revisado em 2026-09-29 — Fases 7 e 8 do
+TÓPICO 13, importação genérica de dados (registro retroativo); §4.17
+revisado novamente em 2026-09-29 — Fase 9, integrações internas entre
+módulos)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
 ADR-011
@@ -1360,6 +1363,60 @@ Continua fora: Excel/XML/PDF, exportação agendada (seria sobreposição
 com "relatórios agendados" do BI, já fora desde a Fase 3 do T12), contas
 a pagar (fica para quando houver demanda real), e qualquer outra
 entidade além das cinco listadas.
+
+**Ampliação de escopo — Fases 7 e 8, importação genérica de dados
+(29/09/2026 — decisão do responsável do produto via chat; registro
+retroativo, feito na sessão da Fase 9 abaixo — os commits são de
+29/09/2026 mas não vieram acompanhados de atualização deste ADR na
+hora).** Amplia §29 (Importação) simetricamente ao que a Fase 6 abriu
+para §30 (Exportação): a base de 20260929000000 cobria só Pessoas e
+Itens via CSV. A Fase 7 acrescenta histórico de importações (com
+reprocessamento) e mapeamento de colunas configurável, além de aceitar
+XLSX (não só CSV). A Fase 8 (em seis sub-lotes, 8a-8f) estende a mesma
+importação genérica por registro para todas as demais entidades já
+existentes no sistema: papéis da pessoa e controle dimensional
+(cadastros), peças/composição/características/regras (engenharia),
+recursos produtivos/roteiros/operações/estoque inicial/peças
+dimensionais (produção e estoque), fornecedor por item/alternativos/
+dados do fornecedor/política (suprimentos), e as seis últimas entidades
+de RH, financeiro e configurações. Cada entidade exige a mesma permissão
+`.manage` que a tela daquele módulo já exige — a aba de Importação em
+Cadastros só oferece ao usuário as entidades que ele de fato pode
+importar (correção de 29/09/2026, mesma sessão), em vez de mostrar as
+24 a qualquer um que enxergasse a aba.
+
+Continua fora: qualquer formato além de CSV/XLSX, importação agendada/
+recorrente, e entidades que ainda não existiam no sistema antes desta
+fase.
+
+**Ampliação de escopo — Fase 9, integrações internas entre módulos
+(29/09/2026 — decisão do responsável do produto via chat).** Abre §4
+(Integrações Internas entre Módulos), só no nível **Informativo** (§15,
+mesmo limite já fixado na Fase 1 para §4) — detectar → registrar →
+informar, sem nenhuma automação nova de efeito operacional ou
+financeiro. Nove pontos de transição já existentes no sistema passam a
+registrar um evento rastreável em `activity_logs` (mesmo formato da
+Fase 1), sem mudar nenhum comportamento de negócio: comercial→pedidos
+(conversão de orçamento), pedidos→produção (criação de ordem),
+engenharia→produção (liberação de versão), compras→estoque (conferência
+de recebimento), estoque→produção (consumo de peça dimensional),
+produção→estoque (entrada de sobra), expedição→financeiro (registro de
+saída), financeiro→pedidos (recebimento de título) e qualidade→produção
+(só quando há reprovação — aprovação integral não move módulos).
+
+A função que cada ponto chama (`registrar_evento_integracao_interno()`)
+não exige a permissão `integracoes.manage` que a função da Fase 1
+(`registrar_evento_integracao()`) exige — quem já validou a permissão do
+próprio domínio (ex.: `pedidos.manage` para converter um orçamento) não
+devia precisar de outra permissão só para o log informativo da própria
+ação; a nova função também não é exposta via Data API (sem grant a
+`authenticated`, mais `revoke` explícito de `PUBLIC`, já que o Postgres
+concede `EXECUTE` a `PUBLIC` por padrão em função nova).
+
+Continua fora, nos mesmos termos da Fase 1: níveis Assistido e
+Automático (§15), execução automática de qualquer efeito operacional ou
+financeiro a partir desses eventos, e qualquer transição entre módulos
+não listada nos nove pontos acima.
 
 **4.18 Abastecimento / Compras**
 
