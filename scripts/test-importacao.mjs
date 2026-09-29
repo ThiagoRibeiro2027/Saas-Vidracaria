@@ -705,6 +705,116 @@ async function main() {
     );
   }
 
+  console.log("\n11. Suprimentos (Fase 8e)");
+  {
+    const COD_A = "SUP-A-8E";
+    const COD_B = "SUP-B-8E";
+    const DOC_FORN = "86420000000197";
+    for (const codigo of [COD_A, COD_B]) {
+      await admTenant.client.rpc("upsert_item", {
+        p_id: null, p_codigo: codigo, p_descricao: "Item " + codigo, p_tipo: "materia_prima",
+        p_classificacao: null, p_unidade_principal: "M", p_situacao: "ativo",
+      });
+    }
+    const { data: fornId } = await admTenant.client.rpc("upsert_pessoa", {
+      p_id: null, p_tipo_documento: "CNPJ", p_documento: DOC_FORN, p_nome: "Fornecedor da Fase 8e",
+      p_nome_fantasia: null, p_telefone: null, p_email: null, p_logradouro: null,
+      p_cidade: null, p_uf: null, p_cep: null, p_situacao: "ativo",
+    });
+    await admTenant.client.rpc("set_pessoa_papel", { p_pessoa_id: fornId, p_papel: "FORNECEDOR", p_ativo: true });
+
+    // ---- fornecedor por item ----
+    const vinculo = {
+      codigo_item: COD_A, documento_fornecedor: DOC_FORN, principal: "sim",
+      prioridade: "10", homologado: "sim", preco_referencia: "12.5",
+    };
+    const { error: semPermForn } = await noPermTenant.client.rpc("importar_item_fornecedores", {
+      p_linhas: [vinculo], p_dry_run: true,
+    });
+    check("sem compras.manage não importa fornecedor por item", !!semPermForn);
+
+    const { data: prevVinc } = await admTenant.client.rpc("importar_item_fornecedores", {
+      p_linhas: [vinculo, { ...vinculo }, { codigo_item: "NAO-EXISTE-8E", documento_fornecedor: DOC_FORN }],
+      p_dry_run: true,
+    });
+    check("vínculo item-fornecedor novo é 'novo'", prevVinc?.[0]?.status === "novo");
+    check("par item+fornecedor repetido é 'duplicado_no_arquivo'", prevVinc?.[1]?.status === "duplicado_no_arquivo");
+    check("item inexistente no vínculo é recusado", prevVinc?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_item_fornecedores", { p_linhas: [vinculo], p_dry_run: false });
+    const { data: vincDb } = await admin
+      .from("item_fornecedores").select("principal, prioridade, homologado, preco_referencia")
+      .eq("company_id", admTenant.company.id).eq("pessoa_id", fornId).maybeSingle();
+    check(
+      "vínculo grava principal, prioridade, homologado e preço",
+      vincDb?.principal === true && vincDb?.prioridade === 10 && vincDb?.homologado === true && Number(vincDb?.preco_referencia) === 12.5,
+    );
+
+    // ---- materiais alternativos ----
+    const alt = { codigo_item_origem: COD_A, codigo_item_equivalente: COD_B };
+    const { data: prevAlt } = await admTenant.client.rpc("importar_item_materiais_alternativos", {
+      p_linhas: [alt, { ...alt }, { codigo_item_origem: COD_A, codigo_item_equivalente: COD_A }],
+      p_dry_run: true,
+    });
+    check("material alternativo novo é 'novo'", prevAlt?.[0]?.status === "novo");
+    check("par de itens repetido é 'duplicado_no_arquivo'", prevAlt?.[1]?.status === "duplicado_no_arquivo");
+    check("item alternativo de si mesmo é recusado", prevAlt?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_item_materiais_alternativos", { p_linhas: [alt], p_dry_run: false });
+    const { data: itemB } = await admin
+      .from("itens").select("id").eq("company_id", admTenant.company.id).eq("codigo", COD_B).single();
+    const { data: altDb } = await admin
+      .from("item_materiais_alternativos").select("exige_aprovacao")
+      .eq("company_id", admTenant.company.id).eq("item_equivalente_id", itemB.id).maybeSingle();
+    // Coluna vazia não pode virar "não exige aprovação": o padrão seguro
+    // para troca de material é exigir.
+    check("exige_aprovacao vazio assume SIM", altDb?.exige_aprovacao === true);
+
+    // ---- dados do fornecedor ----
+    const dados = {
+      documento_fornecedor: DOC_FORN, prazo_pagamento_dias: "30", lead_time_dias: "7",
+      banco: "001", agencia: "1234", conta: "56789-0", tipo_conta: "corrente", homologado: "sim",
+    };
+    const { data: prevDados } = await admTenant.client.rpc("importar_fornecedor_dados", {
+      p_linhas: [dados, { ...dados }, { documento_fornecedor: "00000000000191" }], p_dry_run: true,
+    });
+    check("dados do fornecedor novos são 'novo'", prevDados?.[0]?.status === "novo");
+    check("fornecedor repetido é 'duplicado_no_arquivo'", prevDados?.[1]?.status === "duplicado_no_arquivo");
+    check("fornecedor inexistente é recusado", prevDados?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_fornecedor_dados", { p_linhas: [dados], p_dry_run: false });
+    const { data: dadosDb } = await admin
+      .from("fornecedor_dados").select("prazo_pagamento_dias, banco, homologado")
+      .eq("company_id", admTenant.company.id).eq("pessoa_id", fornId).maybeSingle();
+    check(
+      "dados do fornecedor gravam prazo, banco e homologação",
+      dadosDb?.prazo_pagamento_dias === 30 && dadosDb?.banco === "001" && dadosDb?.homologado === true,
+    );
+
+    // ---- política de abastecimento ----
+    const politica = {
+      codigo_item: COD_A, tipo: "ponto_reposicao", estoque_minimo: "10",
+      ponto_reposicao: "20", documento_fornecedor_preferencial: DOC_FORN,
+    };
+    const { data: prevPol } = await admTenant.client.rpc("importar_politicas_abastecimento", {
+      p_linhas: [politica, { ...politica }, { codigo_item: COD_B, tipo: "inexistente" }], p_dry_run: true,
+    });
+    check("política nova é 'novo'", prevPol?.[0]?.status === "novo");
+    check("item repetido na política é 'duplicado_no_arquivo'", prevPol?.[1]?.status === "duplicado_no_arquivo");
+    check("tipo de política inválido é recusado pela função do banco", prevPol?.[2]?.status === "invalido");
+
+    await admTenant.client.rpc("importar_politicas_abastecimento", { p_linhas: [politica], p_dry_run: false });
+    const { data: itemA } = await admin
+      .from("itens").select("id").eq("company_id", admTenant.company.id).eq("codigo", COD_A).single();
+    const { data: polDb } = await admin
+      .from("politicas_abastecimento").select("tipo, estoque_minimo, fornecedor_preferencial_id")
+      .eq("company_id", admTenant.company.id).eq("item_id", itemA.id).maybeSingle();
+    check(
+      "política grava tipo, mínimo e fornecedor preferencial",
+      polDb?.tipo === "ponto_reposicao" && Number(polDb?.estoque_minimo) === 10 && polDb?.fornecedor_preferencial_id === fornId,
+    );
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
