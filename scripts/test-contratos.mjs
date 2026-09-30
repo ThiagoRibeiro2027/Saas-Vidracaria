@@ -2,7 +2,13 @@
 // vida completo com alçada de aprovação (rascunho → em_aprovação → vigente
 // → suspenso → encerrado, com cancelamento possível antes de vigorar),
 // garantia (só cliente) e vínculo financeiro detalhado (contrato → título
-// financeiro, só cliente vigente).
+// financeiro, só cliente vigente). A partir de 20261209000000: campo de
+// referência externa de assinatura (§10, só o gancho — nenhum provedor
+// integrado) e anexos de documento (§8), reaproveitando files/register_file()
+// com o mesmo gate de permissão específica (contratos.manage/view) que T17
+// RH já tinha pra 'funcionario_documento' — sem isso, qualquer papel com a
+// permissão genérica de Arquivos conseguiria anexar/ler/apagar documento de
+// contrato de terceiro.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-contratos.mjs
 
@@ -15,6 +21,14 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+// PNG 1x1 válido — mesma fixture de test-rh.mjs/test-storage-rls.mjs, pra
+// testar o gate de contratos.manage/contratos.view em cima de anexo de
+// arquivo (entity_type='contrato').
+const PNG_1X1 = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 // Sufixo de execução — o banco é único e compartilhado entre as máquinas
 // (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
@@ -677,6 +691,98 @@ async function main() {
     check("contrato rascunho não gera erro (só não faz nada)", !error);
     const { data: notifs } = await admin.from("notificacoes").select("id").eq("entity_id", contratoRascunhoId);
     check("nenhuma notificação gerada para contrato não vigente", (notifs ?? []).length === 0);
+  }
+
+  console.log("\n29. upsert_contrato() persiste assinatura_referencia_externa (§10 — só o gancho, nenhum provedor)");
+  let contratoAssinaturaId;
+  {
+    const { data: id, error } = await admTenant.client.rpc("upsert_contrato", {
+      p_id: null, p_tipo: "fornecedor", p_pessoa_id: fornecedorId, p_obra_id: null, p_pedido_id: null,
+      p_funcionario_id: null, p_objeto: "Contrato com gancho de assinatura",
+      p_assinatura_referencia_externa: "envelope-docusign-123",
+    });
+    check("cria contrato com referência de assinatura", !error && !!id);
+    contratoAssinaturaId = id;
+
+    const { data: row } = await admin.from("contratos").select("assinatura_referencia_externa").eq("id", id).single();
+    check("referência persistida tal como enviada", row?.assinatura_referencia_externa === "envelope-docusign-123");
+
+    const { error: eEdit } = await admTenant.client.rpc("upsert_contrato", {
+      p_id: id, p_tipo: "fornecedor", p_pessoa_id: fornecedorId, p_obra_id: null, p_pedido_id: null,
+      p_funcionario_id: null, p_objeto: "Contrato com gancho de assinatura",
+      p_assinatura_referencia_externa: null,
+    });
+    check("edição pode limpar a referência (volta a null)", !eEdit);
+    const { data: rowDepois } = await admin.from("contratos").select("assinatura_referencia_externa").eq("id", id).single();
+    check("referência limpa persistida", rowDepois?.assinatura_referencia_externa === null);
+  }
+
+  console.log("\n30. §8 — register_file()/files_select exigem contratos.manage/contratos.view pra entity_type='contrato'");
+  let contratoAnexoFileId;
+  let filesOnlyClient;
+  {
+    // Papel com files.upload/files.read mas SEM nenhuma permissão de
+    // contratos — mesmo padrão do achado já corrigido em T17 RH pra
+    // 'funcionario_documento': a permissão genérica de Arquivos não pode
+    // bastar pra anexar/ler documento de um módulo mais sensível.
+    const filesOnlyRole = await admin.from("roles").insert({ company_id: admTenant.company.id, key: "CONTRATOS_FILES_SO", name: "Só Arquivos" }).select().single();
+    const { data: uploadPerm } = await admin.from("permissions").select("id").eq("resource", "files").eq("action", "upload").single();
+    const { data: readPerm } = await admin.from("permissions").select("id").eq("resource", "files").eq("action", "read").single();
+    const { data: deletePerm } = await admin.from("permissions").select("id").eq("resource", "files").eq("action", "delete").single();
+    await admin.from("role_permissions").insert([
+      { role_id: filesOnlyRole.data.id, permission_id: uploadPerm.id },
+      { role_id: filesOnlyRole.data.id, permission_id: readPerm.id },
+      { role_id: filesOnlyRole.data.id, permission_id: deletePerm.id },
+    ]);
+
+    const email = `18c05.contratos-test-admin-${RUN}@users.internal`;
+    const { data: created } = await admin.auth.admin.createUser({ email, password: "senha-de-teste-123456", email_confirm: true });
+    let userId = created?.user?.id;
+    if (!userId) {
+      const { data: list } = await admin.auth.admin.listUsers();
+      userId = list.users.find((u) => u.email === email)?.id;
+    }
+    await admin.from("profiles").upsert({ id: userId, company_id: admTenant.company.id, login_identifier: "18c05", display_name: "Só Arquivos" }, { onConflict: "id" });
+    await admin.from("user_roles").insert({ profile_id: userId, role_id: filesOnlyRole.data.id });
+    filesOnlyClient = createClient(url, anonKey);
+    await filesOnlyClient.auth.signInWithPassword({ email, password: "senha-de-teste-123456" });
+
+    const path = `${admTenant.company.id}/contrato/${contratoAssinaturaId}/contrato-assinado.png`;
+    await admin.storage.from("company-files").upload(path, PNG_1X1, { contentType: "image/png", upsert: true });
+
+    const { error: eUpload } = await filesOnlyClient.rpc("register_file", {
+      p_entity_type: "contrato", p_entity_id: contratoAssinaturaId, p_storage_path: path,
+      p_original_name: "contrato-assinado.png", p_mime_type: "image/png", p_size_bytes: PNG_1X1.byteLength,
+    });
+    check("papel só com files.upload (sem contratos.manage) não anexa documento de contrato", !!eUpload);
+
+    const { data: fileId, error: eUploadAdmin } = await admTenant.client.rpc("register_file", {
+      p_entity_type: "contrato", p_entity_id: contratoAssinaturaId, p_storage_path: path,
+      p_original_name: "contrato-assinado.png", p_mime_type: "image/png", p_size_bytes: PNG_1X1.byteLength,
+    });
+    check("ADMIN (com contratos.manage) anexa documento de contrato", !eUploadAdmin && !!fileId);
+    contratoAnexoFileId = fileId;
+
+    const { data: readSemContratos, error: eReadNoContratos } = await filesOnlyClient.from("files").select("id").eq("id", fileId);
+    check("papel só com files.read (sem contratos.view) não lê metadado do anexo de contrato", !eReadNoContratos && (readSemContratos ?? []).length === 0);
+
+    const { data: readAdm } = await admTenant.client.from("files").select("id").eq("id", fileId);
+    check("ADMIN (com contratos.view) lê metadado do anexo de contrato", (readAdm ?? []).length === 1);
+  }
+
+  console.log("\n31. §8 — delete_file() também exige contratos.manage pra entity_type='contrato' (achado de passagem: nunca teve gate por entity_type, nem quando o T17 RH foi corrigido)");
+  {
+    // filesOnlyClient tem files.delete mas não contratos.manage — prova que
+    // é o gate NOVO (por entity_type) que barra, não a ausência da
+    // permissão genérica.
+    const { error: eDeleteNoPerm } = await filesOnlyClient.rpc("delete_file", { p_file_id: contratoAnexoFileId });
+    check("papel com files.delete mas sem contratos.manage não apaga anexo de contrato", !!eDeleteNoPerm);
+
+    const { error: eDeleteAdmin } = await admTenant.client.rpc("delete_file", { p_file_id: contratoAnexoFileId });
+    check("ADMIN (com contratos.manage) apaga anexo de contrato", !eDeleteAdmin);
+
+    const { data: fileDepois } = await admin.from("files").select("deleted_at").eq("id", contratoAnexoFileId).single();
+    check("arquivo marcado como deletado (soft-delete)", !!fileDepois?.deleted_at);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

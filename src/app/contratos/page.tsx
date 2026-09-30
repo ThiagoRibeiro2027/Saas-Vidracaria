@@ -1,13 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import ContratosSection from "./ContratosSection";
 
-// TÓPICO 18 — Contratos completo (§4-6): estrutura genérica única com os
-// três tipos (cliente/fornecedor/funcionário), ciclo de vida completo
+// TÓPICO 18 — Contratos completo (§4-7, §10): estrutura genérica única com
+// os três tipos (cliente/fornecedor/funcionário), ciclo de vida completo
 // (rascunho → em aprovação → vigente → suspenso → encerrado/cancelado)
-// com alçada de aprovação, garantia (só cliente) e vínculo financeiro
-// detalhado (contrato → título financeiro, só cliente vigente). Anexos e
-// alertas de vencimento seguem fora desta fase (ver cabeçalho da migration
-// 20261029000000).
+// com alçada de aprovação, garantia (só cliente), vínculo financeiro
+// detalhado (contrato → título financeiro, só cliente vigente), alertas de
+// vencimento (ADR-007) e documentos anexos (§8, migration 20261209000000).
+// Só a integração real de assinatura eletrônica (§10, DocuSign/Clicksign)
+// segue fora, por decisão consciente do próprio doc — o campo de
+// referência externa já existe.
 export default async function ContratosPage() {
   const supabase = await createClient();
 
@@ -47,6 +49,15 @@ export default async function ContratosPage() {
   const fornecedores = (pessoas ?? []).filter((p) => fornecedorIds.has(p.id));
   const contratoIdsComTitulo = new Set((titulos ?? []).map((t) => t.contrato_id as string));
 
+  // §8 — anexos por contrato (agrupados no client, mesmo padrão dos outros
+  // mapas desta página). files_select já filtra por entity_type/
+  // contratos.view (migration 20261209000000).
+  const { data: anexos } = await supabase
+    .from("files")
+    .select("id, entity_id, original_name, mime_type, size_bytes, created_at")
+    .eq("entity_type", "contrato")
+    .order("created_at", { ascending: false });
+
   return (
     <main style={pageStyle}>
       <div style={cardStyle}>
@@ -67,6 +78,7 @@ export default async function ContratosPage() {
           pedidos={pedidos ?? []}
           funcionarios={funcionarios ?? []}
           contratoIdsComTitulo={contratoIdsComTitulo}
+          anexos={anexos ?? []}
           canManage={!!canManage}
           canAprovar={!!canAprovar}
           canGerarTitulos={!!canGerarTitulos}

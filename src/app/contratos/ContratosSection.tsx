@@ -4,14 +4,18 @@ import { useRef, useState, type ReactNode } from "react";
 import {
   aprovarContratoAction,
   cancelarContratoAction,
+  deleteContratoAnexoAction,
   encerrarContratoAction,
   enviarContratoParaAprovacaoAction,
   gerarTitulosContratoAction,
+  getContratoAnexoSignedUrlAction,
   reprovarContratoAction,
   retomarContratoAction,
   suspenderContratoAction,
   upsertContratoAction,
+  uploadContratoAnexoAction,
 } from "./actions";
+import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 
 const TIPO_LABEL: Record<string, string> = {
@@ -52,12 +56,21 @@ type Contrato = {
   garantia_fim: string | null;
   parcelas: number | null;
   reajuste_previsto: string | null;
+  assinatura_referencia_externa: string | null;
 };
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string; pessoa_id: string };
 type Pedido = { id: string; numero: string; pessoa_id: string };
 type Funcionario = { id: string; nome: string };
+type Anexo = {
+  id: string;
+  entity_id: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+};
 
 export default function ContratosSection({
   rows,
@@ -68,6 +81,7 @@ export default function ContratosSection({
   pedidos,
   funcionarios,
   contratoIdsComTitulo,
+  anexos,
   canManage,
   canAprovar,
   canGerarTitulos,
@@ -80,6 +94,7 @@ export default function ContratosSection({
   pedidos: Pedido[];
   funcionarios: Funcionario[];
   contratoIdsComTitulo: Set<string>;
+  anexos: Anexo[];
   canManage: boolean;
   canAprovar: boolean;
   canGerarTitulos: boolean;
@@ -128,6 +143,7 @@ export default function ContratosSection({
               <th style={thStyle}>Vigência</th>
               <th style={thStyle}>Garantia</th>
               <th style={thStyle}>Status</th>
+              <th style={thStyle}>Anexos</th>
               {(canManage || canAprovar) && <th style={thStyle}></th>}
             </tr>
           </thead>
@@ -147,6 +163,13 @@ export default function ContratosSection({
                 <td style={tdStyle}>
                   {STATUS_LABEL[row.status]}
                   {motivoAtual(row) && ` — ${motivoAtual(row)}`}
+                </td>
+                <td style={tdStyle}>
+                  <ContratoAnexos
+                    contratoId={row.id}
+                    anexos={anexos.filter((a) => a.entity_id === row.id)}
+                    canManage={canManage}
+                  />
                 </td>
                 {(canManage || canAprovar) && (
                   <td style={tdStyle}>
@@ -168,7 +191,7 @@ export default function ContratosSection({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td style={tdStyle} colSpan={canManage || canAprovar ? 8 : 7}>
+                <td style={tdStyle} colSpan={canManage || canAprovar ? 9 : 8}>
                   Nenhum contrato registrado ainda.
                 </td>
               </tr>
@@ -278,6 +301,13 @@ function ContratoForm({
         </>
       )}
       <input name="observacoes" placeholder="observações (opcional)" defaultValue={row?.observacoes ?? ""} style={{ ...inputStyle, width: "160px" }} />
+      <input
+        name="assinatura_referencia_externa"
+        placeholder="referência de assinatura eletrônica (opcional)"
+        defaultValue={row?.assinatura_referencia_externa ?? ""}
+        title="Gancho pra assinatura eletrônica futura (§10) — ex.: id de envelope do DocuSign/Clicksign. Nenhum provedor é integrado nesta fase."
+        style={{ ...inputStyle, width: "200px" }}
+      />
       <button type="submit" style={buttonStyle}>
         {row ? "Salvar" : "Criar rascunho"}
       </button>
@@ -465,5 +495,122 @@ function GerarTitulosContratoForm({ contratoId, onSubmit }: { contratoId: string
         Gerar título(s)
       </button>
     </form>
+  );
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// §8 — anexo de documento do contrato. Upload exige contratos.manage (RPC
+// register_file() checa isso — este componente só aparece pra quem já tem
+// canManage, mas a checagem real é sempre no banco, nunca só a UI).
+function ContratoAnexos({ contratoId, anexos, canManage }: { contratoId: string; anexos: Anexo[]; canManage: boolean }) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleDownload(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      const url = await getContratoAnexoSignedUrlAction(id);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao gerar link.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      await deleteContratoAnexoAction(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao remover arquivo.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const files = Array.from(inputRef.current?.files ?? []);
+    if (files.length === 0) return;
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+      setError(`Selecione no máximo ${MAX_FILES_PER_UPLOAD} arquivos por vez.`);
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    const failed: string[] = [];
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        failed.push(`${file.name}: excede ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MiB.`);
+        continue;
+      }
+      const fd = new FormData();
+      fd.set("contrato_id", contratoId);
+      fd.set("file", file);
+      try {
+        const result = await uploadContratoAnexoAction(fd);
+        if (!result.ok) failed.push(`${result.name}: ${result.error}`);
+      } catch {
+        failed.push(`${file.name}: falha ao enviar (arquivo grande demais ou conexão interrompida).`);
+      }
+    }
+    setUploading(false);
+    setError(failed.length > 0 ? failed.join(" | ") : null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: "150px" }}>
+      {anexos.length === 0 && <span style={{ fontSize: "11px", color: "#7c8f89" }}>Sem anexos.</span>}
+      {anexos.map((a) => (
+        <div key={a.id} style={{ display: "flex", gap: "4px", alignItems: "center", fontSize: "11px" }}>
+          <button
+            type="button"
+            onClick={() => handleDownload(a.id)}
+            disabled={busyId === a.id}
+            title={formatSize(a.size_bytes)}
+            style={{ background: "none", border: "none", padding: 0, color: "#1f5d57", cursor: "pointer", textDecoration: "underline" }}
+          >
+            {a.original_name}
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => handleDelete(a.id)}
+              disabled={busyId === a.id}
+              style={{ background: "none", border: "none", padding: 0, color: "#9b2c2c", cursor: "pointer", fontSize: "11px" }}
+            >
+              remover
+            </button>
+          )}
+        </div>
+      ))}
+      {canManage && (
+        <form onSubmit={handleUpload} style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "2px" }}>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            style={{ fontSize: "10px", maxWidth: "150px" }}
+          />
+          <button type="submit" disabled={uploading} style={{ ...buttonStyle, fontSize: "10px", padding: "2px 6px", width: "fit-content" }}>
+            {uploading ? "Enviando..." : "Anexar"}
+          </button>
+        </form>
+      )}
+      {error && <span style={{ fontSize: "10px", color: "#9b2c2c" }}>{error}</span>}
+    </div>
   );
 }

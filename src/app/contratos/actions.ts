@@ -2,6 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { uploadCompanyFiles } from "@/lib/storage/upload";
+
+const ANEXO_ENTITY_TYPE = "contrato";
 
 export async function upsertContratoAction(formData: FormData) {
   const id = String(formData.get("id") ?? "") || null;
@@ -25,6 +28,7 @@ export async function upsertContratoAction(formData: FormData) {
   const parcelas = parcelasRaw ? Number(parcelasRaw) : null;
   if (parcelas !== null && !Number.isFinite(parcelas)) throw new Error("Número de parcelas inválido.");
   const reajustePrevisto = String(formData.get("reajuste_previsto") ?? "").trim() || null;
+  const assinaturaReferenciaExterna = String(formData.get("assinatura_referencia_externa") ?? "").trim() || null;
 
   if (!tipo) throw new Error("Tipo de contrato é obrigatório.");
   if (!objeto) throw new Error("Objeto do contrato é obrigatório.");
@@ -48,10 +52,63 @@ export async function upsertContratoAction(formData: FormData) {
     p_garantia_fim: garantiaFim,
     p_parcelas: parcelas,
     p_reajuste_previsto: reajustePrevisto,
+    p_assinatura_referencia_externa: assinaturaReferenciaExterna,
   });
   if (error) throw new Error(error.message);
 
   revalidatePath("/contratos");
+}
+
+// §8 — anexo de documento do contrato (PDF assinado, etc.), reaproveitando a
+// infraestrutura genérica de files/register_file() já usada por /files —
+// register_file() exige contratos.manage pra entity_type='contrato' (não só
+// o files.upload genérico), mesmo padrão já usado pra documento de RH.
+export async function uploadContratoAnexoAction(
+  formData: FormData,
+): Promise<{ name: string; ok: true; fileId: string } | { name: string; ok: false; error: string }> {
+  const contratoId = String(formData.get("contrato_id") ?? "");
+  const file = formData.get("file");
+  if (!contratoId) return { name: "arquivo", ok: false, error: "Contrato inválido." };
+  if (!(file instanceof File) || file.size === 0) {
+    return { name: "arquivo", ok: false, error: "Nenhum arquivo enviado." };
+  }
+
+  try {
+    const [result] = await uploadCompanyFiles([file], ANEXO_ENTITY_TYPE, contratoId);
+    revalidatePath("/contratos");
+    return result;
+  } catch (err) {
+    return {
+      name: file.name,
+      ok: false,
+      error: err instanceof Error ? err.message : "Erro ao enviar arquivo.",
+    };
+  }
+}
+
+export async function deleteContratoAnexoAction(fileId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("delete_file", { p_file_id: fileId });
+  if (error) throw new Error(error.message);
+  revalidatePath("/contratos");
+}
+
+export async function getContratoAnexoSignedUrlAction(fileId: string): Promise<string> {
+  const supabase = await createClient();
+  const { data: file, error } = await supabase
+    .from("files")
+    .select("bucket_id, storage_path")
+    .eq("id", fileId)
+    .is("deleted_at", null)
+    .single();
+  if (error || !file) throw new Error("Arquivo não encontrado.");
+
+  const { data: signed, error: signError } = await supabase.storage
+    .from(file.bucket_id)
+    .createSignedUrl(file.storage_path, 60);
+  if (signError || !signed) throw new Error("Não foi possível gerar o link de download.");
+
+  return signed.signedUrl;
 }
 
 export async function enviarContratoParaAprovacaoAction(formData: FormData) {
