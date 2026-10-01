@@ -19,6 +19,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -155,12 +167,12 @@ async function prepararOrdemConcluida(tenant, sufixo, quantidade = 10) {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão de qualidade, outro tenant)...");
-  const admTenant = await createTenant("qualidade-test-admin", "Qualidade Admin Teste", "9d01", "ADMIN");
+  const admTenant = await createTenant(`qualidade-test-admin-${RUN}`, "Qualidade Admin Teste", "9d01", "ADMIN");
   // PRODUCAO administra Produção, não Qualidade — prova a autoridade
   // paralela: quem cria/apontar/conclui OP não pode, só por isso,
   // inspecionar a qualidade dela.
-  const noPermTenant = await createTenant("qualidade-test-admin", "Qualidade SemPerm Teste", "9d02", "PRODUCAO", admTenant.company);
-  const otherTenant = await createTenant("qualidade-test-other", "Qualidade Outro Teste", "9d03", "ADMIN");
+  const noPermTenant = await createTenant(`qualidade-test-admin-${RUN}`, "Qualidade SemPerm Teste", "9d02", "PRODUCAO", admTenant.company);
+  const otherTenant = await createTenant(`qualidade-test-other-${RUN}`, "Qualidade Outro Teste", "9d03", "ADMIN");
 
   console.log("\n0. Massa de dados — OP concluída com 10 unidades produzidas");
   const massa = await prepararOrdemConcluida(admTenant, "1", 10);
@@ -287,6 +299,16 @@ async function main() {
 
     const { data: op } = await admin.from("ordens_producao").select("status_qualidade").eq("id", parcial.opId).single();
     check("status_qualidade bloqueado mesmo com aprovação parcial", op?.status_qualidade === "bloqueado");
+
+    // OP também tem o evento pedidos→produção da própria criação — filtra
+    // por modulo_origem pra não colidir com ele no mesmo entity_id.
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", parcial.opId)
+      .contains("metadata", { modulo_origem: "qualidade" }).maybeSingle();
+    check(
+      "evento interno qualidade→produção registrado na reprovação (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "qualidade" && eventoLog?.metadata?.modulo_destino === "producao",
+    );
   }
 
   console.log("\n9. Inspeção 100% aprovada não abre NC");
@@ -300,6 +322,11 @@ async function main() {
 
     const { data: inspecao } = await admin.from("inspecoes_qualidade").select("resultado").eq("id", inspecaoId).single();
     check("resultado é 'aprovado'", inspecao?.resultado === "aprovado");
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("id")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", aprovada.opId)
+      .contains("metadata", { modulo_origem: "qualidade" }).maybeSingle();
+    check("aprovação 100% não dispara evento interno de qualidade (só a reprovação move módulos, T13 §4)", !eventoLog);
 
     const { data: ncs } = await admin.from("nao_conformidades").select("id").eq("ordem_producao_id", aprovada.opId);
     check("nenhuma NC criada", (ncs ?? []).length === 0);
@@ -470,6 +497,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "qualidade.inspecao_registrada",
         "qualidade.retrabalho_executado",

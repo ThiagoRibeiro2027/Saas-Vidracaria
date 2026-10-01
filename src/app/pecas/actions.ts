@@ -121,6 +121,35 @@ export async function definirCaracteristicaPecaAction(formData: FormData) {
   revalidatePath("/pecas");
 }
 
+// A função do banco só deixa mexer em unidade, opções e obrigatoriedade —
+// nome e tipo são imutáveis depois de criados, porque valores já
+// informados em orçamento/pedido foram gravados sob aquele tipo. A tela
+// reflete isso: os dois aparecem como texto fixo no formulário de edição.
+export async function atualizarCaracteristicaPecaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const tipo = String(formData.get("tipo") ?? "");
+  const unidade = String(formData.get("unidade") ?? "").trim() || null;
+  const opcoesRaw = String(formData.get("opcoes") ?? "").trim();
+  const obrigatoria = formData.get("obrigatoria") === "on";
+  if (!id) throw new Error("Característica inválida.");
+
+  const opcoes = tipo === "opcao" ? opcoesRaw.split(",").map((v) => v.trim()).filter(Boolean) : null;
+  if (tipo === "opcao" && (!opcoes || opcoes.length === 0)) {
+    throw new Error("Característica do tipo opção precisa de pelo menos um valor permitido.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("atualizar_caracteristica_peca", {
+    p_id: id,
+    p_unidade: unidade,
+    p_opcoes: opcoes,
+    p_obrigatoria: obrigatoria,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
+
 export async function removerCaracteristicaPecaAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) throw new Error("Característica inválida.");
@@ -184,4 +213,75 @@ export async function desativarRegraPecaAction(formData: FormData) {
 
   revalidatePath("/pecas");
   revalidatePath("/engenharia");
+}
+
+// ADR-012 §2.1 — marca uma característica numérica como largura/altura
+// da peça, pra alimentar a fórmula de perímetro/área.
+export async function definirPapelDimensionalAction(formData: FormData) {
+  const caracteristicaId = String(formData.get("caracteristica_id") ?? "");
+  const papelRaw = String(formData.get("papel_dimensional") ?? "").trim();
+  if (!caracteristicaId) throw new Error("Característica inválida.");
+  const papel = papelRaw === "" ? null : papelRaw;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_papel_dimensional_caracteristica", {
+    p_caracteristica_id: caracteristicaId,
+    p_papel: papel,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
+
+// ADR-012 §2.2 — tipo de cálculo (fixo/linear/área) e percentual de
+// perda de uma linha de composição.
+export async function definirTipoCalculoComposicaoAction(formData: FormData) {
+  const composicaoId = String(formData.get("composicao_id") ?? "");
+  const tipoCalculo = String(formData.get("tipo_calculo") ?? "");
+  const percentualPerdaRaw = String(formData.get("percentual_perda") ?? "0").trim();
+  if (!composicaoId || !tipoCalculo) throw new Error("Dados inválidos.");
+  const percentualPerda = tipoCalculo === "fixo" ? 0 : Number(percentualPerdaRaw || "0");
+  if (!Number.isFinite(percentualPerda) || percentualPerda < 0) throw new Error("Percentual de perda inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_tipo_calculo_composicao", {
+    p_composicao_id: composicaoId,
+    p_tipo_calculo: tipoCalculo,
+    p_percentual_perda: percentualPerda,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
+
+// ADR-012 Fase 2 — comprimentos de barra candidatos de uma linha de
+// composição 'linear'. Cada comprimento é um item comprável distinto.
+export async function definirComprimentoBarraAction(formData: FormData) {
+  const composicaoId = String(formData.get("composicao_id") ?? "");
+  const itemId = String(formData.get("item_id") ?? "");
+  const comprimentoRaw = String(formData.get("comprimento_metros") ?? "").trim();
+  if (!composicaoId || !itemId || !comprimentoRaw) throw new Error("Item e comprimento são obrigatórios.");
+  const comprimento = Number(comprimentoRaw);
+  if (!Number.isFinite(comprimento) || comprimento <= 0) throw new Error("Comprimento inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_comprimento_barra_composicao", {
+    p_peca_composicao_id: composicaoId,
+    p_item_id: itemId,
+    p_comprimento_metros: comprimento,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
+}
+
+export async function removerComprimentoBarraAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("Comprimento inválido.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remover_comprimento_barra_composicao", { p_id: id });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/pecas");
 }

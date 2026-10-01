@@ -1,7 +1,11 @@
-// Testes automatizados do TÓPICO 17 — RH, recorte mínimo do MVP: cadastro
-// de funcionários, vínculo com usuário, desligamento com revogação de
-// acesso. Sem folha/encargos/rescisão/escala/ponto, sem documentos/EPI/
-// habilitações/afastamentos com data.
+// Testes automatizados do TÓPICO 17 — RH: cadastro de funcionários,
+// vínculo com usuário, desligamento com revogação de acesso (recorte
+// mínimo, 20260916050000) e, a partir daqui, documento genérico
+// (admissão/certificação/EPI/habilitação) e afastamentos/férias (recorte
+// completo, 20261006000000_topico17_rh_completo.sql), com vínculo
+// opcional de habilitação a um recurso produtivo (complemento,
+// 20261029000000). Sem folha/encargos/rescisão/escala/ponto (§8, fora de
+// escopo do módulo).
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-rh.mjs
 
@@ -246,7 +250,26 @@ async function main() {
     }
   }
 
-  console.log("\n18. Massa de dados — funcionário ativo pra testar documentos/afastamentos (§6-7)");
+  console.log("\n18. Massa de dados — funcionário ativo e recurso produtivo pra testar documentos/afastamentos (§6-7)");
+  let recursoId;
+  {
+    const { data: recurso } = await admin
+      .from("recursos_produtivos")
+      .insert({ company_id: admTenant.company.id, codigo: "FORNO-TEMPLE-01", nome: "Forno de têmpera", tipo: "maquina" })
+      .select("id")
+      .single();
+    recursoId = recurso?.id;
+    check("recurso produtivo (máquina) criado", !!recursoId);
+
+    var recursoEquipeId = (
+      await admin
+        .from("recursos_produtivos")
+        .insert({ company_id: admTenant.company.id, codigo: "EQUIPE-01", nome: "Equipe de corte", tipo: "equipe" })
+        .select("id")
+        .single()
+    ).data?.id;
+  }
+
   const { data: funcionarioAtivoId } = await admTenant.client.rpc("upsert_funcionario", { p_id: null, p_nome: "Funcionário Ativo Teste" });
   check("funcionário ativo criado", !!funcionarioAtivoId);
 
@@ -429,7 +452,41 @@ async function main() {
     }
   }
 
-  console.log("\n26. register_file()/files_select — anexo de RH exige rh.manage/rh.view, não só a permissão genérica de Arquivos");
+  console.log("\n26. registrar_documento_funcionario() com recurso_produtivo_id — vínculo habilitação↔máquina (complemento)");
+  {
+    const { error: eOutraEmpresa } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "habilitacao", p_nome: "Forno de têmpera",
+      p_recurso_produtivo_id: "00000000-0000-0000-0000-000000000000",
+    });
+    check("recurso inexistente é rejeitado", !!eOutraEmpresa);
+
+    const { error: eTipoErrado } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "habilitacao", p_nome: "Equipe de corte",
+      p_recurso_produtivo_id: recursoEquipeId,
+    });
+    check("recurso do tipo 'equipe' (não máquina/equipamento) é rejeitado", !!eTipoErrado);
+
+    const { error: eRecursoEmOutroTipo } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "epi", p_nome: "Óculos",
+      p_recurso_produtivo_id: recursoId,
+    });
+    check("vínculo com recurso fora de tipo='habilitacao' é rejeitado", !!eRecursoEmOutroTipo);
+
+    const { data, error } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "habilitacao", p_nome: "Forno de têmpera",
+      p_data_referencia: "2027-01-01", p_recurso_produtivo_id: recursoId,
+    });
+    check("cria habilitação vinculada a recurso produtivo com sucesso", !error && !!data);
+    const { data: row } = await admin.from("funcionario_documentos").select("recurso_produtivo_id").eq("id", data).single();
+    check("recurso_produtivo_id persistido", row?.recurso_produtivo_id === recursoId);
+
+    const { data: semRecurso, error: eSemRecurso } = await admTenant.client.rpc("registrar_documento_funcionario", {
+      p_funcionario_id: funcionarioAtivoId, p_tipo: "habilitacao", p_nome: "Mesa de corte (sem cadastro)",
+    });
+    check("habilitação sem recurso vinculado (nome livre) continua válida", !eSemRecurso && !!semRecurso);
+  }
+
+  console.log("\n27. register_file()/files_select — anexo de RH exige rh.manage/rh.view, não só a permissão genérica de Arquivos");
   {
     // Papel com files.upload/files.read mas SEM nenhuma permissão de rh —
     // prova que a permissão genérica de Arquivos não basta mais pra

@@ -14,6 +14,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
 
 const TEST_SCRIPTS = [
+  // Puro (sem banco): roda sozinho com `node scripts/test-formatar-data.mjs`.
+  "scripts/test-formatar-data.mjs",
   "scripts/test-foundation-rls.mjs",
   "scripts/test-mfa-and-password.mjs",
   "scripts/test-governance.mjs",
@@ -46,6 +48,7 @@ const TEST_SCRIPTS = [
   "scripts/test-fila-producao.mjs",
   "scripts/test-pecas.mjs",
   "scripts/test-compras.mjs",
+  "scripts/test-bancario.mjs",
 ];
 
 function supabaseCredentials() {

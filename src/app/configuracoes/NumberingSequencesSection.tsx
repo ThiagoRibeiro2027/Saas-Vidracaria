@@ -1,23 +1,40 @@
 "use client";
 
 import { upsertNumberingSequenceAction } from "./actions";
-import { sectionTitleStyle, inputStyle, labelStyle, buttonStyle } from "./styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 
-// Lista fixa — sem UI de criar tipo de documento arbitrário. Achado do
-// code-review (16/09/2026): 'expedicao' (T9) e 'instalacao' (T16) já
-// tinham ficado de fora dessa lista desde que esses módulos entraram —
-// sem esta tela, next_document_number() nunca tem sequência configurada
-// pra eles, e criar_expedicao()/criar_instalacao()/gerar_titulos_pedido()
-// falham sempre com "Sequência de numeração não configurada". Adicionado
-// 'titulo_financeiro' (T11) junto, mesmo problema recém-introduzido.
-const DOCUMENT_TYPES = [
-  { key: "orcamento", label: "Orçamento" },
-  { key: "pedido", label: "Pedido" },
-  { key: "ordem_producao", label: "Ordem de produção" },
-  { key: "expedicao", label: "Expedição" },
-  { key: "instalacao", label: "Instalação" },
-  { key: "titulo_financeiro", label: "Título financeiro" },
-] as const;
+// FIX (achado em teste manual, 27/09/2026): esta lista já ficou pra trás
+// TRÊS vezes antes (expedição/instalação, depois titulo_financeiro,
+// depois proposta — ver histórico do arquivo) porque era fixa no código,
+// nunca acompanhando novo tipo de documento — e aconteceu de novo,
+// desta vez faltando o módulo de Compras inteiro (solicitação, cotação,
+// pedido de compra, recebimento, título) e Contratos. A lista agora vem
+// do catálogo real (`numbering_document_types`, a mesma tabela que
+// next_document_number() consulta) via prop `documentTypeKeys` — só o
+// RÓTULO amigável continua aqui, com fallback automático pra qualquer
+// tipo novo que apareça sem label mapeado.
+const LABELS: Record<string, string> = {
+  orcamento: "Orçamento",
+  proposta: "Proposta comercial",
+  pedido: "Pedido",
+  ordem_producao: "Ordem de produção",
+  expedicao: "Expedição",
+  instalacao: "Instalação",
+  titulo_financeiro: "Título financeiro (a receber)",
+  contrato: "Contrato",
+  solicitacao_compra: "Solicitação de compra",
+  cotacao: "Cotação",
+  pedido_compra: "Pedido de compra",
+  recebimento_compra: "Recebimento de compra",
+  titulo_compra: "Título a pagar (compra)",
+  cobranca: "Cobrança (boleto/PIX)",
+};
+
+function labelFor(key: string): string {
+  return LABELS[key] ?? key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
 
 type Row = {
   document_type: string;
@@ -32,71 +49,58 @@ type Row = {
 
 export default function NumberingSequencesSection({
   rows,
+  documentTypeKeys,
   canManage,
 }: {
   rows: Row[];
+  documentTypeKeys: string[];
   canManage: boolean;
 }) {
   const byType = new Map(rows.map((r) => [r.document_type, r]));
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Numeração</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {DOCUMENT_TYPES.map(({ key, label }) => {
+      <h2 className="text-sm font-semibold text-text">Numeração</h2>
+      <div className="mt-2 flex flex-col gap-2.5">
+        {documentTypeKeys.map((key) => {
+          const label = labelFor(key);
           const row = byType.get(key);
           return (
-            <form
-              key={key}
-              action={upsertNumberingSequenceAction}
-              style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", fontSize: "12px" }}
-            >
+            <form key={key} action={upsertNumberingSequenceAction} className="flex flex-wrap items-center gap-2 text-xs">
               <input type="hidden" name="document_type" value={key} />
-              <span style={{ width: "140px" }}>{label}</span>
-              <input
-                name="prefixo"
-                placeholder="Prefixo"
-                defaultValue={row?.prefixo ?? ""}
-                disabled={!canManage}
-                style={{ ...inputStyle, width: "70px" }}
-              />
-              <input
-                name="sufixo"
-                placeholder="Sufixo"
-                defaultValue={row?.sufixo ?? ""}
-                disabled={!canManage}
-                style={{ ...inputStyle, width: "70px" }}
-              />
-              <label style={labelStyle}>
+              <span className="w-36">{label}</span>
+              <Input name="prefixo" placeholder="Prefixo" defaultValue={row?.prefixo ?? ""} disabled={!canManage} className="w-16" />
+              <Input name="sufixo" placeholder="Sufixo" defaultValue={row?.sufixo ?? ""} disabled={!canManage} className="w-16" />
+              <label className="flex items-center gap-1 text-text">
                 Dígitos
-                <input
+                <Input
                   name="digitos"
                   type="number"
                   min={1}
                   max={12}
                   defaultValue={row?.digitos ?? 6}
                   disabled={!canManage}
-                  style={{ ...inputStyle, width: "50px" }}
+                  className="w-12"
                 />
               </label>
-              <label style={labelStyle}>
-                <input type="checkbox" name="incluir_ano" defaultChecked={row?.incluir_ano ?? false} disabled={!canManage} />
+              <label className="flex items-center gap-1 text-text">
+                <input type="checkbox" name="incluir_ano" defaultChecked={row?.incluir_ano ?? false} disabled={!canManage} className="accent-primary" />
                 Ano
               </label>
-              <label style={labelStyle}>
-                <input type="checkbox" name="incluir_mes" defaultChecked={row?.incluir_mes ?? false} disabled={!canManage} />
+              <label className="flex items-center gap-1 text-text">
+                <input type="checkbox" name="incluir_mes" defaultChecked={row?.incluir_mes ?? false} disabled={!canManage} className="accent-primary" />
                 Mês
               </label>
-              <select name="reinicio" defaultValue={row?.reinicio ?? "nunca"} disabled={!canManage} style={inputStyle}>
+              <Select name="reinicio" defaultValue={row?.reinicio ?? "nunca"} disabled={!canManage}>
                 <option value="nunca">Sem reinício</option>
                 <option value="anual">Reinício anual</option>
                 <option value="mensal">Reinício mensal</option>
-              </select>
-              <span style={{ color: "#6b7a75" }}>Atual: {row?.current_value ?? 0}</span>
+              </Select>
+              <span className="text-text-muted">Atual: {row?.current_value ?? 0}</span>
               {canManage && (
-                <button type="submit" style={buttonStyle}>
+                <Button type="submit" variant="primary" size="sm">
                   Salvar
-                </button>
+                </Button>
               )}
             </form>
           );
@@ -105,4 +109,3 @@ export default function NumberingSequencesSection({
     </section>
   );
 }
-

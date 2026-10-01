@@ -29,10 +29,37 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+// Filho endereçado por querystring (`?tab=slug`, ex.: Comercial, Produção)
+// carrega `tab` — vários filhos do mesmo módulo compartilham a mesma
+// `pathname`, então a Sidebar precisa comparar com searchParams.get("tab")
+// pra saber qual está ativo, não só o href. Filho de sub-rota real (ex.:
+// Compras, ADR-011) não tem `tab` — cada um já tem pathname próprio.
+export type NavChild = {
+  label: string;
+  href: string;
+  tab?: string;
+  // Mesmo papel do NavItem.exact, necessário no filho-raiz de módulos com
+  // sub-rota real (ex. Compras "/compras") — sem isso o prefix-match da
+  // Sidebar marcaria essa raiz como ativa em qualquer sub-rota irmã.
+  exact?: boolean;
+};
+
 export type NavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
+  // Só pra casos como Compras, onde a rota "raiz" do módulo (/compras)
+  // é irmã de outras rotas do mesmo módulo (/compras/solicitacoes...),
+  // não uma seção genérica delas — sem isso, o destaque por prefixo
+  // (Sidebar.tsx) marcaria a raiz como ativa em qualquer sub-rota.
+  exact?: boolean;
+  // Sub-rotinas do módulo, mostradas em árvore dentro da própria barra
+  // lateral (2026-09-27) — substituem as abas horizontais que existiam
+  // dentro da página (`Tabs`/`ComprasTabs`, ambos agora removidos das
+  // páginas). A navegação não filtra por permissão (mesmo princípio já
+  // documentado abaixo pros itens de topo) — um usuário sem acesso a uma
+  // sub-rotina específica só cai no fallback da própria página ao clicar.
+  children?: NavChild[];
 };
 
 export type NavGroup = {
@@ -47,24 +74,93 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Comercial",
     items: [
-      { label: "Comercial", href: "/comercial", icon: ShoppingCart },
-      { label: "Pedidos", href: "/pedidos", icon: ClipboardList },
+      {
+        label: "Comercial",
+        href: "/comercial",
+        icon: ShoppingCart,
+        children: [
+          { label: "Orçamentos", href: "/comercial", tab: "orcamentos" },
+          { label: "Oportunidades", href: "/comercial?tab=oportunidades", tab: "oportunidades" },
+          { label: "Propostas", href: "/comercial?tab=propostas", tab: "propostas" },
+        ],
+      },
+      {
+        label: "Pedidos",
+        href: "/pedidos",
+        icon: ClipboardList,
+        children: [
+          { label: "Pedidos", href: "/pedidos", tab: "pedidos" },
+          { label: "Conversão de orçamentos", href: "/pedidos?tab=conversao", tab: "conversao" },
+        ],
+      },
       { label: "Engenharia", href: "/engenharia", icon: Ruler },
     ],
   },
   {
     label: "Operação",
     items: [
-      { label: "Produção", href: "/producao", icon: Factory },
+      {
+        label: "Produção",
+        href: "/producao",
+        icon: Factory,
+        children: [
+          { label: "Ordens de produção", href: "/producao", tab: "ordens" },
+          { label: "Roteiros", href: "/producao?tab=roteiros", tab: "roteiros" },
+          { label: "Lotes fabris", href: "/producao?tab=lotes-fabris", tab: "lotes-fabris" },
+          { label: "Recursos e capacidade", href: "/producao?tab=recursos", tab: "recursos" },
+          { label: "Programação", href: "/producao?tab=programacao", tab: "programacao" },
+          { label: "Horizontes", href: "/producao?tab=horizontes", tab: "horizontes" },
+          { label: "Replanejamento", href: "/producao?tab=replanejamento", tab: "replanejamento" },
+          { label: "Sequenciamento", href: "/producao?tab=sequenciamento", tab: "sequenciamento" },
+          { label: "Rótulos de status", href: "/producao?tab=rotulos", tab: "rotulos" },
+        ],
+      },
       { label: "Fila de Produção", href: "/fila-producao", icon: ListOrdered },
       { label: "Peças Fabricadas", href: "/pecas", icon: Puzzle },
       { label: "Qualidade", href: "/qualidade", icon: BadgeCheck },
-      { label: "Estoque", href: "/estoque", icon: Boxes },
+      {
+        label: "Estoque",
+        href: "/estoque",
+        icon: Boxes,
+        children: [
+          { label: "Saldo por item", href: "/estoque", tab: "saldo" },
+          { label: "Reserva para pedidos", href: "/estoque?tab=reserva", tab: "reserva" },
+          { label: "Registrar sobra", href: "/estoque?tab=sobra", tab: "sobra" },
+        ],
+      },
       { label: "Expedição", href: "/expedicao", icon: Truck },
-      { label: "Instalação", href: "/instalacao", icon: Wrench },
+      {
+        label: "Instalação",
+        href: "/instalacao",
+        icon: Wrench,
+        children: [
+          { label: "Equipes", href: "/instalacao", tab: "equipes" },
+          { label: "Agenda de instalação", href: "/instalacao?tab=agenda", tab: "agenda" },
+          { label: "Danos em obra", href: "/instalacao?tab=danos", tab: "danos" },
+        ],
+      },
       { label: "Instalação — Campo (PWA)", href: "/campo", icon: Smartphone },
       { label: "Suprimentos", href: "/suprimentos", icon: PackageSearch },
-      { label: "Compras", href: "/compras", icon: Handshake },
+      // Compras (ADR-011, 9 fases) vive em rotas separadas de verdade (não
+      // ?tab=) — ver ComprasTabs.tsx (removido das páginas, mas o comentário
+      // ali explica o porquê das sub-rotas reais).
+      {
+        label: "Compras",
+        href: "/compras",
+        icon: Handshake,
+        children: [
+          { label: "Fornecedores e Políticas", href: "/compras", exact: true },
+          { label: "Solicitações", href: "/compras/solicitacoes" },
+          { label: "Cotações", href: "/compras/cotacoes" },
+          { label: "Pedidos", href: "/compras/pedidos" },
+          { label: "Recebimentos", href: "/compras/recebimentos" },
+          { label: "Avaliação de Fornecedores", href: "/compras/fornecedores" },
+          { label: "Mapa de Necessidades", href: "/compras/mapa" },
+          { label: "Orçado × Realizado", href: "/compras/orcamento" },
+          { label: "Dashboard", href: "/compras/dashboard" },
+          { label: "Configurações", href: "/compras/configuracoes" },
+        ],
+      },
     ],
   },
   {
@@ -80,11 +176,39 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Administração",
     items: [
-      { label: "Usuários e Permissões", href: "/usuarios", icon: UserCog },
-      { label: "Cadastros", href: "/cadastros", icon: BookUser },
+      {
+        label: "Usuários e Permissões",
+        href: "/usuarios",
+        icon: UserCog,
+        children: [
+          { label: "Usuários", href: "/usuarios", tab: "usuarios" },
+          { label: "Papéis e permissões", href: "/usuarios?tab=papeis", tab: "papeis" },
+        ],
+      },
+      {
+        label: "Cadastros",
+        href: "/cadastros",
+        icon: BookUser,
+        children: [
+          { label: "Pessoas", href: "/cadastros", tab: "pessoas" },
+          { label: "Obras", href: "/cadastros?tab=obras", tab: "obras" },
+          { label: "Itens", href: "/cadastros?tab=itens", tab: "itens" },
+          { label: "Importação", href: "/cadastros?tab=importacao", tab: "importacao" },
+        ],
+      },
       { label: "Integrações", href: "/integracoes", icon: Plug },
       { label: "Governança", href: "/governance", icon: ShieldCheck },
-      { label: "Configurações", href: "/configuracoes", icon: Settings },
+      {
+        label: "Configurações",
+        href: "/configuracoes",
+        icon: Settings,
+        children: [
+          { label: "Numeração", href: "/configuracoes", tab: "numeracao" },
+          { label: "Margem de quebra", href: "/configuracoes?tab=quebra", tab: "quebra" },
+          { label: "Regra de medição", href: "/configuracoes?tab=medicao", tab: "medicao" },
+          { label: "Alçada de aprovação", href: "/configuracoes?tab=alcada", tab: "alcada" },
+        ],
+      },
     ],
   },
   {

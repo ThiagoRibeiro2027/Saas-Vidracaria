@@ -3,7 +3,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export async function upsertOrcamentoAction(formData: FormData) {
+export type OrcamentoState = { error: string } | undefined;
+
+export async function upsertOrcamentoAction(
+  _prevState: OrcamentoState,
+  formData: FormData,
+): Promise<OrcamentoState> {
   const id = String(formData.get("id") ?? "") || null;
   const pessoaId = String(formData.get("pessoa_id") ?? "");
   const obraId = String(formData.get("obra_id") ?? "") || null;
@@ -11,7 +16,7 @@ export async function upsertOrcamentoAction(formData: FormData) {
   const condicaoComercial = String(formData.get("condicao_comercial") ?? "").trim() || null;
   const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
 
-  if (!pessoaId) throw new Error("Cliente é obrigatório.");
+  if (!pessoaId) return { error: "Cliente é obrigatório." };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("upsert_orcamento", {
@@ -22,7 +27,7 @@ export async function upsertOrcamentoAction(formData: FormData) {
     p_condicao_comercial: condicaoComercial,
     p_observacoes: observacoes,
   });
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
 
   revalidatePath("/comercial");
 }
@@ -35,12 +40,17 @@ export async function upsertOrcamentoItemAction(formData: FormData) {
   const precoUnitario = Number(formData.get("preco_unitario"));
   const custoUnitarioRaw = String(formData.get("custo_unitario") ?? "").trim();
   const custoUnitario = custoUnitarioRaw ? Number(custoUnitarioRaw) : null;
+  const custoMaoObraRaw = String(formData.get("custo_mao_obra") ?? "").trim();
+  const custoMaoObra = custoMaoObraRaw ? Number(custoMaoObraRaw) : null;
 
   if (!orcamentoId || !itemId || !Number.isFinite(quantidade) || !Number.isFinite(precoUnitario)) {
     throw new Error("Dados inválidos para item do orçamento.");
   }
   if (custoUnitario !== null && !Number.isFinite(custoUnitario)) {
     throw new Error("Custo unitário inválido.");
+  }
+  if (custoMaoObra !== null && !Number.isFinite(custoMaoObra)) {
+    throw new Error("Custo de mão de obra inválido.");
   }
 
   const supabase = await createClient();
@@ -51,6 +61,7 @@ export async function upsertOrcamentoItemAction(formData: FormData) {
     p_quantidade: quantidade,
     p_preco_unitario: precoUnitario,
     p_custo_unitario: custoUnitario,
+    p_custo_mao_obra: custoMaoObra,
   });
   if (error) throw new Error(error.message);
 
@@ -218,4 +229,58 @@ export async function vincularOportunidadeOrcamentoAction(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/comercial");
+}
+
+// TÓPICO 10 §9 — mesmo padrão de definirValorCaracteristicaAction
+// (src/app/engenharia/actions.ts), só que grava em orcamento_item_
+// caracteristicas via definir_valor_caracteristica_orcamento_item()
+// (gate orcamentos.manage, só com orçamento em rascunho).
+export async function definirValorCaracteristicaOrcamentoAction(formData: FormData) {
+  const orcamentoItemId = String(formData.get("orcamento_item_id") ?? "");
+  const pecaCaracteristicaId = String(formData.get("peca_caracteristica_id") ?? "");
+  const tipo = String(formData.get("tipo") ?? "");
+  const valorRaw = String(formData.get("valor") ?? "").trim();
+  if (!orcamentoItemId || !pecaCaracteristicaId || !valorRaw) {
+    throw new Error("Característica e valor são obrigatórios.");
+  }
+
+  const valorNumero = tipo === "numero" ? Number(valorRaw) : null;
+  if (tipo === "numero" && !Number.isFinite(valorNumero)) throw new Error("Valor numérico inválido.");
+  const valorTexto = tipo === "numero" ? null : valorRaw;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_valor_caracteristica_orcamento_item", {
+    p_orcamento_item_id: orcamentoItemId,
+    p_peca_caracteristica_id: pecaCaracteristicaId,
+    p_valor_numero: valorNumero,
+    p_valor_texto: valorTexto,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
+
+// ADR-012 §2 — leitura pura (não grava nada). O vendedor decide se
+// aplica o custo_total ao campo custo_unitario, via o form de edição do
+// item já existente — nunca aplicado automaticamente.
+export async function calcularCustoOrcamentoItemAction(
+  orcamentoItemId: string,
+): Promise<{ error: string } | { data: Record<string, unknown> }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcamentoItemId });
+  if (error) return { error: error.message };
+  return { data: data as Record<string, unknown> };
+}
+
+// ADR-012 Fase 4 — leitura pura (não grava nada). O vendedor decide se
+// aplica o custo_total ao campo custo_mao_obra, via o form de edição do
+// item já existente — nunca aplicado automaticamente (mesmo padrão de
+// calcularCustoOrcamentoItemAction).
+export async function calcularMaoObraOrcamentoItemAction(
+  orcamentoItemId: string,
+): Promise<{ error: string } | { data: Record<string, unknown> }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("calcular_mao_obra_orcamento_item", { p_orcamento_item_id: orcamentoItemId });
+  if (error) return { error: error.message };
+  return { data: data as Record<string, unknown> };
 }

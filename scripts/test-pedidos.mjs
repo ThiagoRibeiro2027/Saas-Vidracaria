@@ -160,6 +160,13 @@ async function main() {
 
     const { data: itensCopiados } = await admin.from("pedido_itens").select("*").eq("pedido_id", id);
     check("itens do orçamento foram copiados para o pedido", (itensCopiados ?? []).length === 1 && itensCopiados[0].quantidade === 5);
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", id).maybeSingle();
+    check(
+      "evento interno comercial→pedidos registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "comercial" && eventoLog?.metadata?.modulo_destino === "pedidos",
+    );
   }
 
   console.log("\n4. Mesmo orçamento não pode ser convertido duas vezes");

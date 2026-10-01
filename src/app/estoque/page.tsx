@@ -1,12 +1,20 @@
 import { createClient } from "@/lib/supabase/server";
 import EstoqueSection from "./EstoqueSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+
+type TabSlug = "saldo" | "reserva" | "sobra" | "dimensional";
 
 // TÓPICO 6 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // novembro: "o que a fábrica faz"). Só saldo, reserva para o pedido,
 // consumo e registro de sobra — sem localização, lote/serial, peça física
 // individual, motor de compatibilidade de sobra ou inventário. Saldo é
 // escalar (quantidade na unidade do item, não peça física).
-export default async function EstoquePage() {
+export default async function EstoquePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -16,13 +24,9 @@ export default async function EstoquePage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar o módulo Estoque desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o módulo Estoque desta empresa." />
+      </div>
     );
   }
 
@@ -35,7 +39,10 @@ export default async function EstoquePage() {
     { data: pessoas },
     { data: obras },
   ] = await Promise.all([
-    supabase.from("itens").select("id, codigo, descricao, tipo, unidade_principal").order("codigo"),
+    supabase
+      .from("itens")
+      .select("id, codigo, descricao, tipo, unidade_principal, dimensao_tipo, peso_por_unidade_dimensao")
+      .order("codigo"),
     supabase.from("estoque_saldos").select("*"),
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
@@ -43,6 +50,14 @@ export default async function EstoquePage() {
     supabase.from("pessoas").select("id, nome"),
     supabase.from("obras").select("id, nome"),
   ]);
+
+  // Fase 2 da ADR-011 — peça física individual de item dimensional. A
+  // policy de SELECT já filtra por empresa; esgotadas vêm junto porque o
+  // histórico de consumo de uma barra é parte da leitura da posição.
+  const { data: pecasDimensionais } = await supabase
+    .from("itens_pecas_dimensionais")
+    .select("id, item_id, identificador, quantidade_original, quantidade_disponivel, situacao, observacao, created_at")
+    .order("created_at", { ascending: false });
 
   const saldoPorItem = new Map((saldos ?? []).map((s) => [s.item_id, s] as const));
 
@@ -60,18 +75,27 @@ export default async function EstoquePage() {
     (reservas ?? []).filter((r) => r.status === "reservado").map((r) => [r.pedido_item_id, r] as const),
   );
 
-  return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 6 — Estoque</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Saldo, reservas e sobras</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do M1: saldo por item, reserva para o pedido (com reserva parcial quando
-          falta disponível), consumo e registro de sobra. Sem localização, lote/serial ou
-          inventário.
-        </p>
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "saldo", label: "Saldo por item" },
+    { slug: "reserva", label: "Reserva para pedidos" },
+    ...(canManage ? [{ slug: "sobra" as const, label: "Registrar sobra" }] : []),
+    { slug: "dimensional", label: "Peças dimensionais" },
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "saldo";
 
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 6 — Estoque</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Saldo, reservas e sobras</h1>
+      <p className="mt-1 text-sm text-text">
+        Recorte mínimo do M1: saldo por item, reserva para o pedido (com reserva parcial quando
+        falta disponível), consumo e registro de sobra. Sem localização, lote/serial ou
+        inventário.
+      </p>
+
+      <div className="mt-6">
         <EstoqueSection
+          activeTab={activeTab}
           itens={itens ?? []}
           saldoPorItem={saldoPorItem}
           pedidos={pedidos ?? []}
@@ -79,38 +103,10 @@ export default async function EstoquePage() {
           reservaAtivaPorPedidoItem={reservaAtivaPorPedidoItem}
           pessoas={pessoas ?? []}
           obras={obras ?? []}
+          pecasDimensionais={pecasDimensionais ?? []}
           canManage={!!canManage}
         />
       </div>
-    </main>
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

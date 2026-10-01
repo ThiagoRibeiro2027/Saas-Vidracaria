@@ -15,6 +15,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -79,9 +91,9 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN") {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão, outro tenant)...");
-  const admTenant = await createTenant("cadastros-test-admin", "Cadastros Admin Teste", "9701", "ADMIN");
-  const noPermTenant = await createTenant("cadastros-test-noperm", "Cadastros SemPerm Teste", "9702", "COMERCIAL");
-  const otherTenant = await createTenant("cadastros-test-other", "Cadastros Outro Teste", "9703", "ADMIN");
+  const admTenant = await createTenant(`cadastros-test-admin-${RUN}`, "Cadastros Admin Teste", "9701", "ADMIN");
+  const noPermTenant = await createTenant(`cadastros-test-noperm-${RUN}`, "Cadastros SemPerm Teste", "9702", "COMERCIAL");
+  const otherTenant = await createTenant(`cadastros-test-other-${RUN}`, "Cadastros Outro Teste", "9703", "ADMIN");
 
   console.log("\n1. Escrita exige a permissão *.manage correta por entidade");
   {
@@ -283,6 +295,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "cadastro.pessoa_upserted",
         "cadastro.pessoa_papel_set",

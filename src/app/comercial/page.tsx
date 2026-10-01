@@ -4,12 +4,27 @@ import OportunidadesSection from "./OportunidadesSection";
 import PropostasSection from "./PropostasSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
+type TabSlug = "orcamentos" | "oportunidades" | "propostas";
+
 // TÓPICO 10 — orçamento simples (cabeçalho + itens + decisão), recorte
 // mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0). Oportunidades e
 // funil comercial fixo são ampliação de escopo aprovada em ADR-002 v2.4
 // (19/09/2026) — ainda sem versionamento de orçamento, proposta formal ou
 // formação de custo. A conversão real em Pedido é do TÓPICO 3.
-export default async function ComercialPage() {
+//
+// As três seções viraram abas (?tab=) em vez de empilhadas na mesma tela —
+// são destinos independentes (o usuário abre um de cada vez), ao contrário
+// de Estoque/Pedidos/Instalação, onde as seções formam uma sequência e
+// continuam empilhadas de propósito. Todo o fetch abaixo continua
+// acontecendo sempre (não só da aba ativa): Orçamentos depende de
+// `oportunidadesAbertas` pro próprio formulário, então não dá pra pular a
+// consulta de oportunidades sem quebrar a aba de Orçamentos.
+export default async function ComercialPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
   const [
@@ -47,6 +62,7 @@ export default async function ComercialPage() {
     { data: papeis },
     { data: obras },
     { data: itens },
+    { data: pecas },
     { data: oportunidades },
     { data: propostas },
   ] = await Promise.all([
@@ -56,6 +72,7 @@ export default async function ComercialPage() {
     supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
     supabase.from("obras").select("id, nome, pessoa_id, situacao").order("nome"),
     supabase.from("itens").select("id, codigo, descricao, unidade_principal, situacao").order("codigo"),
+    supabase.from("pecas").select("id, item_id"),
     canViewOportunidades
       ? supabase.from("oportunidades").select("*").order("created_at", { ascending: false })
       : Promise.resolve({ data: [] as never[] }),
@@ -76,6 +93,24 @@ export default async function ComercialPage() {
     itensPorOrcamento.set(oi.orcamento_id, list);
   }
 
+  // TÓPICO 10 §9 — orcamento_item cujo item é uma peça configurável
+  // ganha a lista de características + valor já informado (se houver).
+  // Mesmo padrão de N chamadas via Promise.all já usado em
+  // engenharia/page.tsx pro equivalente do lado do Pedido.
+  const pecaIdPorItemId = new Map((pecas ?? []).map((p) => [p.item_id, p.id]));
+  const caracteristicasPorOrcamentoItem = new Map<
+    string,
+    { peca_caracteristica_id: string; nome: string; tipo: string; unidade: string | null; obrigatoria: boolean; valor_numero: number | null; valor_texto: string | null }[]
+  >();
+  await Promise.all(
+    (orcamentoItens ?? [])
+      .filter((oi) => pecaIdPorItemId.has(oi.item_id))
+      .map(async (oi) => {
+        const { data } = await supabase.rpc("listar_valores_caracteristicas_orcamento_item", { p_orcamento_item_id: oi.id });
+        if (data && data.length > 0) caracteristicasPorOrcamentoItem.set(oi.id, data);
+      }),
+  );
+
   // Mesma fórmula usada por decidir_orcamento() pra checar a alçada
   // (approval_thresholds) — uma única fonte de verdade via RPC, em vez de
   // recalcular o total no client com uma soma que poderia divergir da soma
@@ -94,30 +129,37 @@ export default async function ComercialPage() {
 
   const orcamentosAprovados = (orcamentos ?? []).filter((o) => o.status === "aprovado");
 
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "orcamentos", label: "Orçamentos" },
+    ...(canViewOportunidades ? [{ slug: "oportunidades" as const, label: "Oportunidades" }] : []),
+    ...(canViewPropostas ? [{ slug: "propostas" as const, label: "Propostas" }] : []),
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "orcamentos";
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 10 — Comercial</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Orçamentos</h1>
-      <p className="mt-1 text-sm text-text">
-        Recorte mínimo do M1: orçamento simples com itens e decisão de aprovação, sem tabela de
-        preços, descontos ou versionamento.
-      </p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Comercial</h1>
 
-      <div className="mt-6">
-        <OrcamentosSection
-          orcamentos={orcamentos ?? []}
-          itensPorOrcamento={itensPorOrcamento as Map<string, NonNullable<typeof orcamentoItens>>}
-          totais={totais}
-          clientesElegiveis={clientesElegiveis}
-          todasPessoas={pessoas ?? []}
-          obras={obras ?? []}
-          itens={itens ?? []}
-          oportunidadesAbertas={oportunidadesAbertas}
-          canManage={!!canManage}
-        />
-      </div>
+      {activeTab === "orcamentos" && (
+        <div className="mt-6">
+          <OrcamentosSection
+            orcamentos={orcamentos ?? []}
+            itensPorOrcamento={itensPorOrcamento as Map<string, NonNullable<typeof orcamentoItens>>}
+            totais={totais}
+            clientesElegiveis={clientesElegiveis}
+            todasPessoas={pessoas ?? []}
+            obras={obras ?? []}
+            itens={itens ?? []}
+            pecaIdPorItemId={pecaIdPorItemId}
+            caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
+            oportunidadesAbertas={oportunidadesAbertas}
+            canManage={!!canManage}
+          />
+        </div>
+      )}
 
-      {canViewOportunidades && (
+      {activeTab === "oportunidades" && canViewOportunidades && (
         <OportunidadesSection
           oportunidades={oportunidades ?? []}
           todasPessoas={pessoas ?? []}
@@ -125,7 +167,7 @@ export default async function ComercialPage() {
         />
       )}
 
-      {canViewPropostas && (
+      {activeTab === "propostas" && canViewPropostas && (
         <PropostasSection
           propostas={propostas ?? []}
           orcamentosAprovados={orcamentosAprovados}

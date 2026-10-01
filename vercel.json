@@ -11,8 +11,16 @@
       "schedule": "30 8 * * *"
     },
     {
+      "path": "/api/cron/contratos-vencimento",
+      "schedule": "15 8 * * *"
+    },
+    {
       "path": "/api/cron/notificacoes-email",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/integracoes-webhooks-saida",
+      "schedule": "45 8 * * *"
     }
   ]
 }

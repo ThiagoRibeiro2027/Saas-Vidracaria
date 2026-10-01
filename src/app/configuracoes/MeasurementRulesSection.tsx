@@ -1,7 +1,9 @@
 "use client";
 
 import { upsertMeasurementRuleAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "./styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Row = {
   id: string;
@@ -13,18 +15,18 @@ type Row = {
 export default function MeasurementRulesSection({ rows, canManage }: { rows: Row[]; canManage: boolean }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Regra de medição</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Regra de medição</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Itens sob medida: liberação para produção fica impedida sem medida confirmada. Itens
         padrão/catálogo: o sistema apenas sinaliza, sem impedir (TÓPICO 15 §31.5).
       </p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-2 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Tipo de item</th>
-              <th style={thStyle}>Exige medição confirmada</th>
-              <th style={thStyle}>Ativo</th>
+            <tr>
+              <Th>Tipo de item</Th>
+              <Th>Exige medição confirmada</Th>
+              <Th>Ativo</Th>
             </tr>
           </thead>
           <tbody>
@@ -33,7 +35,7 @@ export default function MeasurementRulesSection({ rows, canManage }: { rows: Row
             ))}
             {canManage && <RowForm row={null} canManage={canManage} />}
           </tbody>
-        </table>
+        </Table>
       </div>
     </section>
   );
@@ -41,42 +43,39 @@ export default function MeasurementRulesSection({ rows, canManage }: { rows: Row
 
 function RowForm({ row, canManage }: { row: Row | null; canManage: boolean }) {
   return (
-    <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-      <td style={tdStyle} colSpan={3}>
-        <form
-          action={upsertMeasurementRuleAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-        >
-          <input
+    <tr>
+      <Td colSpan={3}>
+        <form action={upsertMeasurementRuleAction} className="flex flex-wrap items-center gap-1.5">
+          <Input
             name="tipo_item"
             placeholder="tipo de item"
             defaultValue={row?.tipo_item ?? ""}
             readOnly={!!row}
             required
             disabled={!canManage}
-            style={{ ...inputStyle, width: "180px" }}
+            className="w-44"
           />
-          <label style={labelStyle}>
+          <label className="flex items-center gap-1 text-xs text-text">
             <input
               type="checkbox"
               name="exige_medicao_confirmada"
               defaultChecked={row?.exige_medicao_confirmada ?? true}
               disabled={!canManage}
+              className="accent-primary"
             />
             Impede sem medição confirmada
           </label>
-          <label style={labelStyle}>
-            <input type="checkbox" name="ativo" defaultChecked={row?.ativo ?? true} disabled={!canManage} />
+          <label className="flex items-center gap-1 text-xs text-text">
+            <input type="checkbox" name="ativo" defaultChecked={row?.ativo ?? true} disabled={!canManage} className="accent-primary" />
             Ativo
           </label>
           {canManage && (
-            <button type="submit" style={buttonStyle}>
+            <Button type="submit" variant="primary">
               {row ? "Salvar" : "Adicionar"}
-            </button>
+            </Button>
           )}
         </form>
-      </td>
+      </Td>
     </tr>
   );
 }
-

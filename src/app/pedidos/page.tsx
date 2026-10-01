@@ -2,12 +2,19 @@ import { createClient } from "@/lib/supabase/server";
 import PedidosSection from "./PedidosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
+type TabSlug = "pedidos" | "conversao";
+
 // TÓPICO 3 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // outubro: "entrada do pedido", último item da sequência T2 → T10 → T3).
 // Único caminho de criação é converter um orçamento aprovado (TÓPICO 10) —
 // sem cadastro direto nem importação neste recorte. Status cobre só até
 // "liberado"; em andamento/concluído dependem do TÓPICO 4 (novembro).
-export default async function PedidosPage() {
+export default async function PedidosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -43,6 +50,15 @@ export default async function PedidosPage() {
     supabase.from("itens").select("id, codigo, descricao"),
   ]);
 
+  // ADR-012 Fase 3 — sugestão de atualização de preço quando a BOM
+  // definitiva da Engenharia diverge do custo que formou o preço no
+  // orçamento. Só pendentes: aplicada/ignorada já foi decidida e não
+  // precisa mais aparecer aqui.
+  const { data: divergencias } = canManage
+    ? await supabase.from("pedido_item_divergencia_preco").select("*").eq("status", "pendente")
+    : { data: null };
+  const divergenciasPorPedidoItem = new Map((divergencias ?? []).map((d) => [d.pedido_item_id, d]));
+
   const orcamentosConvertidos = new Set((pedidos ?? []).map((p) => p.orcamento_id));
   const orcamentosDisponiveis = (orcamentosAprovados ?? []).filter((o) => !orcamentosConvertidos.has(o.id));
   // orcamentosAprovados cobre também os já convertidos (conversão não muda o
@@ -71,6 +87,12 @@ export default async function PedidosPage() {
     pendenciasPorPedido.set(pd.pedido_id, list);
   }
 
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "pedidos", label: "Pedidos" },
+    ...(canManage ? [{ slug: "conversao" as const, label: "Conversão de orçamentos" }] : []),
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "pedidos";
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 3 — Pedidos</p>
@@ -81,8 +103,9 @@ export default async function PedidosPage() {
         (TÓPICO 4).
       </p>
 
-      <div className="mt-6 flex flex-col gap-6">
+      <div className="mt-6">
         <PedidosSection
+          activeTab={activeTab}
           pedidos={pedidos ?? []}
           itensPorPedido={itensPorPedido}
           pendenciasPorPedido={pendenciasPorPedido}
@@ -92,6 +115,7 @@ export default async function PedidosPage() {
           pessoas={pessoas ?? []}
           obras={obras ?? []}
           itens={itens ?? []}
+          divergenciasPorPedidoItem={divergenciasPorPedidoItem}
           canManage={!!canManage}
         />
       </div>

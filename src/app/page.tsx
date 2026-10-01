@@ -29,6 +29,7 @@ export default async function Home() {
   const { data: roles } = await supabase
     .from("user_roles")
     .select("roles(name, key)")
+    .eq("profile_id", user?.id ?? "")
     .is("valid_until", null);
 
   // ADR-007 — só as não lidas aqui; histórico completo fica pra quando

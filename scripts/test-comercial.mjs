@@ -15,6 +15,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -44,7 +56,10 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN") {
   });
   let userId = created?.user?.id;
   if (!userId) {
-    const { data: list } = await admin.auth.admin.listUsers();
+    // Banco único compartilhado entre as máquinas (CLAUDE.md) acumula
+    // usuários de teste entre sessões — sem perPage alto, o fixture antigo
+    // deste e-mail some da 1ª página do listUsers() e o fallback nunca acha.
+    const { data: list } = await admin.auth.admin.listUsers({ perPage: 10000 });
     userId = list.users.find((u) => u.email === email)?.id;
   }
 
@@ -109,9 +124,9 @@ async function grantOnlyPermission(tenant, resource, action, roleKeySuffix) {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão, outro tenant)...");
-  const admTenant = await createTenant("comercial-test-admin", "Comercial Admin Teste", "9801", "ADMIN");
-  const noPermTenant = await createTenant("comercial-test-noperm", "Comercial SemPerm Teste", "9802", "COMERCIAL");
-  const otherTenant = await createTenant("comercial-test-other", "Comercial Outro Teste", "9803", "ADMIN");
+  const admTenant = await createTenant(`comercial-test-admin-${RUN}`, "Comercial Admin Teste", "9801", "ADMIN");
+  const noPermTenant = await createTenant(`comercial-test-noperm-${RUN}`, "Comercial SemPerm Teste", "9802", "COMERCIAL");
+  const otherTenant = await createTenant(`comercial-test-other-${RUN}`, "Comercial Outro Teste", "9803", "ADMIN");
 
   console.log("\n0. Massa de dados (numeração, pessoa, obra, item) via ADMIN");
   await admTenant.client.rpc("upsert_numbering_sequence", {
@@ -246,7 +261,7 @@ async function main() {
     // Para testar o bloqueio de fato, um segundo usuário no MESMO tenant
     // com orcamentos.manage mas sem o papel ADMIN (o aprovador da alçada
     // acima).
-    const semAlcadaTenant = await createTenant("comercial-test-semalcada", "Sem Alçada", "9804", "COMERCIAL");
+    const semAlcadaTenant = await createTenant(`comercial-test-semalcada-${RUN}`, "Sem Alçada", "9804", "COMERCIAL");
     await admin.from("profiles").update({ company_id: admTenant.company.id }).eq("id", semAlcadaTenant.userId);
     await grantOnlyPermission({ company: admTenant.company, userId: semAlcadaTenant.userId }, "orcamentos", "manage", "ORC_MANAGE");
 
@@ -317,6 +332,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "comercial.orcamento_upserted",
         "comercial.orcamento_item_upserted",
@@ -480,6 +496,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "comercial.oportunidade_upserted",
         "comercial.oportunidade_estagio_mudado",
@@ -688,6 +705,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", [
         "comercial.proposta_gerada",
         "comercial.proposta_enviada",
@@ -701,6 +719,73 @@ async function main() {
     check("proposta_aceita registrado", actions.has("comercial.proposta_aceita"));
     check("proposta_recusada registrado", actions.has("comercial.proposta_recusada"));
     check("proposta_cancelada registrado", actions.has("comercial.proposta_cancelada"));
+  }
+
+  console.log("\n§9 — configurador de peça durante o orçamento (definir_valor_caracteristica_orcamento_item)");
+  {
+    const { data: itemPecaId, error: eItemPeca } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "JAN-CFG-TESTE", p_descricao: "Janela configurável teste",
+      p_tipo: "produto_acabado", p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+    });
+    check("item tipo produto_acabado criado", !eItemPeca && !!itemPecaId);
+
+    const { data: pecaId, error: ePeca } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaId, p_descricao_tecnica: "Janela de correr" });
+    check("peça criada a partir do item", !ePeca && !!pecaId);
+
+    const { data: caractLargura } = await admTenant.client.rpc("definir_caracteristica_peca", {
+      p_peca_id: pecaId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true,
+    });
+    const { data: caractVidro } = await admTenant.client.rpc("definir_caracteristica_peca", {
+      p_peca_id: pecaId, p_nome: "vidro", p_tipo: "opcao", p_unidade: null, p_opcoes: ["temperado", "laminado"], p_obrigatoria: true,
+    });
+
+    const { data: orcamentoCfgId } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: obraId, p_validade: null, p_condicao_comercial: null, p_observacoes: null,
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcamentoCfgId, p_item_id: itemPecaId, p_quantidade: 2, p_preco_unitario: 500,
+    });
+    const { data: orcItemRow } = await admin.from("orcamento_itens").select("id").eq("orcamento_id", orcamentoCfgId).single();
+    const orcItemId = orcItemRow.id;
+
+    const { error: eSemPerm } = await noPermTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractLargura, p_valor_numero: 1800, p_valor_texto: null,
+    });
+    check("sem orcamentos.manage não define valor de característica", !!eSemPerm);
+
+    const { error: eTipoErrado } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractLargura, p_valor_numero: null, p_valor_texto: "1800",
+    });
+    check("valor de tipo errado (texto pra característica numérica) é rejeitado", !!eTipoErrado);
+
+    const { error: eOpcaoInvalida } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractVidro, p_valor_numero: null, p_valor_texto: "comum",
+    });
+    check("opção fora da lista permitida é rejeitada", !!eOpcaoInvalida);
+
+    const { error: eLargura } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractLargura, p_valor_numero: 1800, p_valor_texto: null,
+    });
+    const { error: eVidro } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractVidro, p_valor_numero: null, p_valor_texto: "temperado",
+    });
+    check("ADMIN define largura e vidro com sucesso", !eLargura && !eVidro);
+
+    const { data: listagem, error: eListagem } = await admTenant.client.rpc("listar_valores_caracteristicas_orcamento_item", { p_orcamento_item_id: orcItemId });
+    check(
+      "listar_valores_caracteristicas_orcamento_item devolve as duas características com os valores certos",
+      !eListagem && listagem?.find((l) => l.nome === "largura")?.valor_numero === 1800 && listagem?.find((l) => l.nome === "vidro")?.valor_texto === "temperado",
+    );
+
+    const { data: dataOutro } = await otherTenant.client.rpc("listar_valores_caracteristicas_orcamento_item", { p_orcamento_item_id: orcItemId });
+    const { error: eOutro } = await otherTenant.client.rpc("listar_valores_caracteristicas_orcamento_item", { p_orcamento_item_id: orcItemId });
+    check("outro tenant não enxerga item de orçamento alheio", !!eOutro && !dataOutro);
+
+    await admTenant.client.rpc("decidir_orcamento", { p_id: orcamentoCfgId, p_decisao: "aprovado" });
+    const { error: eAposAprovado } = await admTenant.client.rpc("definir_valor_caracteristica_orcamento_item", {
+      p_orcamento_item_id: orcItemId, p_peca_caracteristica_id: caractLargura, p_valor_numero: 2000, p_valor_texto: null,
+    });
+    check("orçamento aprovado não aceita mais alteração de característica (só rascunho)", !!eAposAprovado);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

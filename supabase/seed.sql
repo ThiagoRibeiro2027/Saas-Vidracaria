@@ -3,6 +3,14 @@
 -- funcionar (empresa, usuários, papéis, auditoria, arquivos). Nenhuma
 -- permissão de módulo operacional (Tópicos 2-14) é inventada aqui — isso
 -- pertence às fases futuras, quando cada módulo for implementado.
+--
+-- ATENÇÃO (26/09/2026, CLAUDE.md "Banco e ambiente de trabalho" §6): desde
+-- que o projeto passou a usar um único banco na nuvem compartilhado entre
+-- duas máquinas, este arquivo só é aplicado por `supabase db reset`
+-- (banco local) — nunca por `db push`. Toda permissão nova precisa de um
+-- `insert` idempotente numa migration própria pra chegar no banco real;
+-- só adicionar aqui não basta mais (foi assim que `contratos.aprovar` e
+-- `financeiro.aprovar` ficaram quebrados em produção sem ninguém notar).
 
 insert into public.permissions (resource, action, description) values
   ('company', 'view', 'Visualizar dados da própria empresa'),
@@ -53,7 +61,7 @@ insert into public.permissions (resource, action, description) values
   ('suprimentos', 'view', 'Visualizar necessidades de compra da empresa (TÓPICO 7)'),
   ('suprimentos', 'manage', 'Registrar, atender e cancelar necessidades de compra (TÓPICO 7)'),
   ('financeiro', 'view', 'Visualizar títulos financeiros e recebimentos da empresa (TÓPICO 11)'),
-  ('financeiro', 'manage', 'Gerar títulos financeiros a partir de pedido e cancelar título sem recebimento (TÓPICO 11)'),
+  ('financeiro', 'manage', 'Gerar títulos financeiros a partir de pedido ou contrato e cancelar título sem recebimento (TÓPICO 11, TÓPICO 18 §5)'),
   ('financeiro', 'receber', 'Registrar recebimento (integral ou parcial) de título financeiro (TÓPICO 11)'),
   ('rh', 'view', 'Visualizar funcionários da empresa — dado pessoal sensível, LGPD (TÓPICO 17)'),
   ('rh', 'manage', 'Admitir, editar e desligar funcionários, incluindo revogar o acesso do usuário vinculado (TÓPICO 17)'),
@@ -63,12 +71,14 @@ insert into public.permissions (resource, action, description) values
   ('integracoes', 'view', 'Visualizar a Central de Integrações, catálogo, fonte oficial e operações da empresa (TÓPICO 13, ADR-002 v2.5)'),
   ('integracoes', 'manage', 'Configurar, ativar/desativar integrações, definir fonte oficial e gerenciar operações da fila (TÓPICO 13, ADR-002 v2.5)'),
   ('contratos', 'view', 'Visualizar contratos com clientes, fornecedores e funcionários/prestadores da empresa — mistura dado sensível de RH (TÓPICO 18)'),
-  ('contratos', 'manage', 'Criar/editar contrato em rascunho, ativar e encerrar contratos da empresa (TÓPICO 18)'),
+  ('contratos', 'manage', 'Criar/editar contrato em rascunho, enviar para aprovação, suspender/retomar, encerrar e cancelar contratos da empresa (TÓPICO 18)'),
+  ('contratos', 'aprovar', 'Aprovar ou reprovar contrato em análise, efetivando a alçada de aprovação — em_aprovação → vigente (TÓPICO 18 §6)'),
   ('pecas', 'view', 'Visualizar peças fabricadas e sua composição de materiais da empresa (Fase A, plano de 23/09/2026)'),
   ('pecas', 'manage', 'Criar/inativar peça e gerir a composição de materiais (Fase A, plano de 23/09/2026)'),
   ('compras', 'view', 'Visualizar fornecedores, materiais alternativos e políticas de abastecimento da empresa (TÓPICO 7, ADR-011)'),
   ('compras', 'manage', 'Cadastrar fornecedor, definir fornecedor principal/alternativo, material alternativo e política de abastecimento (TÓPICO 7, ADR-011)'),
-  ('financeiro', 'pagar', 'Registrar pagamento (integral ou parcial) de título a pagar de Compras (TÓPICO 7 §33, ADR-011)')
+  ('financeiro', 'pagar', 'Registrar pagamento (integral ou parcial) de título a pagar de Compras (TÓPICO 7 §33, ADR-011)'),
+  ('financeiro', 'aprovar', 'Decidir etapa de alçada de pagamento de título a pagar — efetivando a aprovação antes do pagamento (TÓPICO 13 §6.2)')
 on conflict (resource, action) do nothing;
 
 -- Catálogo global de integrações (TÓPICO 13 §3) — Fase 1 só semeia os

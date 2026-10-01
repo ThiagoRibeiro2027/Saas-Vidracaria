@@ -58,21 +58,26 @@ export async function liberarLoteProducaoAction(formData: FormData) {
   revalidatePath("/producao");
 }
 
-export async function apontarProducaoAction(formData: FormData) {
+export type ApontarProducaoState = { error: string } | undefined;
+
+export async function apontarProducaoAction(
+  _prevState: ApontarProducaoState,
+  formData: FormData,
+): Promise<ApontarProducaoState> {
   const opLoteOperacaoId = String(formData.get("op_lote_operacao_id") ?? "");
   const produzida = Number(formData.get("quantidade_produzida") || 0);
   const rejeitada = Number(formData.get("quantidade_rejeitada") || 0);
   const retrabalho = Number(formData.get("quantidade_retrabalho") || 0);
   const observacao = String(formData.get("observacao") ?? "").trim() || null;
-  if (!opLoteOperacaoId) throw new Error("Operação inválida.");
+  if (!opLoteOperacaoId) return { error: "Operação inválida." };
   if (
     !Number.isFinite(produzida) || !Number.isFinite(rejeitada) || !Number.isFinite(retrabalho) ||
     produzida < 0 || rejeitada < 0 || retrabalho < 0
   ) {
-    throw new Error("Quantidades devem ser números válidos e não negativos.");
+    return { error: "Quantidades devem ser números válidos e não negativos." };
   }
   if (produzida === 0 && rejeitada === 0 && retrabalho === 0) {
-    throw new Error("Informe ao menos uma quantidade (produzida, rejeitada ou retrabalho) maior que zero.");
+    return { error: "Informe ao menos uma quantidade (produzida, rejeitada ou retrabalho) maior que zero." };
   }
 
   const supabase = await createClient();
@@ -83,7 +88,7 @@ export async function apontarProducaoAction(formData: FormData) {
     p_quantidade_retrabalho: retrabalho,
     p_observacao: observacao,
   });
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
 
   revalidatePath("/producao");
 }
@@ -186,12 +191,17 @@ export async function criarRecursoProdutivoAction(formData: FormData) {
   const setor = String(formData.get("setor") ?? "").trim() || null;
   const capacidadeRaw = String(formData.get("capacidade_horas_dia") ?? "").trim();
   const localizacao = String(formData.get("localizacao") ?? "").trim() || null;
+  const custoHoraRaw = String(formData.get("custo_hora") ?? "").trim();
   if (!codigo) throw new Error("Código do recurso é obrigatório.");
   if (!nome) throw new Error("Nome do recurso é obrigatório.");
   if (!tipo) throw new Error("Tipo do recurso é obrigatório.");
   const capacidade = capacidadeRaw ? Number(capacidadeRaw) : null;
   if (capacidade !== null && (!Number.isFinite(capacidade) || capacidade <= 0)) {
     throw new Error("Capacidade (horas/dia) deve ser um número maior que zero.");
+  }
+  const custoHora = custoHoraRaw ? Number(custoHoraRaw) : null;
+  if (custoHora !== null && !Number.isFinite(custoHora)) {
+    throw new Error("Custo/hora inválido.");
   }
 
   const supabase = await createClient();
@@ -202,6 +212,43 @@ export async function criarRecursoProdutivoAction(formData: FormData) {
     p_setor: setor,
     p_capacidade_horas_dia: capacidade,
     p_localizacao: localizacao,
+    p_custo_hora: custoHora,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+// ADR-012 Fase 4 — edição estreita (só o que a tela realmente expõe pra
+// edição pós-cadastro), mesmo padrão de atualizarSituacaoRecursoAction:
+// lê os campos atuais do próprio form (hidden inputs) e reenvia todos,
+// já que editar_recurso_produtivo() substitui o registro inteiro.
+export async function editarRecursoProdutivoAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const nome = String(formData.get("nome") ?? "").trim();
+  const setor = String(formData.get("setor") ?? "").trim() || null;
+  const capacidadeRaw = String(formData.get("capacidade_horas_dia") ?? "").trim();
+  const localizacao = String(formData.get("localizacao") ?? "").trim() || null;
+  const custoHoraRaw = String(formData.get("custo_hora") ?? "").trim();
+  if (!id) throw new Error("Recurso inválido.");
+  if (!nome) throw new Error("Nome do recurso é obrigatório.");
+  const capacidade = capacidadeRaw ? Number(capacidadeRaw) : null;
+  if (capacidade !== null && (!Number.isFinite(capacidade) || capacidade <= 0)) {
+    throw new Error("Capacidade (horas/dia) deve ser um número maior que zero.");
+  }
+  const custoHora = custoHoraRaw ? Number(custoHoraRaw) : null;
+  if (custoHora !== null && !Number.isFinite(custoHora)) {
+    throw new Error("Custo/hora inválido.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("editar_recurso_produtivo", {
+    p_id: id,
+    p_nome: nome,
+    p_setor: setor,
+    p_capacidade_horas_dia: capacidade,
+    p_localizacao: localizacao,
+    p_custo_hora: custoHora,
   });
   if (error) throw new Error(error.message);
 
@@ -234,6 +281,44 @@ export async function programarManutencaoPreventivaAction(formData: FormData) {
     p_periodicidade_dias: periodicidade,
     p_duracao_estimada_horas: duracao,
     p_responsavel_id: null,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
+// Antes só existia programar e cancelar: mudar a data de uma preventiva
+// obrigava a cancelar e reprogramar, perdendo o histórico da original. O
+// tipo não é editável porque a função do banco não o aceita — para trocar
+// o tipo, o certo continua sendo cancelar e programar outra.
+//
+// responsavel_id vem por campo oculto, e não como null: o UPDATE do banco
+// grava o parâmetro direto, então omitir apagaria um responsável já
+// atribuído (hoje a tela nunca atribui um, mas a função aceita).
+export async function editarManutencaoPreventivaAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const proximaData = String(formData.get("proxima_data") ?? "").trim();
+  const periodicidadeRaw = String(formData.get("periodicidade_dias") ?? "").trim();
+  const duracaoRaw = String(formData.get("duracao_estimada_horas") ?? "").trim();
+  const responsavelId = String(formData.get("responsavel_id") ?? "").trim() || null;
+  if (!id) throw new Error("Manutenção preventiva inválida.");
+  if (!proximaData) throw new Error("Próxima data é obrigatória.");
+  const periodicidade = periodicidadeRaw ? Number(periodicidadeRaw) : null;
+  if (periodicidade !== null && (!Number.isInteger(periodicidade) || periodicidade <= 0)) {
+    throw new Error("Periodicidade deve ser um número inteiro maior que zero.");
+  }
+  const duracao = duracaoRaw ? Number(duracaoRaw) : null;
+  if (duracao !== null && (!Number.isFinite(duracao) || duracao <= 0)) {
+    throw new Error("Duração estimada deve ser um número maior que zero.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("editar_manutencao_preventiva", {
+    p_id: id,
+    p_proxima_data: proximaData,
+    p_periodicidade_dias: periodicidade,
+    p_duracao_estimada_horas: duracao,
+    p_responsavel_id: responsavelId,
   });
   if (error) throw new Error(error.message);
 

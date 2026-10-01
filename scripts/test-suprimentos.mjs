@@ -15,6 +15,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -83,10 +95,10 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão de suprimentos, outro tenant)...");
-  const admTenant = await createTenant("suprimentos-test-admin", "Suprimentos Admin Teste", "7s01", "ADMIN");
+  const admTenant = await createTenant(`suprimentos-test-admin-${RUN}`, "Suprimentos Admin Teste", "7s01", "ADMIN");
   // QUALIDADE administra Qualidade, não Suprimentos — prova a autoridade separada.
-  const noPermTenant = await createTenant("suprimentos-test-admin", "Suprimentos SemPerm Teste", "7s02", "QUALIDADE", admTenant.company);
-  const otherTenant = await createTenant("suprimentos-test-other", "Suprimentos Outro Teste", "7s03", "ADMIN");
+  const noPermTenant = await createTenant(`suprimentos-test-admin-${RUN}`, "Suprimentos SemPerm Teste", "7s02", "QUALIDADE", admTenant.company);
+  const otherTenant = await createTenant(`suprimentos-test-other-${RUN}`, "Suprimentos Outro Teste", "7s03", "ADMIN");
 
   console.log("\n0. Massa de dados — item de matéria-prima");
   const { data: itemId, error: itemErr } = await admTenant.client.rpc("upsert_item", {
@@ -209,6 +221,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["suprimentos.necessidade_criada", "suprimentos.necessidade_atendida", "suprimentos.necessidade_cancelada"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     for (const action of ["suprimentos.necessidade_criada", "suprimentos.necessidade_atendida", "suprimentos.necessidade_cancelada"]) {
@@ -379,6 +392,7 @@ async function main() {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
+      .eq("company_id", admTenant.company.id)
       .in("action", ["suprimentos.necessidades_geradas_de_pedido", "suprimentos.necessidades_geradas_de_producao"]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("suprimentos.necessidades_geradas_de_pedido registrado", actions.has("suprimentos.necessidades_geradas_de_pedido"));
@@ -410,11 +424,16 @@ async function main() {
     .from("permissions").select("id").eq("resource", "suprimentos").eq("action", "manage").single();
   await admTenant.client.rpc("conceder_permissao_papel", { p_role_id: papelSoSuprId, p_permission_id: permSuprimentosManage.id });
 
-  const soSuprEmail = "so-suprimentos.suprimentos-test-admin@users.internal";
+  // E-mail com o sufixo da execução, igual ao createTenant(): com e-mail fixo
+  // o createUser() da 2ª execução falhava e o fallback do listUsers() não
+  // achava o usuário antigo (1ª página traz 50, o banco compartilhado tem
+  // centenas). O client ficava sem sessão — e como a asserção da seção 31 é
+  // de negação, ela passava verde sem exercitar o gate nenhuma vez.
+  const soSuprEmail = `so-suprimentos.suprimentos-test-admin-${RUN}@users.internal`;
   const { data: soSuprCreated } = await admin.auth.admin.createUser({ email: soSuprEmail, password: "senha-de-teste-123456", email_confirm: true });
   let soSuprUserId = soSuprCreated?.user?.id;
   if (!soSuprUserId) {
-    const { data: list } = await admin.auth.admin.listUsers();
+    const { data: list } = await admin.auth.admin.listUsers({ perPage: 10000 });
     soSuprUserId = list.users.find((u) => u.email === soSuprEmail)?.id;
   }
   await admin.from("profiles").upsert(
@@ -494,7 +513,7 @@ async function main() {
 
   console.log("\n35. Auditoria do recebimento");
   {
-    const { data: events } = await admin.from("activity_logs").select("action").eq("action", "suprimentos.necessidade_recebida");
+    const { data: events } = await admin.from("activity_logs").select("action").eq("company_id", admTenant.company.id).eq("action", "suprimentos.necessidade_recebida");
     check("suprimentos.necessidade_recebida registrado", (events ?? []).length >= 1);
   }
 

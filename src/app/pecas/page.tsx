@@ -28,7 +28,7 @@ export default async function PecasPage() {
     );
   }
 
-  const [{ data: pecas }, { data: composicao }, { data: itens }] = await Promise.all([
+  const [{ data: pecas }, { data: composicao }, { data: itens }, { data: comprimentosBarra }] = await Promise.all([
     supabase.from("pecas").select("*").order("created_at", { ascending: false }),
     supabase.from("peca_composicao").select("*").order("created_at"),
     supabase
@@ -36,7 +36,16 @@ export default async function PecasPage() {
       .select("id, codigo, descricao, tipo, unidade_principal")
       .eq("situacao", "ativo")
       .order("codigo"),
+    // ADR-012 Fase 2 — comprimentos de barra candidatos por composição.
+    supabase.from("peca_composicao_comprimentos_barra").select("*").order("comprimento_metros"),
   ]);
+
+  const comprimentosPorComposicao = new Map<string, { id: string; item_id: string; comprimento_metros: number }[]>();
+  for (const c of comprimentosBarra ?? []) {
+    const list = comprimentosPorComposicao.get(c.peca_composicao_id) ?? [];
+    list.push(c);
+    comprimentosPorComposicao.set(c.peca_composicao_id, list);
+  }
 
   // TÓPICO 5 Fase E — histórico de revisões por peça (leitura, N chamadas
   // sobre `pecas` já buscadas, mesmo padrão de Promise.all já usado em
@@ -52,7 +61,7 @@ export default async function PecasPage() {
   // TÓPICO 5 Fase F — características configuráveis por peça.
   const caracteristicasPorPeca = new Map<
     string,
-    { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean }[]
+    { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null }[]
   >();
   await Promise.all(
     (pecas ?? []).map(async (p) => {
@@ -98,6 +107,7 @@ export default async function PecasPage() {
           revisoesPorPeca={revisoesPorPeca}
           caracteristicasPorPeca={caracteristicasPorPeca}
           regrasPorPeca={regrasPorPeca}
+          comprimentosPorComposicao={comprimentosPorComposicao}
           canManage={!!canManage}
         />
       </div>

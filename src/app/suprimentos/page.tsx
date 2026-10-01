@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import SuprimentosSection from "./SuprimentosSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
 // TÓPICO 7 — Suprimentos e Compras, recorte mínimo do MVP (ADR-002 §4.18,
 // que prevalece sobre a menção mais ampla do PLANO DE ENTREGA §6 — ver
@@ -16,13 +17,9 @@ export default async function SuprimentosPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar o módulo Suprimentos desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o módulo Suprimentos desta empresa." />
+      </div>
     );
   }
 
@@ -34,17 +31,17 @@ export default async function SuprimentosPage() {
   ]);
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 7 — Suprimentos</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Suprimentos e Compras</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do MVP: registrar necessidade de material e acompanhar até atendida ou
-          cancelada. Sem cotação, pedido de compra ou recebimento. Necessidades também podem ser
-          geradas automaticamente a partir de um pedido ou ordem de produção com peças cadastradas
-          (Fase C, plano de 23/09/2026) — item sem peça associada fica de fora, siga lançando manual.
-        </p>
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 7 — Suprimentos</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Suprimentos e Compras</h1>
+      <p className="mt-1 text-sm text-text">
+        Recorte mínimo do MVP: registrar necessidade de material e acompanhar até atendida ou
+        cancelada. Sem cotação, pedido de compra ou recebimento. Necessidades também podem ser
+        geradas automaticamente a partir de um pedido ou ordem de produção com peças cadastradas
+        (Fase C, plano de 23/09/2026) — item sem peça associada fica de fora, siga lançando manual.
+      </p>
 
+      <div className="mt-6">
         <SuprimentosSection
           rows={necessidades ?? []}
           itens={itens ?? []}
@@ -53,35 +50,6 @@ export default async function SuprimentosPage() {
           canManage={!!canManage}
         />
       </div>
-    </main>
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

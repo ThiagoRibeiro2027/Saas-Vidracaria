@@ -3,6 +3,10 @@ import PessoasSection from "./PessoasSection";
 import ObrasSection from "./ObrasSection";
 import ItensSection from "./ItensSection";
 import ImportacaoSection from "./ImportacaoSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { ENTIDADES_IMPORTACAO, RECURSOS_IMPORTACAO } from "./importacao-entidades";
+
+type TabSlug = "pessoas" | "obras" | "itens" | "importacao";
 
 // TÓPICO 2 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // outubro: "entrada do pedido"). Pessoa + Papéis (§4-6) em vez de tabelas
@@ -11,7 +15,12 @@ import ImportacaoSection from "./ImportacaoSection";
 // TÓPICO 16/ADR-002 §4.9, dezembro), só o que T3 Pedidos precisa referenciar.
 // Cada entidade tem sua própria permissão (pessoas/obras/itens .view/.manage)
 // — a seção só aparece pra quem pode vê-la.
-export default async function CadastrosPage() {
+export default async function CadastrosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
   const [
@@ -32,13 +41,9 @@ export default async function CadastrosPage() {
 
   if (!canViewPessoas && !canViewObras && !canViewItens) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar os cadastros desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar os cadastros desta empresa." />
+      </div>
     );
   }
 
@@ -60,24 +65,62 @@ export default async function CadastrosPage() {
     canViewItens ? supabase.from("itens").select("*").order("codigo") : Promise.resolve({ data: [] }),
   ]);
 
-  return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 2 — Cadastros</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Cadastros da empresa</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Recorte mínimo do M1: pessoas (clientes e fornecedores são papéis da mesma pessoa),
-          obras e itens (produtos e materiais são o mesmo cadastro, diferenciados por tipo).
-        </p>
+  // Quais blocos de importação este usuário pode usar. Sem isto a aba
+  // oferecia os 24 a qualquer um que a enxergasse, e quem tem só
+  // itens.manage descobria que não podia importar RH ao tentar. O gate
+  // real continua no banco — aqui é só não oferecer o que vai falhar.
+  const permissoesImportacao = await Promise.all(
+    RECURSOS_IMPORTACAO.map(async (recurso) => {
+      const { data } = await supabase.rpc("has_permission", { p_resource: recurso, p_action: "manage" });
+      return [recurso, !!data] as const;
+    }),
+  );
+  const recursosPermitidos = new Set(permissoesImportacao.filter(([, pode]) => pode).map(([r]) => r));
+  const entidadesPermitidas = ENTIDADES_IMPORTACAO.filter((e) =>
+    recursosPermitidos.has(e.recursoPermissao),
+  ).map((e) => e.chave);
 
-        {canViewPessoas && (
+  // Histórico de importações (TÓPICO 13 §29, Fase 7). A policy de SELECT
+  // de public.importacoes já filtra por empresa E pela permissão do módulo
+  // da entidade, então o que voltar aqui é só o que este usuário pode ver —
+  // o gate abaixo é só pra não consultar à toa quem nem enxerga a aba.
+  const { data: historicoImportacoes } =
+    canManagePessoas || canManageItens
+      ? await supabase
+          .from("importacoes")
+          .select(
+            "id, entidade, arquivo_nome, total_linhas, novos, atualizados, invalidos, duplicados, origem_importacao_id, created_at",
+          )
+          .order("created_at", { ascending: false })
+          .limit(20)
+      : { data: [] };
+
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    ...(canViewPessoas ? [{ slug: "pessoas" as const, label: "Pessoas" }] : []),
+    ...(canViewObras ? [{ slug: "obras" as const, label: "Obras" }] : []),
+    ...(canViewItens ? [{ slug: "itens" as const, label: "Itens" }] : []),
+    ...(canManagePessoas || canManageItens ? [{ slug: "importacao" as const, label: "Importação" }] : []),
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : availableTabs[0].slug;
+
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 2 — Cadastros</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Cadastros da empresa</h1>
+      <p className="mt-1 text-sm text-text">
+        Recorte mínimo do M1: pessoas (clientes e fornecedores são papéis da mesma pessoa),
+        obras e itens (produtos e materiais são o mesmo cadastro, diferenciados por tipo).
+      </p>
+
+      <div className="mt-6">
+        {activeTab === "pessoas" && canViewPessoas && (
           <PessoasSection
             rows={pessoas ?? []}
             papeis={papeis ?? []}
             canManage={!!canManagePessoas}
           />
         )}
-        {canViewObras && (
+        {activeTab === "obras" && canViewObras && (
           <ObrasSection
             rows={obras ?? []}
             todasPessoas={pessoas ?? []}
@@ -91,38 +134,14 @@ export default async function CadastrosPage() {
             canManage={!!canManageObras}
           />
         )}
-        {canViewItens && <ItensSection rows={itens ?? []} canManage={!!canManageItens} />}
-        {(canManagePessoas || canManageItens) && <ImportacaoSection />}
+        {activeTab === "itens" && canViewItens && <ItensSection rows={itens ?? []} canManage={!!canManageItens} />}
+        {activeTab === "importacao" && (canManagePessoas || canManageItens) && (
+          <ImportacaoSection
+            historico={historicoImportacoes ?? []}
+            entidadesPermitidas={entidadesPermitidas}
+          />
+        )}
       </div>
-    </main>
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

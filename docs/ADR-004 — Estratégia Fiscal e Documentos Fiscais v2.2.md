@@ -1,7 +1,8 @@
 **ADR-004 — Estratégia Fiscal e Documentos Fiscais**
 
-**Versão:** 2.2\
-**Status:** APROVADO\
+**Versão:** 2.3\
+**Status:** APROVADO — critérios de aceite do §15 atendidos em 23/09/2026
+(ver §18, v2.3)\
 **Data:** 09/09/2026\
 **Responsável:** Product Owner
 
@@ -506,3 +507,33 @@ a capacidade fiscal permanecerá arquiteturalmente preparada;
 
 a implementação fiscal futura será definida a partir das operações reais
 de cada cliente.
+
+**v2.3 (29/09/2026 — registro retroativo; a implementação ocorreu em
+16/09 e 23/09/2026, sem atualização deste ADR na hora)**
+
+Os critérios de aceite do §15 foram atendidos, dentro do escopo fechado
+pela v2.2 — nenhuma emissão fiscal real foi implementada, nem deveria
+ser, por decisão do §17:
+
+- Estrutura mínima de documentos fiscais (§9.2), 16/09/2026: tabela
+  `documentos_fiscais` própria (camada separada do domínio operacional),
+  campo `provedor` como abstração reservada, `entity_type`/`entity_id`
+  genéricos e sem FK obrigatória (§5 — recepção independente de Pedido de
+  Compra), `chave_acesso` única por empresa (§7 — idempotência),
+  auditoria via `activity_logs` em toda ação (§8), isolamento por tenant
+  via RLS padrão do projeto.
+
+- Conferência/aprovação/rejeição/pendência (§6 — recepção não significa
+  aprovação), 23/09/2026: fluxo próprio de avaliação do documento
+  recebido, distinto do registro inicial.
+
+- Reprocessamento controlado (§7), 23/09/2026: histórico de tentativas,
+  transições de status de processamento, sem duplicar registro em
+  reenvio/repetição.
+
+Continua fora, sem mudança e sem necessidade de nova decisão: emissão
+real de NF-e/NFS-e, cancelamento e inutilização fiscal reais,
+transmissão fiscal de produção, e qualquer integração real de
+certificado digital ou provedor — tudo isso permanece condicionado à
+definição do cenário fiscal real de cada cliente (§10), como já previsto
+pela v2.2.

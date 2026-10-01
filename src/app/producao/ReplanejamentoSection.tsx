@@ -1,6 +1,7 @@
 "use client";
 
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle } from "../configuracoes/styles";
+import { Badge } from "@/components/ui/Badge";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 export type EventoReplanejamento = {
   id: string;
@@ -31,14 +32,14 @@ const CATEGORIA_LABEL: Record<EventoReplanejamento["categoria"], string> = {
   perda_retrabalho: "Perda / retrabalho",
 };
 
-const CATEGORIA_COLOR: Record<EventoReplanejamento["categoria"], string> = {
-  cancelamento: "#9b2c2c",
-  alteracao_engenharia: "#b7791f",
-  quebra_maquina: "#9b2c2c",
-  manutencao: "#b7791f",
-  alteracao_capacidade: "#b7791f",
-  alteracao_prioridade: "#1f5d57",
-  perda_retrabalho: "#9b2c2c",
+const CATEGORIA_TONE: Record<EventoReplanejamento["categoria"], "warning" | "danger"> = {
+  cancelamento: "danger",
+  alteracao_engenharia: "warning",
+  quebra_maquina: "danger",
+  manutencao: "warning",
+  alteracao_capacidade: "warning",
+  alteracao_prioridade: "warning",
+  perda_retrabalho: "danger",
 };
 
 export default function ReplanejamentoSection({
@@ -61,8 +62,8 @@ export default function ReplanejamentoSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Replanejamento (TÓPICO 4 §10)</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Replanejamento (TÓPICO 4 §10)</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Eventos recentes (últimos 7 dias) que podem exigir reavaliar a programação — cancelamento,
         alteração de engenharia, manutenção/quebra de máquina, alteração de capacidade ou
         prioridade, perda/retrabalho. Sinal passivo pro PCP conferir: abra Sequenciamento (pra
@@ -70,37 +71,39 @@ export default function ReplanejamentoSection({
         atual, sem nenhum recálculo automático nem alteração da programação aqui.
       </p>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-            <th style={thStyle}>Evento</th>
-            <th style={thStyle}>Referência</th>
-            <th style={thStyle}>Descrição</th>
-            <th style={thStyle}>Quem</th>
-            <th style={thStyle}>Quando</th>
-          </tr>
-        </thead>
-        <tbody>
-          {eventos.map((e) => (
-            <tr key={e.id} style={{ borderBottom: "1px solid #f4f6f5", verticalAlign: "top" }}>
-              <td style={tdStyle}>
-                <span style={{ fontFamily: "monospace", color: CATEGORIA_COLOR[e.categoria] }}>{CATEGORIA_LABEL[e.categoria]}</span>
-              </td>
-              <td style={tdStyle}>{referencia(e)}</td>
-              <td style={tdStyle}>{e.description ?? "—"}</td>
-              <td style={tdStyle}>{e.criado_por_nome ?? "—"}</td>
-              <td style={tdStyle}>{new Date(e.criado_em).toLocaleString("pt-BR")}</td>
-            </tr>
-          ))}
-          {eventos.length === 0 && (
+      <div className="mt-3 overflow-x-auto">
+        <Table>
+          <thead>
             <tr>
-              <td style={tdStyle} colSpan={5}>
-                <span style={{ color: "#6b7a75" }}>Nenhum evento de replanejamento nos últimos dias.</span>
-              </td>
+              <Th>Evento</Th>
+              <Th>Referência</Th>
+              <Th>Descrição</Th>
+              <Th>Quem</Th>
+              <Th>Quando</Th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {eventos.map((e) => (
+              <tr key={e.id} className="align-top">
+                <Td>
+                  <Badge variant={CATEGORIA_TONE[e.categoria]}>{CATEGORIA_LABEL[e.categoria]}</Badge>
+                </Td>
+                <Td>{referencia(e)}</Td>
+                <Td>{e.description ?? "—"}</Td>
+                <Td>{e.criado_por_nome ?? "—"}</Td>
+                <Td>{new Date(e.criado_em).toLocaleString("pt-BR")}</Td>
+              </tr>
+            ))}
+            {eventos.length === 0 && (
+              <tr>
+                <Td colSpan={5}>
+                  <span className="text-text-muted">Nenhum evento de replanejamento nos últimos dias.</span>
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </div>
     </section>
   );
 }

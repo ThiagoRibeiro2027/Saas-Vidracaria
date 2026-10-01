@@ -1,5 +1,6 @@
 "use client";
 
+import { useActionState } from "react";
 import {
   liberarEngenhariaAction,
   criarOrdemProducaoAction,
@@ -8,7 +9,11 @@ import {
   concluirOrdemProducaoAction,
   cancelarOrdemProducaoAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -101,6 +106,69 @@ export type ListaCorteRow = {
 
 const num = (v: number) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 
+function OperacaoRow({ operacao: o, podeMexer }: { operacao: OpOperacao; podeMexer: boolean }) {
+  const [state, formAction] = useActionState(apontarProducaoAction, undefined);
+
+  return (
+    <tr>
+      <Td>
+        {o.sequencia}. {o.descricao}
+      </Td>
+      <Td>
+        <Badge variant={OPERACAO_STATUS_TONE[o.status]}>{OPERACAO_STATUS_LABEL[o.status]}</Badge>
+      </Td>
+      <Td>
+        {num(o.quantidade_produzida)} / {num(o.quantidade_planejada)}
+      </Td>
+      <Td>{num(o.quantidade_rejeitada)}</Td>
+      <Td>{num(o.quantidade_retrabalho)}</Td>
+      <Td>{num(o.saldo)}</Td>
+      {podeMexer && (
+        <Td>
+          {o.status !== "concluida" && (
+            <>
+              <form action={formAction} className="flex flex-wrap items-center gap-1">
+                <input type="hidden" name="op_lote_operacao_id" value={o.id} />
+                <Input
+                  name="quantidade_produzida"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder="produzida"
+                  className="w-16 text-xs"
+                />
+                <Input
+                  name="quantidade_rejeitada"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder="rejeitada"
+                  className="w-16 text-xs"
+                />
+                <Input
+                  name="quantidade_retrabalho"
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder="retrabalho"
+                  className="w-16 text-xs"
+                />
+                <Input name="observacao" placeholder="obs. (opcional)" className="w-24 text-xs" />
+                <Button type="submit" variant="primary" size="sm">
+                  Apontar
+                </Button>
+              </form>
+              {state?.error && <p className="mt-0.5 text-xs text-danger">{state.error}</p>}
+            </>
+          )}
+        </Td>
+      )}
+    </tr>
+  );
+}
+
+type Tone = "neutral" | "success" | "warning" | "danger";
+
 const STATUS_LABEL: Record<OrdemProducao["status"], string> = {
   planejada: "Planejada",
   em_producao: "Em produção",
@@ -108,11 +176,11 @@ const STATUS_LABEL: Record<OrdemProducao["status"], string> = {
   cancelada: "Cancelada",
 };
 
-const STATUS_COLOR: Record<OrdemProducao["status"], string> = {
-  planejada: "#6b7a75",
-  em_producao: "#1f5d57",
-  concluida: "#1f5d57",
-  cancelada: "#9b2c2c",
+const STATUS_TONE: Record<OrdemProducao["status"], Tone> = {
+  planejada: "neutral",
+  em_producao: "success",
+  concluida: "success",
+  cancelada: "danger",
 };
 
 const SITUACAO_LABEL: Record<OrdemProducao["situacao"], string> = {
@@ -121,10 +189,10 @@ const SITUACAO_LABEL: Record<OrdemProducao["situacao"], string> = {
   bloqueada: "Bloqueada",
 };
 
-const SITUACAO_COLOR: Record<OrdemProducao["situacao"], string> = {
-  liberada: "#1f5d57",
-  liberada_com_restricao: "#b7791f",
-  bloqueada: "#9b2c2c",
+const SITUACAO_TONE: Record<OrdemProducao["situacao"], Tone> = {
+  liberada: "success",
+  liberada_com_restricao: "warning",
+  bloqueada: "danger",
 };
 
 const CATEGORIA_BLOQUEIO_LABEL: Record<string, string> = {
@@ -148,10 +216,10 @@ const LOTE_STATUS_LABEL: Record<OpLote["status"], string> = {
   concluido: "Concluído",
 };
 
-const LOTE_STATUS_COLOR: Record<OpLote["status"], string> = {
-  liberado: "#6b7a75",
-  em_andamento: "#b7791f",
-  concluido: "#1f5d57",
+const LOTE_STATUS_TONE: Record<OpLote["status"], Tone> = {
+  liberado: "neutral",
+  em_andamento: "warning",
+  concluido: "success",
 };
 
 const OPERACAO_STATUS_LABEL: Record<OpOperacao["status"], string> = {
@@ -160,10 +228,10 @@ const OPERACAO_STATUS_LABEL: Record<OpOperacao["status"], string> = {
   concluida: "Concluída",
 };
 
-const OPERACAO_STATUS_COLOR: Record<OpOperacao["status"], string> = {
-  planejada: "#6b7a75",
-  em_andamento: "#b7791f",
-  concluida: "#1f5d57",
+const OPERACAO_STATUS_TONE: Record<OpOperacao["status"], Tone> = {
+  planejada: "neutral",
+  em_andamento: "warning",
+  concluida: "success",
 };
 
 export default function ProducaoSection({
@@ -215,430 +283,359 @@ export default function ProducaoSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Pedidos liberados — itens e ordens de produção</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Pedidos liberados — itens e ordens de produção</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Um item pode ter mais de uma OP (produção parcial) — a soma das quantidades planejadas nunca
         ultrapassa a quantidade do item, mas pode ficar menor enquanto houver saldo ainda não
         planejado.
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div className="mt-4 flex flex-col gap-4">
         {pedidos.map((ped) => {
           const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
           const bloqueado = bloqueioPorPedido.get(ped.id) ?? false;
           const itensComOP = itensDoPedido.filter((pi) => (ordensPorPedidoItem.get(pi.id) ?? []).length > 0);
 
           return (
-            <div key={ped.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-              <div
-                style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "baseline", fontSize: "12px" }}
-              >
-                <strong style={{ fontSize: "13px" }}>{ped.numero}</strong>
+            <Card key={ped.id} padding="xs">
+              <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
+                <strong className="text-sm text-text">{ped.numero}</strong>
                 <span>{pessoaNome(ped.pessoa_id)}</span>
-                <span style={{ color: "#6b7a75" }}>{obraNome(ped.obra_id)}</span>
+                <span className="text-text-muted">{obraNome(ped.obra_id)}</span>
                 {bloqueado && (
-                  <span style={{ color: "#b7791f" }}>
+                  <span className="text-warning">
                     Há item com medida em obra não confirmada (TÓPICO 16 §7) — novas OPs deste pedido
                     nascem bloqueadas até a medida ser confirmada.
                   </span>
                 )}
               </div>
 
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "8px" }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                    <th style={thStyle}>Item</th>
-                    <th style={thStyle}>Qtd. pedido</th>
-                    <th style={thStyle}>Engenharia</th>
-                    <th style={thStyle}>Saldo p/ planejar</th>
-                    <th style={thStyle}>Ordens de produção</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {itensDoPedido.map((pi) => {
-                    const ops = ordensPorPedidoItem.get(pi.id) ?? [];
-                    const planejado = ops
-                      .filter((op) => op.status !== "cancelada")
-                      .reduce((acc, op) => acc + Number(op.quantidade_planejada), 0);
-                    const saldo = Number(pi.quantidade) - planejado;
-                    const engenharia = engenhariaVigentePorPedidoItem.get(pi.id);
+              <div className="mt-2 overflow-x-auto">
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>Item</Th>
+                      <Th>Qtd. pedido</Th>
+                      <Th>Engenharia</Th>
+                      <Th>Saldo p/ planejar</Th>
+                      <Th>Ordens de produção</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itensDoPedido.map((pi) => {
+                      const ops = ordensPorPedidoItem.get(pi.id) ?? [];
+                      const planejado = ops
+                        .filter((op) => op.status !== "cancelada")
+                        .reduce((acc, op) => acc + Number(op.quantidade_planejada), 0);
+                      const saldo = Number(pi.quantidade) - planejado;
+                      const engenharia = engenhariaVigentePorPedidoItem.get(pi.id);
 
-                    return (
-                      <tr key={pi.id} style={{ borderBottom: "1px solid #f4f6f5", verticalAlign: "top" }}>
-                        <td style={tdStyle}>{itemLabel(pi.item_id)}</td>
-                        <td style={tdStyle}>{num(pi.quantidade)}</td>
-                        <td style={tdStyle}>
-                          {engenharia ? (
-                            <div style={{ color: "#1f5d57" }}>
-                              v{engenharia.versao} — {new Date(engenharia.liberado_em).toLocaleDateString("pt-BR")}
-                            </div>
-                          ) : (
-                            <span style={{ color: "#6b7a75" }}>Não liberada</span>
-                          )}
-                          {canManage && (
-                            <form action={liberarEngenhariaAction} style={{ marginTop: "4px" }}>
-                              <input type="hidden" name="pedido_item_id" value={pi.id} />
-                              <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
-                                {engenharia ? "Liberar nova versão" : "Liberar engenharia"}
-                              </button>
-                            </form>
-                          )}
-                        </td>
-                        <td style={tdStyle}>
-                          {num(Math.max(saldo, 0))}
-                          {canManage && saldo > 0 && (
-                            <form
-                              action={criarOrdemProducaoAction}
-                              style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "4px", alignItems: "center" }}
-                            >
-                              <input type="hidden" name="pedido_item_id" value={pi.id} />
-                              <input
-                                name="quantidade"
-                                type="number"
-                                step="0.001"
-                                min="0"
-                                max={saldo}
-                                placeholder={`até ${num(saldo)}`}
-                                style={{ ...inputStyle, width: "80px" }}
-                              />
-                              <label style={{ ...hintStyle, display: "flex", gap: "3px", alignItems: "center", margin: 0 }}>
-                                <input type="checkbox" name="liberar_integralmente" defaultChecked />
-                                liberar integralmente
-                              </label>
-                              <button type="submit" style={buttonStyle}>
-                                Criar OP
-                              </button>
-                            </form>
-                          )}
-                        </td>
-                        <td style={tdStyle}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            {ops.map((op) => (
-                              <div
-                                key={op.id}
-                                style={{ border: "1px solid #eef1ef", borderRadius: "4px", padding: "6px 8px" }}
+                      return (
+                        <tr key={pi.id} className="align-top">
+                          <Td>{itemLabel(pi.item_id)}</Td>
+                          <Td>{num(pi.quantidade)}</Td>
+                          <Td>
+                            {engenharia ? (
+                              <div className="text-primary">
+                                v{engenharia.versao} — {new Date(engenharia.liberado_em).toLocaleDateString("pt-BR")}
+                              </div>
+                            ) : (
+                              <span className="text-text-muted">Não liberada</span>
+                            )}
+                            {canManage && (
+                              <form action={liberarEngenhariaAction} className="mt-1">
+                                <input type="hidden" name="pedido_item_id" value={pi.id} />
+                                <Button type="submit" variant="primary" size="sm">
+                                  {engenharia ? "Liberar nova versão" : "Liberar engenharia"}
+                                </Button>
+                              </form>
+                            )}
+                          </Td>
+                          <Td>
+                            {num(Math.max(saldo, 0))}
+                            {canManage && saldo > 0 && (
+                              <form
+                                action={criarOrdemProducaoAction}
+                                className="mt-1 flex flex-wrap items-center gap-1"
                               >
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "baseline" }}>
-                                  <strong>{op.numero}</strong>
-                                  <span style={{ fontFamily: "monospace", color: STATUS_COLOR[op.status] }}>
-                                    {statusLabels?.get(op.status) ?? STATUS_LABEL[op.status]}
-                                  </span>
-                                  <span style={{ fontFamily: "monospace", color: SITUACAO_COLOR[op.situacao] }}>
-                                    {situacaoLabels?.get(op.situacao) ?? SITUACAO_LABEL[op.situacao]}
-                                  </span>
-                                  <span>
-                                    produzida {num(op.quantidade_produzida)} / {num(op.quantidade_planejada)}
-                                  </span>
-                                  <span>perdida {num(op.quantidade_perdida)}</span>
+                                <input type="hidden" name="pedido_item_id" value={pi.id} />
+                                <Input
+                                  name="quantidade"
+                                  type="number"
+                                  step="0.001"
+                                  min="0"
+                                  max={saldo}
+                                  placeholder={`até ${num(saldo)}`}
+                                  className="w-20 text-xs"
+                                />
+                                <label className="m-0 flex items-center gap-1 text-xs text-text-muted">
+                                  <input type="checkbox" name="liberar_integralmente" defaultChecked className="accent-primary" />
+                                  liberar integralmente
+                                </label>
+                                <Button type="submit" variant="primary" size="sm">
+                                  Criar OP
+                                </Button>
+                              </form>
+                            )}
+                          </Td>
+                          <Td>
+                            <div className="flex flex-col gap-2">
+                              {ops.map((op) => (
+                                <div key={op.id} className="rounded border border-border-subtle p-1.5">
+                                  <div className="flex flex-wrap items-baseline gap-2">
+                                    <strong>{op.numero}</strong>
+                                    <Badge variant={STATUS_TONE[op.status]}>{statusLabels?.get(op.status) ?? STATUS_LABEL[op.status]}</Badge>
+                                    <Badge variant={SITUACAO_TONE[op.situacao]}>
+                                      {situacaoLabels?.get(op.situacao) ?? SITUACAO_LABEL[op.situacao]}
+                                    </Badge>
+                                    <span>
+                                      produzida {num(op.quantidade_produzida)} / {num(op.quantidade_planejada)}
+                                    </span>
+                                    <span>perdida {num(op.quantidade_perdida)}</span>
+                                    {(() => {
+                                      const tolerancia = toleranciaPorOrdem?.get(op.id);
+                                      if (!tolerancia || tolerancia.excedida === null) return null;
+                                      return (
+                                        <span className={`font-mono ${tolerancia.excedida ? "text-danger" : "text-text-muted"}`}>
+                                          {tolerancia.excedida ? "⚠ perda acima da tolerância" : "dentro da tolerância"}{" "}
+                                          (tolerado {num(tolerancia.perda_tolerada ?? 0)}, {tolerancia.percentual_tolerancia}%)
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
+                                  {op.situacao === "bloqueada" && (
+                                    <p className="mt-1 text-xs text-danger">
+                                      [{CATEGORIA_BLOQUEIO_LABEL[op.categoria_bloqueio ?? "outro"] ?? op.categoria_bloqueio}]{" "}
+                                      {op.motivo_bloqueio} {op.impacto_bloqueio} Ação necessária: {op.acao_necessaria}
+                                    </p>
+                                  )}
+                                  <details className="mt-1">
+                                    <summary className="cursor-pointer text-xs text-primary">
+                                      Rastreabilidade e histórico (TÓPICO 4 §46-47)
+                                    </summary>
+                                    {(() => {
+                                      const rastreio = rastreioPorOrdem.get(op.id);
+                                      const historico = historicoPorOrdem.get(op.id) ?? [];
+                                      return (
+                                        <div className="mt-1 text-xs">
+                                          {rastreio?.pedido && rastreio?.item && (
+                                            <p className="text-text-muted">
+                                              {rastreio.pedido.numero} — {rastreio.pedido.pessoa_nome}
+                                              {rastreio.pedido.obra_nome ? ` (${rastreio.pedido.obra_nome})` : ""} — {rastreio.item.codigo} —{" "}
+                                              {rastreio.item.descricao}
+                                            </p>
+                                          )}
+                                          {(rastreio?.lotes ?? []).map((lote) => (
+                                            <div key={lote.numero} className="mb-1">
+                                              <strong>Lote {lote.numero}</strong> ({lote.status})
+                                              {lote.operacoes.map((o) => (
+                                                <div key={o.sequencia} className="ml-2 text-text">
+                                                  {o.sequencia}. {o.descricao} ({o.status}) — recurso: {o.recurso ? `${o.recurso.codigo} — ${o.recurso.nome}` : "—"}
+                                                  {o.apontamentos.map((a, idx) => (
+                                                    <div key={idx} className="ml-2 text-text-muted">
+                                                      {new Date(a.registrado_em).toLocaleString("pt-BR")} — produzido {num(a.quantidade_produzida)}, perdido{" "}
+                                                      {num(a.quantidade_perdida)}, retrabalho {num(a.quantidade_retrabalho)}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ))}
+                                          {rastreio?.qualidade && (rastreio.qualidade.inspecoes.length > 0 || rastreio.qualidade.nao_conformidades.length > 0) && (
+                                            <p className="text-text-muted">
+                                              Qualidade: {rastreio.qualidade.inspecoes.length} inspeção(ões), {rastreio.qualidade.nao_conformidades.length} não
+                                              conformidade(s).
+                                            </p>
+                                          )}
+                                          <strong>Histórico</strong>
+                                          <ul className="mt-0.5 list-disc pl-4">
+                                            {historico.map((h) => (
+                                              <li key={h.id} className="text-text">
+                                                {new Date(h.criado_em).toLocaleString("pt-BR")} — {h.action}
+                                                {h.description ? ` (${h.description})` : ""} — {h.criado_por_nome ?? "—"}
+                                              </li>
+                                            ))}
+                                            {historico.length === 0 && <li className="text-text-muted">Sem eventos registrados.</li>}
+                                          </ul>
+                                        </div>
+                                      );
+                                    })()}
+                                  </details>
                                   {(() => {
-                                    const tolerancia = toleranciaPorOrdem?.get(op.id);
-                                    if (!tolerancia || tolerancia.excedida === null) return null;
+                                    const lotes = (opLotesPorOrdem.get(op.id) ?? []).slice().sort((a, b) => a.numero - b.numero);
+                                    const podeMexer = canManage && (op.status === "planejada" || op.status === "em_producao");
+                                    const jaLiberado = lotes.reduce((acc, l) => acc + Number(l.quantidade_planejada), 0);
+                                    const saldoNaoLiberado = Number(op.quantidade_planejada) - jaLiberado;
+                                    const todasOperacoes = lotes.flatMap((l) => opOperacoesPorLote.get(l.id) ?? []);
+                                    const todasConcluidas = todasOperacoes.length > 0 && todasOperacoes.every((o) => o.status === "concluida");
                                     return (
-                                      <span
-                                        style={{
-                                          fontFamily: "monospace",
-                                          color: tolerancia.excedida ? "#9b2c2c" : "#6b7a75",
-                                        }}
-                                      >
-                                        {tolerancia.excedida ? "⚠ perda acima da tolerância" : "dentro da tolerância"}{" "}
-                                        (tolerado {num(tolerancia.perda_tolerada ?? 0)}, {tolerancia.percentual_tolerancia}%)
-                                      </span>
+                                      <>
+                                        {lotes.map((lote) => {
+                                          const operacoes = (opOperacoesPorLote.get(lote.id) ?? [])
+                                            .slice()
+                                            .sort((a, b) => a.sequencia - b.sequencia);
+                                          return (
+                                            <div key={lote.id} className="mt-1.5">
+                                              <div className="flex items-baseline gap-1.5 text-xs">
+                                                <strong>Lote {lote.numero}</strong>
+                                                <Badge variant={LOTE_STATUS_TONE[lote.status]}>{LOTE_STATUS_LABEL[lote.status]}</Badge>
+                                                <span>
+                                                  {num(lote.quantidade_produzida)} / {num(lote.quantidade_planejada)}
+                                                </span>
+                                              </div>
+                                              <div className="mt-0.5 overflow-x-auto">
+                                                <Table>
+                                                  <thead>
+                                                    <tr>
+                                                      <Th>Operação</Th>
+                                                      <Th>Status</Th>
+                                                      <Th>Produzido</Th>
+                                                      <Th>Rejeitado</Th>
+                                                      <Th>Retrabalho</Th>
+                                                      <Th>Saldo</Th>
+                                                      {podeMexer && <Th />}
+                                                    </tr>
+                                                  </thead>
+                                                  <tbody>
+                                                    {operacoes.map((o) => (
+                                                      <OperacaoRow key={o.id} operacao={o} podeMexer={podeMexer} />
+                                                    ))}
+                                                  </tbody>
+                                                </Table>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                        {lotes.length === 0 && (
+                                          <p className="mt-1 text-xs text-text-muted">
+                                            Nenhum lote liberado ainda — libere um lote pra começar a apontar (TÓPICO 4 §12).
+                                          </p>
+                                        )}
+                                        {podeMexer && saldoNaoLiberado > 0 && (
+                                          <form
+                                            action={liberarLoteProducaoAction}
+                                            className="mt-1.5 flex items-center gap-1"
+                                          >
+                                            <input type="hidden" name="ordem_producao_id" value={op.id} />
+                                            <Input
+                                              name="quantidade"
+                                              type="number"
+                                              step="0.001"
+                                              min="0"
+                                              max={saldoNaoLiberado}
+                                              placeholder={`até ${num(saldoNaoLiberado)}`}
+                                              className="w-20 text-xs"
+                                            />
+                                            <Button type="submit" variant="primary" size="sm">
+                                              Liberar lote
+                                            </Button>
+                                          </form>
+                                        )}
+                                        {podeMexer && (
+                                          <div className="mt-1.5 flex gap-1">
+                                            <form action={concluirOrdemProducaoAction}>
+                                              <input type="hidden" name="ordem_producao_id" value={op.id} />
+                                              <Button
+                                                type="submit"
+                                                variant="primary"
+                                                size="sm"
+                                                disabled={op.quantidade_produzida < op.quantidade_planejada || !todasConcluidas}
+                                              >
+                                                Concluir
+                                              </Button>
+                                            </form>
+                                            <form action={cancelarOrdemProducaoAction}>
+                                              <input type="hidden" name="ordem_producao_id" value={op.id} />
+                                              <input type="hidden" name="motivo" value="Cancelada pelo operador" />
+                                              <Button type="submit" variant="danger" size="sm">
+                                                Cancelar
+                                              </Button>
+                                            </form>
+                                          </div>
+                                        )}
+                                      </>
                                     );
                                   })()}
                                 </div>
-                                {op.situacao === "bloqueada" && (
-                                  <p style={{ ...hintStyle, color: "#9b2c2c", margin: "4px 0 0" }}>
-                                    [{CATEGORIA_BLOQUEIO_LABEL[op.categoria_bloqueio ?? "outro"] ?? op.categoria_bloqueio}]{" "}
-                                    {op.motivo_bloqueio} {op.impacto_bloqueio} Ação necessária:{" "}
-                                    {op.acao_necessaria}
-                                  </p>
-                                )}
-                                <details style={{ marginTop: "4px" }}>
-                                  <summary style={{ fontSize: "11px", color: "#1f5d57", cursor: "pointer" }}>
-                                    Rastreabilidade e histórico (TÓPICO 4 §46-47)
-                                  </summary>
-                                  {(() => {
-                                    const rastreio = rastreioPorOrdem.get(op.id);
-                                    const historico = historicoPorOrdem.get(op.id) ?? [];
-                                    return (
-                                      <div style={{ fontSize: "11px", marginTop: "4px" }}>
-                                        {rastreio?.pedido && rastreio?.item && (
-                                          <p style={hintStyle}>
-                                            {rastreio.pedido.numero} — {rastreio.pedido.pessoa_nome}
-                                            {rastreio.pedido.obra_nome ? ` (${rastreio.pedido.obra_nome})` : ""} — {rastreio.item.codigo} —{" "}
-                                            {rastreio.item.descricao}
-                                          </p>
-                                        )}
-                                        {(rastreio?.lotes ?? []).map((lote) => (
-                                          <div key={lote.numero} style={{ marginBottom: "4px" }}>
-                                            <strong>Lote {lote.numero}</strong> ({lote.status})
-                                            {lote.operacoes.map((o) => (
-                                              <div key={o.sequencia} style={{ marginLeft: "8px", color: "#3e4d49" }}>
-                                                {o.sequencia}. {o.descricao} ({o.status}) — recurso: {o.recurso ? `${o.recurso.codigo} — ${o.recurso.nome}` : "—"}
-                                                {o.apontamentos.map((a, idx) => (
-                                                  <div key={idx} style={{ marginLeft: "8px", color: "#6b7a75" }}>
-                                                    {new Date(a.registrado_em).toLocaleString("pt-BR")} — produzido {num(a.quantidade_produzida)}, perdido{" "}
-                                                    {num(a.quantidade_perdida)}, retrabalho {num(a.quantidade_retrabalho)}
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        ))}
-                                        {rastreio?.qualidade && (rastreio.qualidade.inspecoes.length > 0 || rastreio.qualidade.nao_conformidades.length > 0) && (
-                                          <p style={hintStyle}>
-                                            Qualidade: {rastreio.qualidade.inspecoes.length} inspeção(ões), {rastreio.qualidade.nao_conformidades.length} não
-                                            conformidade(s).
-                                          </p>
-                                        )}
-                                        <strong>Histórico</strong>
-                                        <ul style={{ margin: "2px 0 0", paddingLeft: "16px" }}>
-                                          {historico.map((h) => (
-                                            <li key={h.id} style={{ color: "#3e4d49" }}>
-                                              {new Date(h.criado_em).toLocaleString("pt-BR")} — {h.action}
-                                              {h.description ? ` (${h.description})` : ""} — {h.criado_por_nome ?? "—"}
-                                            </li>
-                                          ))}
-                                          {historico.length === 0 && <li style={{ color: "#6b7a75" }}>Sem eventos registrados.</li>}
-                                        </ul>
-                                      </div>
-                                    );
-                                  })()}
-                                </details>
-                                {(() => {
-                                  const lotes = (opLotesPorOrdem.get(op.id) ?? []).slice().sort((a, b) => a.numero - b.numero);
-                                  const podeMexer = canManage && (op.status === "planejada" || op.status === "em_producao");
-                                  const jaLiberado = lotes.reduce((acc, l) => acc + Number(l.quantidade_planejada), 0);
-                                  const saldoNaoLiberado = Number(op.quantidade_planejada) - jaLiberado;
-                                  const todasOperacoes = lotes.flatMap((l) => opOperacoesPorLote.get(l.id) ?? []);
-                                  const todasConcluidas = todasOperacoes.length > 0 && todasOperacoes.every((o) => o.status === "concluida");
-                                  return (
-                                    <>
-                                      {lotes.map((lote) => {
-                                        const operacoes = (opOperacoesPorLote.get(lote.id) ?? [])
-                                          .slice()
-                                          .sort((a, b) => a.sequencia - b.sequencia);
-                                        return (
-                                          <div key={lote.id} style={{ marginTop: "6px" }}>
-                                            <div style={{ display: "flex", gap: "6px", alignItems: "baseline", fontSize: "11px" }}>
-                                              <strong>Lote {lote.numero}</strong>
-                                              <span style={{ fontFamily: "monospace", color: LOTE_STATUS_COLOR[lote.status] }}>
-                                                {LOTE_STATUS_LABEL[lote.status]}
-                                              </span>
-                                              <span>
-                                                {num(lote.quantidade_produzida)} / {num(lote.quantidade_planejada)}
-                                              </span>
-                                            </div>
-                                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", marginTop: "2px" }}>
-                                              <thead>
-                                                <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                                                  <th style={thStyle}>Operação</th>
-                                                  <th style={thStyle}>Status</th>
-                                                  <th style={thStyle}>Produzido</th>
-                                                  <th style={thStyle}>Rejeitado</th>
-                                                  <th style={thStyle}>Retrabalho</th>
-                                                  <th style={thStyle}>Saldo</th>
-                                                  {podeMexer && <th style={thStyle}></th>}
-                                                </tr>
-                                              </thead>
-                                              <tbody>
-                                                {operacoes.map((o) => (
-                                                  <tr key={o.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                                                    <td style={tdStyle}>
-                                                      {o.sequencia}. {o.descricao}
-                                                    </td>
-                                                    <td style={tdStyle}>
-                                                      <span style={{ fontFamily: "monospace", color: OPERACAO_STATUS_COLOR[o.status] }}>
-                                                        {OPERACAO_STATUS_LABEL[o.status]}
-                                                      </span>
-                                                    </td>
-                                                    <td style={tdStyle}>
-                                                      {num(o.quantidade_produzida)} / {num(o.quantidade_planejada)}
-                                                    </td>
-                                                    <td style={tdStyle}>{num(o.quantidade_rejeitada)}</td>
-                                                    <td style={tdStyle}>{num(o.quantidade_retrabalho)}</td>
-                                                    <td style={tdStyle}>{num(o.saldo)}</td>
-                                                    {podeMexer && (
-                                                      <td style={tdStyle}>
-                                                        {o.status !== "concluida" && (
-                                                          <form
-                                                            action={apontarProducaoAction}
-                                                            style={{ display: "flex", flexWrap: "wrap", gap: "3px", alignItems: "center" }}
-                                                          >
-                                                            <input type="hidden" name="op_lote_operacao_id" value={o.id} />
-                                                            <input
-                                                              name="quantidade_produzida"
-                                                              type="number"
-                                                              step="0.001"
-                                                              min="0"
-                                                              placeholder="produzida"
-                                                              style={{ ...inputStyle, width: "62px" }}
-                                                            />
-                                                            <input
-                                                              name="quantidade_rejeitada"
-                                                              type="number"
-                                                              step="0.001"
-                                                              min="0"
-                                                              placeholder="rejeitada"
-                                                              style={{ ...inputStyle, width: "62px" }}
-                                                            />
-                                                            <input
-                                                              name="quantidade_retrabalho"
-                                                              type="number"
-                                                              step="0.001"
-                                                              min="0"
-                                                              placeholder="retrabalho"
-                                                              style={{ ...inputStyle, width: "62px" }}
-                                                            />
-                                                            <input
-                                                              name="observacao"
-                                                              placeholder="obs. (opcional)"
-                                                              style={{ ...inputStyle, width: "100px" }}
-                                                            />
-                                                            <button type="submit" style={buttonStyle}>
-                                                              Apontar
-                                                            </button>
-                                                          </form>
-                                                        )}
-                                                      </td>
-                                                    )}
-                                                  </tr>
-                                                ))}
-                                              </tbody>
-                                            </table>
-                                          </div>
-                                        );
-                                      })}
-                                      {lotes.length === 0 && (
-                                        <p style={{ ...hintStyle, margin: "4px 0 0" }}>
-                                          Nenhum lote liberado ainda — libere um lote pra começar a apontar (TÓPICO 4 §12).
-                                        </p>
-                                      )}
-                                      {podeMexer && saldoNaoLiberado > 0 && (
-                                        <form
-                                          action={liberarLoteProducaoAction}
-                                          style={{ display: "flex", gap: "4px", marginTop: "6px", alignItems: "center" }}
-                                        >
-                                          <input type="hidden" name="ordem_producao_id" value={op.id} />
-                                          <input
-                                            name="quantidade"
-                                            type="number"
-                                            step="0.001"
-                                            min="0"
-                                            max={saldoNaoLiberado}
-                                            placeholder={`até ${num(saldoNaoLiberado)}`}
-                                            style={{ ...inputStyle, width: "80px" }}
-                                          />
-                                          <button type="submit" style={buttonStyle}>
-                                            Liberar lote
-                                          </button>
-                                        </form>
-                                      )}
-                                      {podeMexer && (
-                                        <div style={{ display: "flex", gap: "4px", marginTop: "6px" }}>
-                                          <form action={concluirOrdemProducaoAction}>
-                                            <input type="hidden" name="ordem_producao_id" value={op.id} />
-                                            <button
-                                              type="submit"
-                                              style={buttonStyle}
-                                              disabled={op.quantidade_produzida < op.quantidade_planejada || !todasConcluidas}
-                                            >
-                                              Concluir
-                                            </button>
-                                          </form>
-                                          <form action={cancelarOrdemProducaoAction}>
-                                            <input type="hidden" name="ordem_producao_id" value={op.id} />
-                                            <input type="hidden" name="motivo" value="Cancelada pelo operador" />
-                                            <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
-                                              Cancelar
-                                            </button>
-                                          </form>
-                                        </div>
-                                      )}
-                                    </>
-                                  );
-                                })()}
-                              </div>
-                            ))}
-                            {ops.length === 0 && <span style={{ color: "#6b7a75" }}>Sem OP</span>}
-                          </div>
-                        </td>
+                              ))}
+                              {ops.length === 0 && <span className="text-text-muted">Sem OP</span>}
+                            </div>
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                    {itensDoPedido.length === 0 && (
+                      <tr>
+                        <Td colSpan={5}>
+                          <span className="text-text-muted">Pedido sem itens.</span>
+                        </Td>
                       </tr>
-                    );
-                  })}
-                  {itensDoPedido.length === 0 && (
-                    <tr>
-                      <td style={tdStyle} colSpan={5}>
-                        <span style={{ color: "#6b7a75" }}>Pedido sem itens.</span>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </Table>
+              </div>
 
               {itensComOP.length > 0 && (
-                <details style={{ marginTop: "8px" }}>
-                  <summary style={{ fontSize: "12px", color: "#1f5d57", cursor: "pointer" }}>Lista de corte</summary>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-primary">Lista de corte</summary>
                   {itensComOP.map((pi) =>
                     (ordensPorPedidoItem.get(pi.id) ?? []).map((op) => {
                       const rows = listaCortePorOrdem.get(op.id) ?? [];
                       const primeira = rows[0];
                       return (
-                        <div key={op.id} style={{ marginTop: "6px" }}>
-                          <p style={hintStyle}>
+                        <div key={op.id} className="mt-1.5">
+                          <p className="text-xs text-text-muted">
                             OP {op.numero}
                             {primeira &&
                               ` — emitida por ${primeira.responsavel ?? "—"} em ${new Date(
                                 primeira.emitido_em,
                               ).toLocaleString("pt-BR")}`}
                           </p>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                            <thead>
-                              <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                                <th style={thStyle}>Item</th>
-                                <th style={thStyle}>Ambiente</th>
-                                <th style={thStyle}>Largura (mm)</th>
-                                <th style={thStyle}>Altura (mm)</th>
-                                <th style={thStyle}>Qtd.</th>
-                                <th style={thStyle}>Margem de quebra</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rows.map((row, idx) => (
-                                <tr key={idx} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                                  <td style={tdStyle}>
-                                    {row.item_codigo} — {row.item_descricao}
-                                  </td>
-                                  <td style={tdStyle}>{row.ambiente ?? "—"}</td>
-                                  <td style={tdStyle}>{row.largura_mm != null ? num(row.largura_mm) : "—"}</td>
-                                  <td style={tdStyle}>{row.altura_mm != null ? num(row.altura_mm) : "—"}</td>
-                                  <td style={tdStyle}>{num(row.quantidade)}</td>
-                                  <td style={tdStyle}>
-                                    {row.margem_quebra_percentual != null
-                                      ? `${num(row.margem_quebra_percentual)}%`
-                                      : "—"}
-                                  </td>
-                                </tr>
-                              ))}
-                              {rows.length === 0 && (
+                          <div className="overflow-x-auto">
+                            <Table>
+                              <thead>
                                 <tr>
-                                  <td style={tdStyle} colSpan={6}>
-                                    <span style={{ color: "#6b7a75" }}>Sem dados de medida para este item.</span>
-                                  </td>
+                                  <Th>Item</Th>
+                                  <Th>Ambiente</Th>
+                                  <Th>Largura (mm)</Th>
+                                  <Th>Altura (mm)</Th>
+                                  <Th>Qtd.</Th>
+                                  <Th>Margem de quebra</Th>
                                 </tr>
-                              )}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {rows.map((row, idx) => (
+                                  <tr key={idx}>
+                                    <Td>
+                                      {row.item_codigo} — {row.item_descricao}
+                                    </Td>
+                                    <Td>{row.ambiente ?? "—"}</Td>
+                                    <Td>{row.largura_mm != null ? num(row.largura_mm) : "—"}</Td>
+                                    <Td>{row.altura_mm != null ? num(row.altura_mm) : "—"}</Td>
+                                    <Td>{num(row.quantidade)}</Td>
+                                    <Td>{row.margem_quebra_percentual != null ? `${num(row.margem_quebra_percentual)}%` : "—"}</Td>
+                                  </tr>
+                                ))}
+                                {rows.length === 0 && (
+                                  <tr>
+                                    <Td colSpan={6}>
+                                      <span className="text-text-muted">Sem dados de medida para este item.</span>
+                                    </Td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </Table>
+                          </div>
                         </div>
                       );
                     }),
                   )}
                 </details>
               )}
-            </div>
+            </Card>
           );
         })}
         {pedidos.length === 0 && (
-          <p style={hintStyle}>Nenhum pedido liberado ainda — a produção só entra depois da liberação (TÓPICO 3).</p>
+          <p className="text-xs text-text-muted">Nenhum pedido liberado ainda — a produção só entra depois da liberação (TÓPICO 3).</p>
         )}
       </div>
     </section>

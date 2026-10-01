@@ -10,7 +10,12 @@ import {
   confirmarEntregaItemExpedicaoAction,
   registrarOcorrenciaExpedicaoAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -50,11 +55,11 @@ const STATUS_LABEL: Record<Expedicao["status"], string> = {
   cancelada: "Cancelada",
 };
 
-const STATUS_COLOR: Record<Expedicao["status"], string> = {
-  preparando: "#6b7a75",
-  conferida: "#1f5d57",
-  expedida: "#1f5d57",
-  cancelada: "#9b2c2c",
+const STATUS_TONE: Record<Expedicao["status"], "neutral" | "success" | "danger"> = {
+  preparando: "neutral",
+  conferida: "success",
+  expedida: "success",
+  cancelada: "danger",
 };
 
 export default function ExpedicaoSection({
@@ -91,8 +96,8 @@ export default function ExpedicaoSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Pedidos liberados — expedições</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <h2 className="text-sm font-semibold text-text">Pedidos liberados — expedições</h2>
+      <div className="mt-2 flex flex-col gap-4">
         {pedidos.map((ped) => {
           const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
           const expedicoes = expedicoesPorPedido.get(ped.id) ?? [];
@@ -109,76 +114,69 @@ export default function ExpedicaoSection({
             .filter((x) => x.disponivel > 0);
 
           return (
-            <div key={ped.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-              <div
-                style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "baseline", fontSize: "12px" }}
-              >
-                <strong style={{ fontSize: "13px" }}>{ped.numero}</strong>
+            <Card key={ped.id} padding="xs">
+              <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
+                <strong className="text-[13px] text-text">{ped.numero}</strong>
                 <span>{pessoaNome(ped.pessoa_id)}</span>
-                <span style={{ color: "#6b7a75" }}>{obraNome(ped.obra_id)}</span>
+                <span className="text-text-muted">{obraNome(ped.obra_id)}</span>
                 {canManage && (
                   <form action={criarExpedicaoAction}>
                     <input type="hidden" name="pedido_id" value={ped.id} />
-                    <button type="submit" style={buttonStyle}>
+                    <Button type="submit" variant="primary">
                       Nova expedição
-                    </button>
+                    </Button>
                   </form>
                 )}
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "8px" }}>
+              <div className="mt-2 flex flex-col gap-2.5">
                 {expedicoes.map((exp) => {
                   const expItens = itensPorExpedicao.get(exp.id) ?? [];
                   const ocorrencias = ocorrenciasPorExpedicao.get(exp.id) ?? [];
 
                   return (
-                    <div key={exp.id} style={{ border: "1px solid #eef1ef", borderRadius: "6px", padding: "8px 10px" }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "baseline", fontSize: "12px" }}>
+                    <div key={exp.id} className="rounded-md border border-border-subtle p-2">
+                      <div className="flex flex-wrap items-baseline gap-2 text-xs">
                         <strong>{exp.numero}</strong>
-                        <span style={{ fontFamily: "monospace", color: STATUS_COLOR[exp.status] }}>
-                          {STATUS_LABEL[exp.status]}
-                        </span>
+                        <Badge variant={STATUS_TONE[exp.status]}>{STATUS_LABEL[exp.status]}</Badge>
                         {exp.status === "cancelada" && exp.motivo_cancelamento && (
-                          <span style={{ color: "#6b7a75" }}>Motivo: {exp.motivo_cancelamento}</span>
+                          <span className="text-text-muted">Motivo: {exp.motivo_cancelamento}</span>
                         )}
                       </div>
 
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "6px" }}>
+                      <Table className="mt-1.5">
                         <thead>
-                          <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                            <th style={thStyle}>Item</th>
-                            <th style={thStyle}>Qtd.</th>
-                            <th style={thStyle}>Entregue</th>
-                            <th style={thStyle}>Pendente</th>
-                            {canManage && <th style={thStyle}></th>}
+                          <tr>
+                            <Th>Item</Th>
+                            <Th>Qtd.</Th>
+                            <Th>Entregue</Th>
+                            <Th>Pendente</Th>
+                            {canManage && <Th />}
                           </tr>
                         </thead>
                         <tbody>
                           {expItens.map((ei) => {
                             const pi = itensDoPedido.find((p) => p.id === ei.pedido_item_id);
                             return (
-                              <tr key={ei.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                                <td style={tdStyle}>{pi ? itemLabel(pi.item_id) : "(item removido)"}</td>
-                                <td style={tdStyle}>{num(ei.quantidade)}</td>
-                                <td style={tdStyle}>{num(ei.quantidade_entregue)}</td>
-                                <td style={tdStyle}>{num(ei.quantidade_pendente)}</td>
+                              <tr key={ei.id}>
+                                <Td>{pi ? itemLabel(pi.item_id) : "(item removido)"}</Td>
+                                <Td>{num(ei.quantidade)}</Td>
+                                <Td>{num(ei.quantidade_entregue)}</Td>
+                                <Td>{num(ei.quantidade_pendente)}</Td>
                                 {canManage && (
-                                  <td style={tdStyle}>
+                                  <Td>
                                     {exp.status === "preparando" && (
                                       <form action={removerItemExpedicaoAction}>
                                         <input type="hidden" name="id" value={ei.id} />
-                                        <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                                        <Button type="submit" variant="danger">
                                           Remover
-                                        </button>
+                                        </Button>
                                       </form>
                                     )}
                                     {exp.status === "expedida" && ei.quantidade_pendente > 0 && (
-                                      <form
-                                        action={confirmarEntregaItemExpedicaoAction}
-                                        style={{ display: "flex", gap: "4px" }}
-                                      >
+                                      <form action={confirmarEntregaItemExpedicaoAction} className="flex gap-1">
                                         <input type="hidden" name="id" value={ei.id} />
-                                        <input
+                                        <Input
                                           name="quantidade_entregue"
                                           type="number"
                                           step="0.001"
@@ -186,37 +184,37 @@ export default function ExpedicaoSection({
                                           max={ei.quantidade_pendente}
                                           placeholder="entregue"
                                           required
-                                          style={{ ...inputStyle, width: "70px" }}
+                                          className="w-[70px]"
                                         />
-                                        <button type="submit" style={buttonStyle}>
+                                        <Button type="submit" variant="primary">
                                           Confirmar entrega
-                                        </button>
+                                        </Button>
                                       </form>
                                     )}
-                                  </td>
+                                  </Td>
                                 )}
                               </tr>
                             );
                           })}
                           {expItens.length === 0 && (
                             <tr>
-                              <td style={tdStyle} colSpan={canManage ? 5 : 4}>
-                                <span style={{ color: "#6b7a75" }}>Sem itens separados ainda.</span>
-                              </td>
+                              <Td colSpan={canManage ? 5 : 4}>
+                                <span className="text-text-muted">Sem itens separados ainda.</span>
+                              </Td>
                             </tr>
                           )}
                         </tbody>
-                      </table>
+                      </Table>
 
                       {canManage && exp.status === "preparando" && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
+                        <div className="mt-2 flex flex-col gap-1.5">
                           {itensElegiveis.length > 0 && (
                             <form
                               action={adicionarItemExpedicaoAction}
-                              style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}
+                              className="flex flex-wrap items-center gap-1.5"
                             >
                               <input type="hidden" name="expedicao_id" value={exp.id} />
-                              <select name="pedido_item_id" defaultValue="" required style={inputStyle}>
+                              <Select name="pedido_item_id" defaultValue="" required className="min-w-48">
                                 <option value="" disabled>
                                   Item disponível
                                 </option>
@@ -225,137 +223,137 @@ export default function ExpedicaoSection({
                                     {itemLabel(pedidoItem.item_id)} (disponível: {num(disponivel)})
                                   </option>
                                 ))}
-                              </select>
-                              <input
+                              </Select>
+                              <Input
                                 name="quantidade"
                                 type="number"
                                 step="0.001"
                                 min="0.001"
                                 placeholder="quantidade"
                                 required
-                                style={{ ...inputStyle, width: "80px" }}
+                                className="w-20"
                               />
-                              <button type="submit" style={buttonStyle}>
+                              <Button type="submit" variant="primary">
                                 Adicionar item
-                              </button>
+                              </Button>
                             </form>
                           )}
-                          <div style={{ display: "flex", gap: "6px" }}>
+                          <div className="flex gap-1.5">
                             <form action={conferirExpedicaoAction}>
                               <input type="hidden" name="expedicao_id" value={exp.id} />
-                              <button type="submit" style={buttonStyle} disabled={expItens.length === 0}>
+                              <Button type="submit" variant="primary" disabled={expItens.length === 0}>
                                 Conferir
-                              </button>
+                              </Button>
                             </form>
-                            <form
-                              action={cancelarExpedicaoAction}
-                              style={{ display: "flex", gap: "4px", alignItems: "center" }}
-                            >
+                            <form action={cancelarExpedicaoAction} className="flex items-center gap-1">
                               <input type="hidden" name="expedicao_id" value={exp.id} />
-                              <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "140px" }} />
-                              <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                              <Input name="motivo" placeholder="motivo (opcional)" className="w-36" />
+                              <Button type="submit" variant="danger">
                                 Cancelar
-                              </button>
+                              </Button>
                             </form>
                           </div>
                         </div>
                       )}
 
                       {canManage && exp.status === "conferida" && (
-                        <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+                        <div className="mt-2 flex gap-1.5">
                           <form action={registrarSaidaExpedicaoAction}>
                             <input type="hidden" name="expedicao_id" value={exp.id} />
-                            <button type="submit" style={buttonStyle}>
+                            <Button type="submit" variant="primary">
                               Registrar saída
-                            </button>
+                            </Button>
                           </form>
-                          <form
-                            action={cancelarExpedicaoAction}
-                            style={{ display: "flex", gap: "4px", alignItems: "center" }}
-                          >
+                          <form action={cancelarExpedicaoAction} className="flex items-center gap-1">
                             <input type="hidden" name="expedicao_id" value={exp.id} />
-                            <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "140px" }} />
-                            <button type="submit" style={{ ...buttonStyle, background: "#6b7a75" }}>
+                            <Input name="motivo" placeholder="motivo (opcional)" className="w-36" />
+                            <Button type="submit" variant="danger">
                               Cancelar
-                            </button>
+                            </Button>
                           </form>
                         </div>
                       )}
 
-                      <div style={{ marginTop: "8px" }}>
-                        <p style={{ ...hintStyle, margin: "0 0 4px" }}>Ocorrências</p>
+                      <div className="mt-2">
+                        <p className="mb-1 text-xs text-text-muted">Ocorrências</p>
                         {ocorrencias.map((oc) => (
-                          <p key={oc.id} style={{ fontSize: "12px", margin: "0 0 2px" }}>
-                            <span style={{ color: "#6b7a75" }}>
+                          <p key={oc.id} className="mb-0.5 text-xs">
+                            <span className="text-text-muted">
                               {new Date(oc.registrado_em).toLocaleString("pt-BR")} —{" "}
                             </span>
                             {oc.descricao}
                           </p>
                         ))}
-                        {ocorrencias.length === 0 && <p style={{ ...hintStyle, margin: 0 }}>Nenhuma registrada.</p>}
+                        {ocorrencias.length === 0 && <p className="text-xs text-text-muted">Nenhuma registrada.</p>}
                         {canManage && exp.status !== "cancelada" && (
-                          <form
-                            action={registrarOcorrenciaExpedicaoAction}
-                            style={{ display: "flex", gap: "4px", marginTop: "4px" }}
-                          >
+                          <form action={registrarOcorrenciaExpedicaoAction} className="mt-1 flex gap-1">
                             <input type="hidden" name="expedicao_id" value={exp.id} />
-                            <input
-                              name="descricao"
-                              placeholder="descrever ocorrência"
-                              required
-                              style={{ ...inputStyle, flex: 1 }}
-                            />
-                            <button type="submit" style={buttonStyle}>
+                            <Input name="descricao" placeholder="descrever ocorrência" required className="flex-1" />
+                            <Button type="submit" variant="primary">
                               Registrar ocorrência
-                            </button>
+                            </Button>
                           </form>
                         )}
                       </div>
 
                       {expItens.length > 0 && (
-                        <details style={{ marginTop: "8px" }}>
-                          <summary style={{ fontSize: "12px", color: "#1f5d57", cursor: "pointer" }}>Romaneio</summary>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "6px" }}>
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-xs text-primary">Romaneio</summary>
+                          {/* Documento para entregar impresso: sai por uma rota
+                              própria, fora do layout da aplicação, a partir de
+                              romaneio_expedicao() — não é esta tabela mandada
+                              para a impressora. */}
+                          <a
+                            href={`/expedicao/${exp.id}/romaneio`}
+                            target="_blank"
+                            rel="noopener"
+                            className="mt-1.5 inline-block text-xs text-primary underline"
+                          >
+                            Abrir romaneio para impressão
+                          </a>
+                          <Table className="mt-1.5">
                             <thead>
-                              <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                                <th style={thStyle}>Pedido</th>
-                                <th style={thStyle}>Cliente</th>
-                                <th style={thStyle}>Item</th>
-                                <th style={thStyle}>Qtd.</th>
-                                <th style={thStyle}>Entregue</th>
-                                <th style={thStyle}>Pendente</th>
+                              <tr>
+                                <Th>Pedido</Th>
+                                <Th>Cliente</Th>
+                                <Th>Item</Th>
+                                <Th>Qtd.</Th>
+                                <Th>Entregue</Th>
+                                <Th>Pendente</Th>
                               </tr>
                             </thead>
                             <tbody>
                               {expItens.map((ei) => {
                                 const pi = itensDoPedido.find((p) => p.id === ei.pedido_item_id);
                                 return (
-                                  <tr key={ei.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                                    <td style={tdStyle}>{ped.numero}</td>
-                                    <td style={tdStyle}>{pessoaNome(ped.pessoa_id)}</td>
-                                    <td style={tdStyle}>{pi ? itemLabel(pi.item_id) : "(item removido)"}</td>
-                                    <td style={tdStyle}>{num(ei.quantidade)}</td>
-                                    <td style={tdStyle}>{num(ei.quantidade_entregue)}</td>
-                                    <td style={tdStyle}>{num(ei.quantidade_pendente)}</td>
+                                  <tr key={ei.id}>
+                                    <Td>{ped.numero}</Td>
+                                    <Td>{pessoaNome(ped.pessoa_id)}</Td>
+                                    <Td>{pi ? itemLabel(pi.item_id) : "(item removido)"}</Td>
+                                    <Td>{num(ei.quantidade)}</Td>
+                                    <Td>{num(ei.quantidade_entregue)}</Td>
+                                    <Td>{num(ei.quantidade_pendente)}</Td>
                                   </tr>
                                 );
                               })}
                             </tbody>
-                          </table>
+                          </Table>
                         </details>
                       )}
                     </div>
                   );
                 })}
                 {expedicoes.length === 0 && (
-                  <p style={hintStyle}>Nenhuma expedição criada ainda para este pedido.</p>
+                  <p className="text-xs text-text-muted">Nenhuma expedição criada ainda para este pedido.</p>
                 )}
               </div>
-            </div>
+            </Card>
           );
         })}
         {pedidos.length === 0 && (
-          <p style={hintStyle}>Nenhum pedido liberado ainda — a expedição só entra depois da liberação (TÓPICO 3).</p>
+          <p className="text-xs text-text-muted">
+            Nenhum pedido liberado ainda — a expedição só entra depois da liberação (TÓPICO 3).
+          </p>
         )}
       </div>
     </section>

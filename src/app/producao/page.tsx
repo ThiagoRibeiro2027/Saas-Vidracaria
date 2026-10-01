@@ -19,6 +19,20 @@ import SequenciamentoSection, { type RecomendacaoRow } from "./SequenciamentoSec
 import HorizontesSection, { type HorizonteProgramacao } from "./HorizontesSection";
 import ReplanejamentoSection, { type EventoReplanejamento } from "./ReplanejamentoSection";
 import RotulosStatusSection, { type RotuloStatusRow } from "./RotulosStatusSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+type TabSlug =
+  | "ordens"
+  | "roteiros"
+  | "lotes-fabris"
+  | "recursos"
+  | "programacao"
+  | "horizontes"
+  | "replanejamento"
+  | "sequenciamento"
+  | "rotulos";
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -94,7 +108,19 @@ import RotulosStatusSection, { type RotuloStatusRow } from "./RotulosStatusSecti
 // (liberação pra estoque) ficaram fechados só em ADR-002 §4.7, sem
 // código (§44 já satisfeito por T9; §45 adiado por falta de dado de
 // preço/custo em qualquer módulo do MVP).
-export default async function ProducaoPage() {
+//
+// Abas por aba ativa (2026-09-20): módulo com fan-out pesado de RPCs por
+// linha (lista de corte/rastreio/histórico/tolerância por OP, capacidade/
+// impacto/recomendação por recurso, lista de corte por lote fabril) — cada
+// aba busca só os dados de que precisa, em vez de rodar todos os RPCs a
+// cada visita à página (mesmo padrão de abas via ?tab= do resto do app,
+// mas aqui também controla o fetch, não só a apresentação).
+export default async function ProducaoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -104,16 +130,58 @@ export default async function ProducaoPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar o módulo Produção desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o módulo Produção desta empresa." />
+      </div>
     );
   }
 
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "ordens", label: "Ordens de produção" },
+    { slug: "roteiros", label: "Roteiros" },
+    { slug: "lotes-fabris", label: "Lotes fabris" },
+    { slug: "recursos", label: "Recursos e capacidade" },
+    { slug: "programacao", label: "Programação" },
+    { slug: "horizontes", label: "Horizontes" },
+    { slug: "replanejamento", label: "Replanejamento" },
+    { slug: "sequenciamento", label: "Sequenciamento" },
+    { slug: "rotulos", label: "Rótulos de status" },
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "ordens";
+  const canManageBool = !!canManage;
+
+  return (
+    <div className="mx-auto max-w-5xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 4 — Produção</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Ordens de produção</h1>
+      <p className="mt-1 text-sm text-text">
+        Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
+        por item), engenharia liberada versionada, roteiro produtivo configurável com
+        acompanhamento por operação, produção em lotes, lote fabril, recursos produtivos,
+        capacidade, gargalos, manutenção preventiva/corretiva com análise de impacto, conclusão e
+        lista de corte. Divisão por recurso/transferência (§13) já existe no backend, ainda sem
+        tela. Sem sequenciamento, priorização, simulação ou replanejamento automáticos (§6-10).
+      </p>
+
+      <div className="mt-6">
+        {activeTab === "ordens" && <OrdensTab supabase={supabase} canManage={canManageBool} />}
+        {activeTab === "roteiros" && <RoteirosTab supabase={supabase} canManage={canManageBool} />}
+        {activeTab === "lotes-fabris" && <LotesFabrisTab supabase={supabase} canManage={canManageBool} />}
+        {activeTab === "recursos" && <RecursosTab supabase={supabase} canManage={canManageBool} />}
+        {activeTab === "programacao" && <ProgramacaoTab supabase={supabase} canManage={canManageBool} />}
+        {activeTab === "horizontes" && <HorizontesTab supabase={supabase} canManage={canManageBool} />}
+        {activeTab === "replanejamento" && <ReplanejamentoTab supabase={supabase} />}
+        {activeTab === "sequenciamento" && <SequenciamentoTab supabase={supabase} canManage={canManageBool} />}
+        {activeTab === "rotulos" && <RotulosTab supabase={supabase} canManage={canManageBool} />}
+      </div>
+    </div>
+  );
+}
+
+// TÓPICO 4 §46-47 (Fase 7a) + §30/§51 (Fase 7f): rastreabilidade, histórico
+// e tolerância de perda são funções de leitura por OP — resolvidas aqui e
+// passadas prontas, sem round-trip client-side (zero-JS-extra).
+async function OrdensTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
   const [
     { data: pedidos },
     { data: pedidoItens },
@@ -124,13 +192,7 @@ export default async function ProducaoPage() {
     { data: engenhariaVersoes },
     { data: opLotes },
     { data: opOperacoes },
-    { data: roteiros },
-    { data: roteiroOperacoes },
-    { data: lotesFabris },
-    { data: loteFabrilItens },
-    { data: recursos },
-    { data: manutencoesPreventivas },
-    { data: manutencoesCorretivasAbertas },
+    { data: rotulosStatus },
   ] = await Promise.all([
     supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
     supabase.from("pedido_itens").select("*"),
@@ -141,13 +203,7 @@ export default async function ProducaoPage() {
     supabase.from("engenharia_versoes").select("*").eq("situacao", "liberada"),
     supabase.from("op_lotes").select("*").order("numero", { ascending: true }),
     supabase.from("op_lote_operacoes").select("*").order("sequencia", { ascending: true }),
-    supabase.from("roteiros_produtivos").select("*").order("created_at", { ascending: true }),
-    supabase.from("roteiro_operacoes").select("*").order("sequencia", { ascending: true }),
-    supabase.from("lotes_fabris").select("*").order("created_at", { ascending: true }),
-    supabase.from("lote_fabril_itens").select("*").order("created_at", { ascending: true }),
-    supabase.from("recursos_produtivos").select("*").eq("ativo", true).order("codigo", { ascending: true }),
-    supabase.from("manutencoes_preventivas").select("*").eq("ativo", true).order("proxima_data", { ascending: true }),
-    supabase.from("manutencoes_corretivas").select("*").eq("status", "aberta"),
+    supabase.rpc("rotulos_status_producao"),
   ]);
 
   const pedidoItensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
@@ -187,30 +243,6 @@ export default async function ProducaoPage() {
     opOperacoesPorLote.set(o.op_lote_id, list);
   }
 
-  // TÓPICO 4 §15: roteiros configurados pela empresa, agrupados por item.
-  const operacoesPorRoteiro = new Map<string, NonNullable<typeof roteiroOperacoes>>();
-  for (const ro of roteiroOperacoes ?? []) {
-    const list = operacoesPorRoteiro.get(ro.roteiro_id) ?? [];
-    list.push(ro);
-    operacoesPorRoteiro.set(ro.roteiro_id, list);
-  }
-
-  // TÓPICO 4 §14: lotes fabris e seus itens (vínculo com op_lotes).
-  const itensPorLoteFabril = new Map<string, NonNullable<typeof loteFabrilItens>>();
-  for (const it of loteFabrilItens ?? []) {
-    const list = itensPorLoteFabril.get(it.lote_fabril_id) ?? [];
-    list.push(it);
-    itensPorLoteFabril.set(it.lote_fabril_id, list);
-  }
-
-  // Label "OP <numero> — Lote <numero> (planejado X)" pra cada op_lote,
-  // usado no seletor de "Adicionar item" do lote fabril.
-  const ordemNumeroPorId = new Map((ordens ?? []).map((o) => [o.id, o.numero] as const));
-  const opLotesOpcoes = (opLotes ?? []).map((l) => ({
-    id: l.id,
-    label: `${ordemNumeroPorId.get(l.ordem_producao_id) ?? "(OP removida)"} — Lote ${l.numero} (planejado ${Number(l.quantidade_planejada).toLocaleString("pt-BR", { maximumFractionDigits: 3 })})`,
-  }));
-
   // Bloqueio por medida (TÓPICO 16 §7) é por pedido, não por item — resolvido
   // aqui (server) pra decidir se o botão "Criar OP" aparece habilitado.
   const bloqueioPorPedido = new Map<string, boolean>();
@@ -232,8 +264,6 @@ export default async function ProducaoPage() {
     }),
   );
 
-  // TÓPICO 4 §46-47 (Fase 7a): rastreabilidade e histórico por OP —
-  // mesmo padrão zero-JS-extra da lista de corte acima.
   const rastreioPorOrdem = new Map<string, RastreioOrdemProducao>();
   const historicoPorOrdem = new Map<string, HistoricoEvento[]>();
   await Promise.all(
@@ -247,9 +277,6 @@ export default async function ProducaoPage() {
     }),
   );
 
-  // TÓPICO 4 §30/§51 (Fase 7f): tolerância de perda configurada
-  // (cutting_margin_settings, T15) × perda real da OP — mesmo padrão
-  // zero-JS-extra de lista de corte/rastreio acima.
   const toleranciaPorOrdem = new Map<string, ToleranciaPerdaRow>();
   await Promise.all(
     (ordens ?? []).map(async (o) => {
@@ -258,6 +285,93 @@ export default async function ProducaoPage() {
       if (row) toleranciaPorOrdem.set(o.id, row as ToleranciaPerdaRow);
     }),
   );
+
+  // TÓPICO 4 §41 (Fase 7c): rótulos de status/situacao configurados pela
+  // empresa (ou padrão, quando não configurado).
+  const statusLabels = new Map(
+    ((rotulosStatus as RotuloStatusRow[]) ?? [])
+      .filter((r) => r.campo === "status")
+      .map((r) => [r.valor_interno, r.rotulo] as const),
+  );
+  const situacaoLabels = new Map(
+    ((rotulosStatus as RotuloStatusRow[]) ?? [])
+      .filter((r) => r.campo === "situacao")
+      .map((r) => [r.valor_interno, r.rotulo] as const),
+  );
+
+  return (
+    <ProducaoSection
+      pedidos={pedidos ?? []}
+      pedidoItensPorPedido={pedidoItensPorPedido}
+      itens={itens ?? []}
+      pessoas={pessoas ?? []}
+      obras={obras ?? []}
+      ordensPorPedidoItem={ordensPorPedidoItem}
+      engenhariaVigentePorPedidoItem={engenhariaVigentePorPedidoItem}
+      bloqueioPorPedido={bloqueioPorPedido}
+      listaCortePorOrdem={listaCortePorOrdem}
+      rastreioPorOrdem={rastreioPorOrdem}
+      historicoPorOrdem={historicoPorOrdem}
+      opLotesPorOrdem={opLotesPorOrdem}
+      opOperacoesPorLote={opOperacoesPorLote}
+      statusLabels={statusLabels}
+      situacaoLabels={situacaoLabels}
+      toleranciaPorOrdem={toleranciaPorOrdem}
+      canManage={canManage}
+    />
+  );
+}
+
+// TÓPICO 4 §15: roteiros configurados pela empresa, agrupados por item.
+async function RoteirosTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
+  const [{ data: itens }, { data: roteiros }, { data: roteiroOperacoes }, { data: recursos }] = await Promise.all([
+    supabase.from("itens").select("id, codigo, descricao, tipo"),
+    supabase.from("roteiros_produtivos").select("*").order("created_at", { ascending: true }),
+    supabase.from("roteiro_operacoes").select("*").order("sequencia", { ascending: true }),
+    supabase.from("recursos_produtivos").select("id, codigo, nome").eq("ativo", true).order("codigo", { ascending: true }),
+  ]);
+
+  const operacoesPorRoteiro = new Map<string, NonNullable<typeof roteiroOperacoes>>();
+  for (const ro of roteiroOperacoes ?? []) {
+    const list = operacoesPorRoteiro.get(ro.roteiro_id) ?? [];
+    list.push(ro);
+    operacoesPorRoteiro.set(ro.roteiro_id, list);
+  }
+
+  return (
+    <RoteirosSection
+      itens={itens ?? []}
+      roteiros={roteiros ?? []}
+      operacoesPorRoteiro={operacoesPorRoteiro}
+      recursos={recursos ?? []}
+      canManage={canManage}
+    />
+  );
+}
+
+// TÓPICO 4 §14: lotes fabris, itens agrupados e lista de corte combinada.
+async function LotesFabrisTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
+  const [{ data: lotesFabris }, { data: loteFabrilItens }, { data: opLotes }, { data: ordensNumero }] = await Promise.all([
+    supabase.from("lotes_fabris").select("*").order("created_at", { ascending: true }),
+    supabase.from("lote_fabril_itens").select("*").order("created_at", { ascending: true }),
+    supabase.from("op_lotes").select("*").order("numero", { ascending: true }),
+    supabase.from("ordens_producao").select("id, numero"),
+  ]);
+
+  const itensPorLoteFabril = new Map<string, NonNullable<typeof loteFabrilItens>>();
+  for (const it of loteFabrilItens ?? []) {
+    const list = itensPorLoteFabril.get(it.lote_fabril_id) ?? [];
+    list.push(it);
+    itensPorLoteFabril.set(it.lote_fabril_id, list);
+  }
+
+  // Label "OP <numero> — Lote <numero> (planejado X)" pra cada op_lote,
+  // usado no seletor de "Adicionar item" do lote fabril.
+  const ordemNumeroPorId = new Map((ordensNumero ?? []).map((o) => [o.id, o.numero] as const));
+  const opLotesOpcoes = (opLotes ?? []).map((l) => ({
+    id: l.id,
+    label: `${ordemNumeroPorId.get(l.ordem_producao_id) ?? "(OP removida)"} — Lote ${l.numero} (planejado ${Number(l.quantidade_planejada).toLocaleString("pt-BR", { maximumFractionDigits: 3 })})`,
+  }));
 
   // Lista de corte combinada por lote fabril (§14) — mesma lógica, uma
   // chamada de leitura por lote fabril existente.
@@ -268,6 +382,28 @@ export default async function ProducaoPage() {
       listaCortePorLoteFabril.set(lf.id, data ?? []);
     }),
   );
+
+  return (
+    <LotesFabrisSection
+      lotesFabris={lotesFabris ?? []}
+      itensPorLoteFabril={itensPorLoteFabril}
+      opLotesOpcoes={opLotesOpcoes}
+      listaCortePorLoteFabril={listaCortePorLoteFabril}
+      canManage={canManage}
+    />
+  );
+}
+
+// TÓPICO 4 §31-37: recursos produtivos, capacidade, manutenção
+// preventiva/corretiva com análise de impacto e gargalos.
+async function RecursosTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
+  const [{ data: recursos }, { data: manutencoesPreventivas }, { data: manutencoesCorretivasAbertas }, { data: gargalos }] =
+    await Promise.all([
+      supabase.from("recursos_produtivos").select("*").eq("ativo", true).order("codigo", { ascending: true }),
+      supabase.from("manutencoes_preventivas").select("*").eq("ativo", true).order("proxima_data", { ascending: true }),
+      supabase.from("manutencoes_corretivas").select("*").eq("status", "aberta"),
+      supabase.rpc("listar_gargalos", { p_dias: 7 }),
+    ]);
 
   // Capacidade disponível × necessária por recurso (§31), janela padrão
   // de 7 dias — função de leitura, não entidade armazenada. Desconta
@@ -281,7 +417,6 @@ export default async function ProducaoPage() {
     }),
   );
 
-  // TÓPICO 4 §34: manutenções preventivas agendadas, por recurso.
   const preventivasPorRecurso = new Map<string, ManutencaoPreventivaRow[]>();
   for (const p of manutencoesPreventivas ?? []) {
     const list = preventivasPorRecurso.get(p.recurso_produtivo_id) ?? [];
@@ -289,7 +424,6 @@ export default async function ProducaoPage() {
     preventivasPorRecurso.set(p.recurso_produtivo_id, list);
   }
 
-  // TÓPICO 4 §35: manutenção corretiva aberta (no máx. 1 por recurso).
   const corretivaAbertaPorRecurso = new Map<string, ManutencaoCorretivaRow>(
     (manutencoesCorretivasAbertas ?? []).map((c) => [c.recurso_produtivo_id, c] as const),
   );
@@ -309,57 +443,81 @@ export default async function ProducaoPage() {
     }),
   );
 
-  // TÓPICO 4 §37: gargalos — recorte de listar_capacidade_recursos()
-  // (Fase 5a) só com os recursos em sobrecarga.
-  const { data: gargalos } = await supabase.rpc("listar_gargalos", { p_dias: 7 });
+  return (
+    <RecursosSection
+      recursos={recursos ?? []}
+      capacidadePorRecurso={capacidadePorRecurso}
+      preventivasPorRecurso={preventivasPorRecurso}
+      corretivaAbertaPorRecurso={corretivaAbertaPorRecurso}
+      impactoPorRecurso={impactoPorRecurso}
+      alternativosPorRecurso={alternativosPorRecurso}
+      gargalos={(gargalos as GargaloRow[]) ?? []}
+      canManage={canManage}
+    />
+  );
+}
 
-  // TÓPICO 4 §5 (Fase 6a): painel de programação — sem filtro de data por
-  // padrão (mostra tudo), filtro fica no client (recurso/setor).
-  const { data: programacao } = await supabase.rpc("listar_programacao", {
-    p_data_inicio: null,
-    p_data_fim: null,
-    p_recurso_produtivo_id: null,
-    p_setor: null,
-  });
+// TÓPICO 4 §5 (Fase 6a): painel de programação — sem filtro de data por
+// padrão (mostra tudo), filtro fica no client (recurso/setor).
+async function ProgramacaoTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
+  const [{ data: recursos }, { data: horizontes }, { data: programacao }] = await Promise.all([
+    supabase
+      .from("recursos_produtivos")
+      .select("id, codigo, nome, setor")
+      .eq("ativo", true)
+      .order("codigo", { ascending: true }),
+    supabase.from("producao_horizontes").select("*").order("data_inicio", { ascending: true }),
+    supabase.rpc("listar_programacao", {
+      p_data_inicio: null,
+      p_data_fim: null,
+      p_recurso_produtivo_id: null,
+      p_setor: null,
+    }),
+  ]);
+
   const setoresProgramacao = Array.from(
     new Set((recursos ?? []).map((r) => r.setor).filter((s): s is string => !!s)),
   ).sort();
 
-  // TÓPICO 4 §6 (Fase 6b): recomendação de sequenciamento por recurso —
-  // mesmo padrão de Promise.all sobre `recursos` já usado pra
-  // capacidade/impacto de manutenção.
-  const recomendacaoPorRecurso = new Map<string, RecomendacaoRow[]>();
-  await Promise.all(
-    (recursos ?? []).map(async (r) => {
-      const { data } = await supabase.rpc("recomendar_sequenciamento", { p_recurso_produtivo_id: r.id });
-      recomendacaoPorRecurso.set(r.id, (data as RecomendacaoRow[]) ?? []);
-    }),
-  );
-  const { data: pesosSequenciamento } = await supabase.from("sequenciamento_pesos").select("criterio, peso");
-  const recursosEmGargalo = new Set(
-    ((gargalos as GargaloRow[]) ?? []).map((g) => g.recurso_produtivo_id),
-  );
-
-  // TÓPICO 4 §9 (Fase 6d): horizontes de planejamento da empresa.
-  const { data: horizontes } = await supabase.from("producao_horizontes").select("*").order("data_inicio", { ascending: true });
   const periodosCongelados = ((horizontes as HorizonteProgramacao[]) ?? [])
     .filter((h) => h.tipo === "congelado")
     .map((h) => ({ data_inicio: h.data_inicio, data_fim: h.data_fim }));
 
-  // TÓPICO 4 §10 (Fase 6e): eventos recentes que podem exigir
-  // reavaliar a programação — sinal passivo, sem recálculo automático.
-  const { data: eventosReplanejamento } = await supabase.rpc("listar_eventos_replanejamento", { p_dias: 7 });
+  return (
+    <ProgramacaoSection
+      linhas={(programacao as ProgramacaoRow[]) ?? []}
+      recursosOpcoes={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
+      setoresOpcoes={setoresProgramacao}
+      periodosCongelados={periodosCongelados}
+      canManage={canManage}
+    />
+  );
+}
 
-  // TÓPICO 4 §41 (Fase 7c): rótulos de status/situacao/status_qualidade
-  // configurados pela empresa (ou padrão, quando não configurado).
-  const { data: rotulosStatus } = await supabase.rpc("rotulos_status_producao");
-  const statusLabels = new Map(
-    ((rotulosStatus as RotuloStatusRow[]) ?? []).filter((r) => r.campo === "status").map((r) => [r.valor_interno, r.rotulo] as const),
-  );
-  const situacaoLabels = new Map(
-    ((rotulosStatus as RotuloStatusRow[]) ?? []).filter((r) => r.campo === "situacao").map((r) => [r.valor_interno, r.rotulo] as const),
-  );
+// TÓPICO 4 §9 (Fase 6d): horizontes de planejamento da empresa.
+async function HorizontesTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
+  const { data: horizontes } = await supabase
+    .from("producao_horizontes")
+    .select("*")
+    .order("data_inicio", { ascending: true });
+
+  return <HorizontesSection horizontes={(horizontes as HorizonteProgramacao[]) ?? []} canManage={canManage} />;
+}
+
+// TÓPICO 4 §10 (Fase 6e): eventos recentes que podem exigir reavaliar a
+// programação — sinal passivo, sem recálculo automático.
+async function ReplanejamentoTab({ supabase }: { supabase: SupabaseServerClient }) {
+  const [{ data: eventosReplanejamento }, { data: recursos }, { data: ordensNumero }, { data: pedidoItens }, { data: itens }] =
+    await Promise.all([
+      supabase.rpc("listar_eventos_replanejamento", { p_dias: 7 }),
+      supabase.from("recursos_produtivos").select("id, codigo, nome").eq("ativo", true),
+      supabase.from("ordens_producao").select("id, numero"),
+      supabase.from("pedido_itens").select("id, item_id"),
+      supabase.from("itens").select("id, codigo, descricao"),
+    ]);
+
   const recursoLabelPorId = new Map((recursos ?? []).map((r) => [r.id, `${r.codigo} — ${r.nome}`] as const));
+  const ordemNumeroPorId = new Map((ordensNumero ?? []).map((o) => [o.id, o.numero] as const));
   const itemPorId = new Map((itens ?? []).map((i) => [i.id, i] as const));
   const itemLabelPorPedidoItemId = new Map(
     (pedidoItens ?? []).map((pi) => {
@@ -369,122 +527,47 @@ export default async function ProducaoPage() {
   );
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 4 — Produção</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Ordens de produção</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
-          por item), engenharia liberada versionada, roteiro produtivo configurável com
-          acompanhamento por operação, produção em lotes, lote fabril, recursos produtivos,
-          capacidade, gargalos, manutenção preventiva/corretiva com análise de impacto, conclusão e
-          lista de corte. Divisão por recurso/transferência (§13) já existe no backend, ainda sem
-          tela. Sem sequenciamento, priorização, simulação ou replanejamento automáticos (§6-10).
-        </p>
-
-        <ProducaoSection
-          pedidos={pedidos ?? []}
-          pedidoItensPorPedido={pedidoItensPorPedido}
-          itens={itens ?? []}
-          pessoas={pessoas ?? []}
-          obras={obras ?? []}
-          ordensPorPedidoItem={ordensPorPedidoItem}
-          engenhariaVigentePorPedidoItem={engenhariaVigentePorPedidoItem}
-          bloqueioPorPedido={bloqueioPorPedido}
-          listaCortePorOrdem={listaCortePorOrdem}
-          rastreioPorOrdem={rastreioPorOrdem}
-          historicoPorOrdem={historicoPorOrdem}
-          opLotesPorOrdem={opLotesPorOrdem}
-          opOperacoesPorLote={opOperacoesPorLote}
-          statusLabels={statusLabels}
-          situacaoLabels={situacaoLabels}
-          toleranciaPorOrdem={toleranciaPorOrdem}
-          canManage={!!canManage}
-        />
-
-        <RoteirosSection
-          itens={itens ?? []}
-          roteiros={roteiros ?? []}
-          operacoesPorRoteiro={operacoesPorRoteiro}
-          recursos={recursos ?? []}
-          canManage={!!canManage}
-        />
-
-        <LotesFabrisSection
-          lotesFabris={lotesFabris ?? []}
-          itensPorLoteFabril={itensPorLoteFabril}
-          opLotesOpcoes={opLotesOpcoes}
-          listaCortePorLoteFabril={listaCortePorLoteFabril}
-          canManage={!!canManage}
-        />
-
-        <RecursosSection
-          recursos={recursos ?? []}
-          capacidadePorRecurso={capacidadePorRecurso}
-          preventivasPorRecurso={preventivasPorRecurso}
-          corretivaAbertaPorRecurso={corretivaAbertaPorRecurso}
-          impactoPorRecurso={impactoPorRecurso}
-          alternativosPorRecurso={alternativosPorRecurso}
-          gargalos={(gargalos as GargaloRow[]) ?? []}
-          canManage={!!canManage}
-        />
-
-        <ProgramacaoSection
-          linhas={(programacao as ProgramacaoRow[]) ?? []}
-          recursosOpcoes={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
-          setoresOpcoes={setoresProgramacao}
-          periodosCongelados={periodosCongelados}
-          canManage={!!canManage}
-        />
-
-        <HorizontesSection horizontes={(horizontes as HorizonteProgramacao[]) ?? []} canManage={!!canManage} />
-
-        <ReplanejamentoSection
-          eventos={(eventosReplanejamento as EventoReplanejamento[]) ?? []}
-          recursoLabelPorId={recursoLabelPorId}
-          ordemNumeroPorId={ordemNumeroPorId}
-          itemLabelPorPedidoItemId={itemLabelPorPedidoItemId}
-        />
-
-        <SequenciamentoSection
-          recursos={(recursos ?? []).map((r) => ({ id: r.id, codigo: r.codigo, nome: r.nome }))}
-          recomendacaoPorRecurso={recomendacaoPorRecurso}
-          pesos={pesosSequenciamento ?? []}
-          recursosEmGargalo={recursosEmGargalo}
-          canManage={!!canManage}
-        />
-
-        <RotulosStatusSection rotulos={(rotulosStatus as RotuloStatusRow[]) ?? []} canManage={!!canManage} />
-      </div>
-    </main>
+    <ReplanejamentoSection
+      eventos={(eventosReplanejamento as EventoReplanejamento[]) ?? []}
+      recursoLabelPorId={recursoLabelPorId}
+      ordemNumeroPorId={ordemNumeroPorId}
+      itemLabelPorPedidoItemId={itemLabelPorPedidoItemId}
+    />
   );
 }
 
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
+// TÓPICO 4 §6 (Fase 6b): recomendação de sequenciamento por recurso.
+async function SequenciamentoTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
+  const [{ data: recursos }, { data: pesosSequenciamento }, { data: gargalos }] = await Promise.all([
+    supabase.from("recursos_produtivos").select("id, codigo, nome").eq("ativo", true).order("codigo", { ascending: true }),
+    supabase.from("sequenciamento_pesos").select("criterio, peso"),
+    supabase.rpc("listar_gargalos", { p_dias: 7 }),
+  ]);
 
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
+  const recomendacaoPorRecurso = new Map<string, RecomendacaoRow[]>();
+  await Promise.all(
+    (recursos ?? []).map(async (r) => {
+      const { data } = await supabase.rpc("recomendar_sequenciamento", { p_recurso_produtivo_id: r.id });
+      recomendacaoPorRecurso.set(r.id, (data as RecomendacaoRow[]) ?? []);
+    }),
+  );
 
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;
+  const recursosEmGargalo = new Set(((gargalos as GargaloRow[]) ?? []).map((g) => g.recurso_produtivo_id));
+
+  return (
+    <SequenciamentoSection
+      recursos={recursos ?? []}
+      recomendacaoPorRecurso={recomendacaoPorRecurso}
+      pesos={pesosSequenciamento ?? []}
+      recursosEmGargalo={recursosEmGargalo}
+      canManage={canManage}
+    />
+  );
+}
+
+// TÓPICO 4 §41 (Fase 7c): rótulos de status/situacao/status_qualidade
+// configurados pela empresa (ou padrão, quando não configurado).
+async function RotulosTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
+  const { data: rotulosStatus } = await supabase.rpc("rotulos_status_producao");
+  return <RotulosStatusSection rotulos={(rotulosStatus as RotuloStatusRow[]) ?? []} canManage={canManage} />;
+}

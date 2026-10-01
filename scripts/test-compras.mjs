@@ -17,6 +17,18 @@ const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
+
 let passed = 0;
 let failed = 0;
 function check(label, condition) {
@@ -105,10 +117,10 @@ async function upsertItem(tenant, codigo, tipo) {
 
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão de compras, outro tenant)...");
-  const admTenant = await createTenant("compras-test-admin", "Compras Admin Teste", "cp01", "ADMIN");
+  const admTenant = await createTenant(`compras-test-admin-${RUN}`, "Compras Admin Teste", "cp01", "ADMIN");
   // QUALIDADE não administra Compras — prova a autoridade separada (mesmo padrão dos demais test-*.mjs).
-  const noPermTenant = await createTenant("compras-test-admin", "Compras SemPerm Teste", "cp02", "QUALIDADE", admTenant.company);
-  const otherTenant = await createTenant("compras-test-other", "Compras Outro Teste", "cp03", "ADMIN");
+  const noPermTenant = await createTenant(`compras-test-admin-${RUN}`, "Compras SemPerm Teste", "cp02", "QUALIDADE", admTenant.company);
+  const otherTenant = await createTenant(`compras-test-other-${RUN}`, "Compras Outro Teste", "cp03", "ADMIN");
 
   console.log("\n0. Massa de dados — fornecedores, cliente sem papel fornecedor, itens materiais");
   const fornAlfaId = await upsertPessoa(admTenant, "1", "Fornecedor Alfa Ltda", "FORNECEDOR");
@@ -316,6 +328,14 @@ async function main() {
     check("consome parte da peça", !errParcial);
     const { data: rowParcial } = await admin.from("itens_pecas_dimensionais").select("quantidade_disponivel, situacao").eq("id", pecaBarraId).single();
     check("sobra de 2m fica disponível na mesma linha (sem tabela/estado separado)", Number(rowParcial.quantidade_disponivel) === 2 && rowParcial.situacao === "disponivel");
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", pecaBarraId)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    check(
+      "evento interno estoque→produção registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "estoque" && eventoLog?.metadata?.modulo_destino === "producao",
+    );
 
     const { error: errTotal } = await admTenant.client.rpc("consumir_peca_dimensional", { p_peca_id: pecaBarraId, p_quantidade: 2, p_observacao: "sobra reaproveitada" });
     check("consome o restante", !errTotal);
@@ -685,8 +705,8 @@ async function main() {
   // Aprovadores precisam do papel específico da etapa (checado por decidir_etapa_aprovacao_compra)
   // E de compras.manage como gate de base (assert_tenant_write) -- por isso também ganham ADMIN,
   // mesmo padrão usado no cenário SQL standalone que validou este fluxo antes deste commit.
-  const aprov1Tenant = await createTenant("compras-test-admin", "Compras Aprovador Etapa 1", "cp10", "COMERCIAL", admTenant.company);
-  const aprov2Tenant = await createTenant("compras-test-admin", "Compras Aprovador Etapa 2", "cp11", "PRODUCAO", admTenant.company);
+  const aprov1Tenant = await createTenant(`compras-test-admin-${RUN}`, "Compras Aprovador Etapa 1", "cp10", "COMERCIAL", admTenant.company);
+  const aprov2Tenant = await createTenant(`compras-test-admin-${RUN}`, "Compras Aprovador Etapa 2", "cp11", "PRODUCAO", admTenant.company);
   const { data: adminRoleRow } = await admin.from("roles").select("id").is("company_id", null).eq("key", "ADMIN").single();
   await admin.from("user_roles").insert({ profile_id: aprov1Tenant.userId, role_id: adminRoleRow.id });
   await admin.from("user_roles").insert({ profile_id: aprov2Tenant.userId, role_id: adminRoleRow.id });
@@ -988,7 +1008,8 @@ async function main() {
     const { error: errRascunho } = await admTenant.client.rpc("vincular_pedido_compra_contrato", { p_pedido_compra_id: pcAlfaId, p_contrato_id: contratoAlfaId });
     check("rejeita contrato ainda em rascunho (não vigente)", !!errRascunho);
 
-    await admTenant.client.rpc("ativar_contrato", { p_id: contratoAlfaId });
+    await admTenant.client.rpc("enviar_contrato_para_aprovacao", { p_id: contratoAlfaId });
+    await admTenant.client.rpc("aprovar_contrato", { p_id: contratoAlfaId });
     const { error } = await admTenant.client.rpc("vincular_pedido_compra_contrato", { p_pedido_compra_id: pcAlfaId, p_contrato_id: contratoAlfaId });
     check("vincula contrato vigente do fornecedor correto", !error);
     const { data: pc } = await admin.from("pedidos_compra").select("contrato_id").eq("id", pcAlfaId).single();
@@ -1162,6 +1183,13 @@ async function main() {
 
     const { data: mov } = await admin.from("estoque_movimentacoes").select("tipo, quantidade").eq("item_id", itemCotId).eq("tipo", "compra");
     check("movimentação registrada com tipo=compra (§27, novo valor de estoque_movimentacoes.tipo)", mov.length === 1 && Number(mov[0].quantidade) === 20);
+
+    const { data: eventoLog } = await admin.from("activity_logs").select("metadata")
+      .eq("action", "integracoes.evento_modulo").eq("entity_id", rec1Id).maybeSingle();
+    check(
+      "evento interno compras→estoque registrado (T13 §4, Fase 9)",
+      eventoLog?.metadata?.modulo_origem === "compras" && eventoLog?.metadata?.modulo_destino === "estoque",
+    );
 
     const { error: errRepete } = await admTenant.client.rpc("finalizar_conferencia_recebimento", { p_recebimento_id: rec1Id });
     check("rejeita finalizar de novo (já conferido)", !!errRepete);

@@ -61,6 +61,7 @@ export async function registrarDocumentoFuncionarioAction(formData: FormData) {
   const dataReferencia = String(formData.get("data_referencia") ?? "").trim() || null;
   const validade = String(formData.get("validade") ?? "").trim() || null;
   const observacoes = String(formData.get("observacoes") ?? "").trim() || null;
+  const recursoProdutivoId = String(formData.get("recurso_produtivo_id") ?? "").trim() || null;
 
   if (!funcionarioId) throw new Error("Funcionário é obrigatório.");
   if (!tipo) throw new Error("Tipo de documento é obrigatório.");
@@ -74,6 +75,7 @@ export async function registrarDocumentoFuncionarioAction(formData: FormData) {
     p_data_referencia: dataReferencia,
     p_validade: validade,
     p_observacoes: observacoes,
+    p_recurso_produtivo_id: recursoProdutivoId,
   });
   if (error) throw new Error(error.message);
 

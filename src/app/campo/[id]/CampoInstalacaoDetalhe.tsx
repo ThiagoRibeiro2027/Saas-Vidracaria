@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCampo } from "../CampoProvider";
 import { uploadEvidenciaAction } from "../actions";
 import { CAUSAS_DANO, STATUS_LABEL, type PacoteInstalacao } from "../types";
+import { formatarData } from "@/lib/formato/data";
 
 export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId: string }) {
   const { pacote, fila, online, validade, canManage, canAceite, enfileirarAcao, retentar } = useCampo();
@@ -37,7 +38,7 @@ export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId:
         </p>
         <p style={{ fontSize: "12px", color: "#6b7a75" }}>
           Cliente: {inst.pessoa.nome} · Pedido {inst.pedido.numero} · Agendada para{" "}
-          {new Date(`${inst.data_agendada}T00:00:00`).toLocaleDateString("pt-BR")}
+          {formatarData(inst.data_agendada)}
         </p>
         {inst.observacoes && <p style={{ fontSize: "12px", color: "#6b7a75" }}>Obs.: {inst.observacoes}</p>}
       </div>

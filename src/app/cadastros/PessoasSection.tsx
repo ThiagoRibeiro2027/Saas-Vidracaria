@@ -1,7 +1,11 @@
 "use client";
 
+import { useActionState } from "react";
 import { upsertPessoaAction, setPessoaPapelAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Pessoa = {
   id: string;
@@ -31,21 +35,21 @@ export default function PessoasSection({
 }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Pessoas</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Pessoas</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Cliente e fornecedor são papéis da mesma pessoa (TÓPICO 2 §4-6) — uma pessoa pode ter
         os dois ao mesmo tempo. Documento (CPF/CNPJ) não pode se repetir na empresa.
       </p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-3 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Nome</th>
-              <th style={thStyle}>Documento</th>
-              <th style={thStyle}>Contato</th>
-              <th style={thStyle}>Papéis</th>
-              <th style={thStyle}>Situação</th>
-              {canManage && <th style={thStyle}></th>}
+            <tr>
+              <Th>Nome</Th>
+              <Th>Documento</Th>
+              <Th>Contato</Th>
+              <Th>Papéis</Th>
+              <Th>Situação</Th>
+              {canManage && <Th />}
             </tr>
           </thead>
           <tbody>
@@ -54,7 +58,7 @@ export default function PessoasSection({
             ))}
             {canManage && <PessoaRow row={null} papeis={[]} canManage={canManage} />}
           </tbody>
-        </table>
+        </Table>
       </div>
     </section>
   );
@@ -64,102 +68,102 @@ function PessoaRow({ row, papeis, canManage }: { row: Pessoa | null; papeis: Pap
   const temPapel = (papel: "CLIENTE" | "FORNECEDOR") =>
     row ? papeis.some((p) => p.pessoa_id === row.id && p.papel === papel && p.ativo) : false;
 
+  const [state, formAction] = useActionState(upsertPessoaAction, undefined);
+
   return (
-    <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-      <td style={tdStyle} colSpan={canManage ? 6 : 5}>
-        <form
-          action={upsertPessoaAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-        >
+    <tr>
+      <Td colSpan={canManage ? 6 : 5}>
+        <form action={formAction} className="flex flex-wrap items-center gap-1.5">
           {row && <input type="hidden" name="id" value={row.id} />}
-          <select name="tipo_documento" defaultValue={row?.tipo_documento ?? ""} disabled={!canManage} style={inputStyle}>
+          <Select name="tipo_documento" defaultValue={row?.tipo_documento ?? ""} disabled={!canManage}>
             <option value="">—</option>
             <option value="CPF">CPF</option>
             <option value="CNPJ">CNPJ</option>
-          </select>
-          <input
+          </Select>
+          <Input
             name="documento"
             placeholder="documento"
             defaultValue={row?.documento ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "130px" }}
+            className="w-32"
           />
-          <input
+          <Input
             name="nome"
             placeholder="nome / razão social"
             defaultValue={row?.nome ?? ""}
             required
             disabled={!canManage}
-            style={{ ...inputStyle, width: "180px" }}
+            className="w-44"
           />
-          <input
+          <Input
             name="nome_fantasia"
             placeholder="nome fantasia"
             defaultValue={row?.nome_fantasia ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "130px" }}
+            className="w-32"
           />
-          <input
+          <Input
             name="telefone"
             placeholder="telefone"
             defaultValue={row?.telefone ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "110px" }}
+            className="w-28"
           />
-          <input
+          <Input
             name="email"
             placeholder="e-mail"
             defaultValue={row?.email ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "150px" }}
+            className="w-36"
           />
-          <input
+          <Input
             name="logradouro"
             placeholder="endereço"
             defaultValue={row?.logradouro ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "160px" }}
+            className="w-40"
           />
-          <input
+          <Input
             name="cidade"
             placeholder="cidade"
             defaultValue={row?.cidade ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "110px" }}
+            className="w-28"
           />
-          <input
+          <Input
             name="uf"
             placeholder="UF"
             defaultValue={row?.uf ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "44px" }}
+            className="w-12"
           />
-          <input
+          <Input
             name="cep"
             placeholder="CEP"
             defaultValue={row?.cep ?? ""}
             disabled={!canManage}
-            style={{ ...inputStyle, width: "90px" }}
+            className="w-24"
           />
-          <select name="situacao" defaultValue={row?.situacao ?? "ativo"} disabled={!canManage} style={inputStyle}>
+          <Select name="situacao" defaultValue={row?.situacao ?? "ativo"} disabled={!canManage}>
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
             <option value="bloqueado">Bloqueado</option>
-          </select>
+          </Select>
           {canManage && (
-            <button type="submit" style={buttonStyle}>
+            <Button type="submit" variant="primary">
               {row ? "Salvar" : "Adicionar"}
-            </button>
+            </Button>
           )}
         </form>
+        {state?.error && <p className="mt-1 text-xs text-danger">{state.error}</p>}
 
         {row && (
-          <div style={{ display: "flex", gap: "12px", marginTop: "6px" }}>
+          <div className="mt-1.5 flex gap-3">
             <PapelToggle pessoaId={row.id} papel="CLIENTE" ativo={temPapel("CLIENTE")} canManage={canManage} />
             <PapelToggle pessoaId={row.id} papel="FORNECEDOR" ativo={temPapel("FORNECEDOR")} canManage={canManage} />
           </div>
         )}
-      </td>
+      </Td>
     </tr>
   );
 }
@@ -176,18 +180,18 @@ function PapelToggle({
   canManage: boolean;
 }) {
   return (
-    <form action={setPessoaPapelAction} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+    <form action={setPessoaPapelAction} className="flex items-center gap-1">
       <input type="hidden" name="pessoa_id" value={pessoaId} />
       <input type="hidden" name="papel" value={papel} />
       <input type="hidden" name="ativo" value={ativo ? "" : "on"} />
-      <label style={labelStyle}>
-        <input type="checkbox" checked={ativo} disabled={!canManage} readOnly />
+      <label className="flex items-center gap-1 text-xs text-text">
+        <input type="checkbox" checked={ativo} disabled={!canManage} readOnly className="accent-primary" />
         {papel === "CLIENTE" ? "Cliente" : "Fornecedor"}
       </label>
       {canManage && (
-        <button type="submit" style={{ ...buttonStyle, padding: "2px 6px", fontSize: "11px" }}>
+        <Button type="submit" variant="secondary" size="sm">
           {ativo ? "Desligar" : "Ligar"}
-        </button>
+        </Button>
       )}
     </form>
   );

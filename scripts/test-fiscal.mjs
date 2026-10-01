@@ -1,8 +1,11 @@
 // Testes automatizados do ADR-004 — Estratégia Fiscal, completo:
-// estrutura/registro/rastreabilidade de documento fiscal (§9.2) mais
-// conferência/aprovação/rejeição/pendência no nível do documento (§6).
-// Sem emissão, cancelamento fiscal real, inutilização ou transmissão
-// (§9.3, fora do piloto da JR Box — §9.1).
+// estrutura/registro/rastreabilidade de documento fiscal (§9.2), avaliação
+// — conferência/aprovação/rejeição/pendência no nível do documento (§6) —
+// e reprocessamento controlado (§7-8) via histórico de tentativas de
+// processamento. Sem emissão, cancelamento fiscal real, inutilização,
+// transmissão ou qualquer chamada a provedor real (§9.3, fora do piloto
+// da JR Box — §9.1): "resultado" de uma tentativa aqui é só o que foi
+// informado ao registro, não algo apurado por uma integração de verdade.
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-fiscal.mjs
 
@@ -15,6 +18,18 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const admin = createClient(url, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra. Com slug fixo, a 2ª execução esbarra
+// nas uniques de chave natural (itens_company_codigo_unique,
+// pessoas_company_documento_unique, ...) já na massa de dados: o id volta
+// nulo e o placar desaba em cascata, sem bug nenhum no produto. Tenant por
+// execução mantém válidas as asserções que assumem estado zerado. Mesmo
+// padrão de test-pecas.mjs. O custo é acumular um tenant por execução no
+// banco da nuvem — limpeza é separada e combinada com o responsável,
+// nunca automática.
+const RUN = Date.now().toString(36);
 
 let passed = 0;
 let failed = 0;
@@ -85,9 +100,9 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingC
 async function main() {
   const testStartedAt = new Date().toISOString();
   console.log("Preparando tenants (admin, sem-permissão de fiscal, outro tenant)...");
-  const admTenant = await createTenant("fiscal-test-admin", "Fiscal Admin Teste", "adr4f01", "ADMIN");
-  const noPermTenant = await createTenant("fiscal-test-admin", "Fiscal SemPerm Teste", "adr4f02", "QUALIDADE", admTenant.company);
-  const otherTenant = await createTenant("fiscal-test-other", "Fiscal Outro Teste", "adr4f03", "ADMIN");
+  const admTenant = await createTenant(`fiscal-test-admin-${RUN}`, "Fiscal Admin Teste", "adr4f01", "ADMIN");
+  const noPermTenant = await createTenant(`fiscal-test-admin-${RUN}`, "Fiscal SemPerm Teste", "adr4f02", "QUALIDADE", admTenant.company);
+  const otherTenant = await createTenant(`fiscal-test-other-${RUN}`, "Fiscal Outro Teste", "adr4f03", "ADMIN");
 
   console.log("\n0. Massa de dados — item e necessidade de compra (T7) pra testar vínculo");
   const { data: itemId } = await admTenant.client.rpc("upsert_item", {
@@ -235,13 +250,115 @@ async function main() {
     }
   }
 
-  console.log("\n17. Massa de dados — documento fresco pra testar o fluxo de avaliação (§6)");
+  console.log("\n17. Massa de dados — documento novo, ainda não processado, pra testar reprocessamento");
+  let docProcessamentoId;
+  {
+    const { data } = await admTenant.client.rpc("registrar_documento_fiscal", {
+      p_tipo: "nfe", p_numero: "777777", p_chave_acesso: "35270912345678000199550010000007770000000077",
+    });
+    docProcessamentoId = data;
+    check("documento pra teste de processamento criado", !!docProcessamentoId);
+    const { data: doc } = await admin.from("documentos_fiscais").select("status_processamento").eq("id", docProcessamentoId).single();
+    check("nasce com status_processamento='nao_processado'", doc?.status_processamento === "nao_processado");
+  }
+
+  console.log("\n18. registrar_tentativa_processamento_fiscal() exige fiscal.manage");
+  {
+    const { error } = await noPermTenant.client.rpc("registrar_tentativa_processamento_fiscal", { p_documento_id: docProcessamentoId, p_resultado: "erro" });
+    check("sem fiscal.manage não registra tentativa", !!error);
+  }
+
+  console.log("\n19. registrar_tentativa_processamento_fiscal() rejeita resultado inválido");
+  {
+    const { error } = await admTenant.client.rpc("registrar_tentativa_processamento_fiscal", { p_documento_id: docProcessamentoId, p_resultado: "pendente" });
+    check("resultado inválido é rejeitado", !!error);
+  }
+
+  console.log("\n20. registrar_tentativa_processamento_fiscal() rejeita documento cancelado");
+  {
+    const { error } = await admTenant.client.rpc("registrar_tentativa_processamento_fiscal", { p_documento_id: docVinculadoId, p_resultado: "erro" });
+    check("documento cancelado não recebe tentativa", !!error);
+  }
+
+  console.log("\n21. registrar_tentativa_processamento_fiscal() sucesso — 1ª tentativa com erro");
+  {
+    const { data, error } = await admTenant.client.rpc("registrar_tentativa_processamento_fiscal", {
+      p_documento_id: docProcessamentoId, p_resultado: "erro", p_mensagem_retorno: "timeout no provedor", p_provedor: "provedor-x",
+    });
+    check("registra 1ª tentativa (erro)", !error && !!data);
+    const { data: tentativa } = await admin.from("documento_fiscal_tentativas").select("numero_tentativa, resultado").eq("id", data).single();
+    check("1ª tentativa tem numero_tentativa=1", tentativa?.numero_tentativa === 1 && tentativa?.resultado === "erro");
+    const { data: doc } = await admin.from("documentos_fiscais").select("status_processamento").eq("id", docProcessamentoId).single();
+    check("documento fica 'com_erro'", doc?.status_processamento === "com_erro");
+  }
+
+  console.log("\n22. registrar_tentativa_processamento_fiscal() sucesso — 2ª tentativa incrementa número");
+  {
+    const { data, error } = await admTenant.client.rpc("registrar_tentativa_processamento_fiscal", { p_documento_id: docProcessamentoId, p_resultado: "rejeitado", p_mensagem_retorno: "rejeitado pelo provedor" });
+    check("registra 2ª tentativa (rejeitado)", !error && !!data);
+    const { data: tentativa } = await admin.from("documento_fiscal_tentativas").select("numero_tentativa").eq("id", data).single();
+    check("2ª tentativa tem numero_tentativa=2", tentativa?.numero_tentativa === 2);
+  }
+
+  console.log("\n23. reprocessar_documento_fiscal() exige fiscal.manage");
+  {
+    const { error } = await noPermTenant.client.rpc("reprocessar_documento_fiscal", { p_documento_id: docProcessamentoId });
+    check("sem fiscal.manage não solicita reprocessamento", !!error);
+  }
+
+  console.log("\n24. reprocessar_documento_fiscal() sucesso — documento com erro volta a 'nao_processado'");
+  {
+    const { error } = await admTenant.client.rpc("reprocessar_documento_fiscal", { p_documento_id: docProcessamentoId });
+    check("reprocessa documento com erro", !error);
+    const { data: doc } = await admin.from("documentos_fiscais").select("status_processamento").eq("id", docProcessamentoId).single();
+    check("volta a 'nao_processado'", doc?.status_processamento === "nao_processado");
+  }
+
+  console.log("\n25. reprocessar_documento_fiscal() rejeita quando não está 'com_erro'");
+  {
+    const { error } = await admTenant.client.rpc("reprocessar_documento_fiscal", { p_documento_id: docProcessamentoId });
+    check("não reprocessa documento que não está com erro (agora 'nao_processado')", !!error);
+  }
+
+  console.log("\n26. registrar_tentativa_processamento_fiscal() sucesso='sucesso' fecha o processamento");
+  {
+    const { error } = await admTenant.client.rpc("registrar_tentativa_processamento_fiscal", { p_documento_id: docProcessamentoId, p_resultado: "sucesso", p_provedor: "provedor-x" });
+    check("registra 3ª tentativa (sucesso)", !error);
+    const { data: doc } = await admin.from("documentos_fiscais").select("status_processamento").eq("id", docProcessamentoId).single();
+    check("documento fica 'processado'", doc?.status_processamento === "processado");
+
+    const { error: eReprocessarProcessado } = await admTenant.client.rpc("reprocessar_documento_fiscal", { p_documento_id: docProcessamentoId });
+    check("não reprocessa documento já processado com sucesso", !!eReprocessarProcessado);
+  }
+
+  console.log("\n27. reprocessar_documento_fiscal() rejeita documento cancelado");
+  {
+    await admTenant.client.rpc("registrar_tentativa_processamento_fiscal", { p_documento_id: docSemVinculoId, p_resultado: "erro" });
+    await admTenant.client.rpc("cancelar_documento_fiscal", { p_id: docSemVinculoId, p_motivo: "cancelado antes de reprocessar" });
+    const { error } = await admTenant.client.rpc("reprocessar_documento_fiscal", { p_documento_id: docSemVinculoId });
+    check("não reprocessa documento cancelado", !!error);
+  }
+
+  console.log("\n28. Isolamento cross-tenant em documento_fiscal_tentativas");
+  {
+    const { data: crossTentativas } = await otherTenant.client.from("documento_fiscal_tentativas").select("id").eq("documento_fiscal_id", docProcessamentoId);
+    check("tenant B não enxerga tentativas do tenant A", (crossTentativas ?? []).length === 0);
+
+    const { error } = await otherTenant.client.rpc("registrar_tentativa_processamento_fiscal", { p_documento_id: docProcessamentoId, p_resultado: "erro" });
+    check("tenant B não registra tentativa em documento do tenant A", !!error);
+  }
+
+  console.log("\n29. Massa de dados — documento fresco pra testar o fluxo de avaliação (§6)");
+  // Chave própria: a seção 17 já registrou a ...0077 nesta mesma execução e
+  // documentos_fiscais_chave_acesso_unique é por (company_id, chave_acesso) —
+  // reaproveitar a chave fazia o documento nascer nulo e derrubava as
+  // seções 29/31 mesmo num tenant virgem.
   const { data: docAvaliacaoId } = await admTenant.client.rpc("registrar_documento_fiscal", {
-    p_tipo: "nfe", p_numero: "777777", p_chave_acesso: "35270912345678000199550010000007770000000077",
+    p_tipo: "nfe", p_numero: "888888", p_chave_acesso: "35270912345678000199550010000008880000000088",
   });
   check("documento fresco criado", !!docAvaliacaoId);
 
-  console.log("\n18. avaliar_documento_fiscal() exige fiscal.manage e rejeita decisão inválida");
+  console.log("\n30. avaliar_documento_fiscal() exige fiscal.manage e rejeita decisão inválida");
   {
     const { error: eNoPerm } = await noPermTenant.client.rpc("avaliar_documento_fiscal", { p_id: docAvaliacaoId, p_decisao: "aprovado" });
     check("sem fiscal.manage não avalia documento", !!eNoPerm);
@@ -250,7 +367,7 @@ async function main() {
     check("decisão inválida é rejeitada", !!eDecisao);
   }
 
-  console.log("\n19. avaliar_documento_fiscal() sucesso — direto de 'recebido' pra 'aprovado' (§6, passo de conferência é opcional)");
+  console.log("\n31. avaliar_documento_fiscal() sucesso — direto de 'recebido' pra 'aprovado' (§6, passo de conferência é opcional)");
   {
     const { error } = await admTenant.client.rpc("avaliar_documento_fiscal", { p_id: docAvaliacaoId, p_decisao: "aprovado", p_motivo: "conferido e ok" });
     check("ADMIN aprova documento direto de 'recebido'", !error);
@@ -258,13 +375,13 @@ async function main() {
     check("status vira 'aprovado' com decidido_por/decidido_em/motivo salvos", doc?.status === "aprovado" && !!doc?.decidido_por && !!doc?.decidido_em && doc?.motivo_decisao === "conferido e ok");
   }
 
-  console.log("\n20. avaliar_documento_fiscal() rejeita reavaliação de documento já aprovado (fora de recebido/em_conferencia)");
+  console.log("\n32. avaliar_documento_fiscal() rejeita reavaliação de documento já aprovado (fora de recebido/em_conferencia)");
   {
     const { error } = await admTenant.client.rpc("avaliar_documento_fiscal", { p_id: docAvaliacaoId, p_decisao: "rejeitado" });
     check("avaliar documento aprovado é rejeitado", !!error);
   }
 
-  console.log("\n21. iniciar_conferencia_documento_fiscal() — permissão, sucesso, rejeita status errado");
+  console.log("\n33. iniciar_conferencia_documento_fiscal() — permissão, sucesso, rejeita status errado");
   const { data: docConferenciaId } = await admTenant.client.rpc("registrar_documento_fiscal", {
     p_tipo: "nfse", p_numero: "888888",
   });
@@ -281,7 +398,7 @@ async function main() {
     check("iniciar conferência de novo (já em conferência) é rejeitado", !!eDeNovo);
   }
 
-  console.log("\n22. avaliar_documento_fiscal() sucesso a partir de 'em_conferencia' — rejeitado");
+  console.log("\n34. avaliar_documento_fiscal() sucesso a partir de 'em_conferencia' — rejeitado");
   {
     const { error } = await admTenant.client.rpc("avaliar_documento_fiscal", { p_id: docConferenciaId, p_decisao: "rejeitado", p_motivo: "divergência de valor" });
     check("ADMIN rejeita documento em conferência", !error);
@@ -289,7 +406,7 @@ async function main() {
     check("status vira 'rejeitado' com motivo salvo", doc?.status === "rejeitado" && doc?.motivo_decisao === "divergência de valor");
   }
 
-  console.log("\n23. reavaliar_documento_fiscal() — permissão, sucesso (reprocessamento controlado, §7), rejeita status errado");
+  console.log("\n35. reavaliar_documento_fiscal() — permissão, sucesso (reprocessamento controlado, §7), rejeita status errado");
   {
     const { error: eNoPerm } = await noPermTenant.client.rpc("reavaliar_documento_fiscal", { p_id: docConferenciaId });
     check("sem fiscal.manage não reavalia documento", !!eNoPerm);
@@ -303,7 +420,7 @@ async function main() {
     check("volta pra 'em_conferencia', decisão anterior limpa (histórico fica em activity_logs)", doc?.status === "em_conferencia" && doc?.decidido_por === null && doc?.motivo_decisao === null);
   }
 
-  console.log("\n24. Isolamento cross-tenant nos novos RPCs de avaliação");
+  console.log("\n36. Isolamento cross-tenant nos novos RPCs de avaliação");
   {
     const { error: e1 } = await otherTenant.client.rpc("avaliar_documento_fiscal", { p_id: docConferenciaId, p_decisao: "aprovado" });
     check("tenant B não consegue avaliar documento do tenant A", !!e1);
@@ -315,16 +432,28 @@ async function main() {
     check("tenant B não consegue reavaliar documento do tenant A", !!e3);
   }
 
-  console.log("\n25. Cada ação de avaliação grava a própria linha de auditoria");
+  console.log("\n37. Cada ação nova (reprocessamento e avaliação) grava a própria linha de auditoria");
   {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
       .eq("company_id", admTenant.company.id)
       .gte("created_at", testStartedAt)
-      .in("action", ["fiscal.documento_em_conferencia", "fiscal.documento_avaliado", "fiscal.documento_reavaliado"]);
+      .in("action", [
+        "fiscal.tentativa_processamento_registrada",
+        "fiscal.documento_reprocessamento_solicitado",
+        "fiscal.documento_em_conferencia",
+        "fiscal.documento_avaliado",
+        "fiscal.documento_reavaliado",
+      ]);
     const actions = new Set((events ?? []).map((e) => e.action));
-    for (const action of ["fiscal.documento_em_conferencia", "fiscal.documento_avaliado", "fiscal.documento_reavaliado"]) {
+    for (const action of [
+      "fiscal.tentativa_processamento_registrada",
+      "fiscal.documento_reprocessamento_solicitado",
+      "fiscal.documento_em_conferencia",
+      "fiscal.documento_avaliado",
+      "fiscal.documento_reavaliado",
+    ]) {
       check(`${action} registrado`, actions.has(action));
     }
   }

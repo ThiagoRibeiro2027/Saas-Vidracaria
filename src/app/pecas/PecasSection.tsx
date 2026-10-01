@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   criarPecaAction,
   inativarPecaAction,
@@ -9,7 +9,12 @@ import {
   atualizarMaterialPecaAction,
   removerMaterialPecaAction,
   definirCaracteristicaPecaAction,
+  atualizarCaracteristicaPecaAction,
   removerCaracteristicaPecaAction,
+  definirPapelDimensionalAction,
+  definirTipoCalculoComposicaoAction,
+  definirComprimentoBarraAction,
+  removerComprimentoBarraAction,
 } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
 import RegrasPeca from "./RegrasPeca";
@@ -22,9 +27,18 @@ type PecaComposicao = {
   material_item_id: string;
   quantidade_por_unidade: number;
   observacao: string | null;
+  tipo_calculo: "fixo" | "linear" | "area";
+  percentual_perda: number;
 };
 type Revisao = { revisao: number; motivo: string | null; created_at: string };
-type Caracteristica = { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean };
+type Caracteristica = { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null };
+
+const TIPO_CALCULO_LABEL: Record<PecaComposicao["tipo_calculo"], string> = {
+  fixo: "Fixo",
+  linear: "Linear (perímetro)",
+  area: "Área",
+};
+type ComprimentoBarra = { id: string; item_id: string; comprimento_metros: number };
 type Regra = {
   id: string;
   versao: number;
@@ -61,6 +75,7 @@ export default function PecasSection({
   revisoesPorPeca,
   caracteristicasPorPeca,
   regrasPorPeca,
+  comprimentosPorComposicao,
   canManage,
 }: {
   pecas: Peca[];
@@ -69,6 +84,7 @@ export default function PecasSection({
   revisoesPorPeca: Map<string, Revisao[]>;
   caracteristicasPorPeca: Map<string, Caracteristica[]>;
   regrasPorPeca: Map<string, Regra[]>;
+  comprimentosPorComposicao: Map<string, ComprimentoBarra[]>;
   canManage: boolean;
 }) {
   const itemLabel = (id: string) => {
@@ -151,6 +167,7 @@ export default function PecasSection({
                     <th style={thStyle}>Material</th>
                     <th style={thStyle}>Qtd. por unidade</th>
                     <th style={thStyle}>Observação</th>
+                    <th style={thStyle}>Cálculo (ADR-012)</th>
                     {canManage && <th style={thStyle}></th>}
                   </tr>
                 </thead>
@@ -158,7 +175,8 @@ export default function PecasSection({
                   {linhas.map((c) => {
                     const ehPeca = pecaPorItemId.has(c.material_item_id);
                     return (
-                      <tr key={c.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
+                      <Fragment key={c.id}>
+                      <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
                         <td style={tdStyle}>
                           {itemLabel(c.material_item_id)}
                           {ehPeca && (
@@ -189,6 +207,13 @@ export default function PecasSection({
                           )}
                         </td>
                         <td style={tdStyle}>{c.observacao ?? "—"}</td>
+                        <td style={tdStyle}>
+                          {canManage ? (
+                            <TipoCalculoComposicao composicao={c} />
+                          ) : (
+                            `${TIPO_CALCULO_LABEL[c.tipo_calculo]}${c.tipo_calculo !== "fixo" ? ` (perda ${c.percentual_perda}%)` : ""}`
+                          )}
+                        </td>
                         {canManage && (
                           <td style={tdStyle}>
                             <form action={removerMaterialPecaAction}>
@@ -200,11 +225,25 @@ export default function PecasSection({
                           </td>
                         )}
                       </tr>
+                      {c.tipo_calculo === "linear" && (
+                        <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
+                          <td style={tdStyle} colSpan={canManage ? 5 : 4}>
+                            <ComprimentosBarraComposicao
+                              composicaoId={c.id}
+                              comprimentos={comprimentosPorComposicao.get(c.id) ?? []}
+                              itens={itens}
+                              itemLabel={itemLabel}
+                              canManage={canManage}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                   {linhas.length === 0 && (
                     <tr>
-                      <td style={tdStyle} colSpan={canManage ? 4 : 3}>
+                      <td style={tdStyle} colSpan={canManage ? 5 : 4}>
                         <span style={{ color: "#6b7a75" }}>Peça sem materiais na composição ainda.</span>
                       </td>
                     </tr>
@@ -277,6 +316,93 @@ export default function PecasSection({
   );
 }
 
+function ComprimentosBarraComposicao({
+  composicaoId,
+  comprimentos,
+  itens,
+  itemLabel,
+  canManage,
+}: {
+  composicaoId: string;
+  comprimentos: ComprimentoBarra[];
+  itens: Item[];
+  itemLabel: (id: string) => string;
+  canManage: boolean;
+}) {
+  const itensMateriais = itens.filter((i) => MATERIAL_TIPOS.includes(i.tipo));
+  const itensJaUsados = new Set(comprimentos.map((c) => c.item_id));
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", fontSize: "11px", color: "#3e4d49" }}>
+      <span style={{ fontWeight: 600 }}>Comprimentos de barra (ADR-012 Fase 2):</span>
+      {comprimentos.length === 0 && <span style={{ color: "#6b7a75" }}>nenhum — custo por metro corrido, sem arredondar em barra</span>}
+      {comprimentos.map((c) => (
+        <span key={c.id} style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+          {itemLabel(c.item_id)} ({c.comprimento_metros}m)
+          {canManage && (
+            <form action={removerComprimentoBarraAction}>
+              <input type="hidden" name="id" value={c.id} />
+              <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 4px", background: "#9b2c2c" }}>
+                x
+              </button>
+            </form>
+          )}
+        </span>
+      ))}
+      {canManage && (
+        <form action={definirComprimentoBarraAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+          <input type="hidden" name="composicao_id" value={composicaoId} />
+          <select name="item_id" required style={{ ...inputStyle, width: "180px", fontSize: "11px" }}>
+            <option value="">item da barra...</option>
+            {itensMateriais
+              .filter((it) => !itensJaUsados.has(it.id))
+              .map((it) => (
+                <option key={it.id} value={it.id}>
+                  {it.codigo} — {it.descricao}
+                </option>
+              ))}
+          </select>
+          <input name="comprimento_metros" type="number" min="0.001" step="0.001" placeholder="metros" style={{ ...inputStyle, width: "70px", fontSize: "11px" }} />
+          <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "2px 6px" }}>
+            Adicionar
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function TipoCalculoComposicao({ composicao }: { composicao: PecaComposicao }) {
+  const [tipo, setTipo] = useState<PecaComposicao["tipo_calculo"]>(composicao.tipo_calculo);
+
+  return (
+    <form action={definirTipoCalculoComposicaoAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+      <input type="hidden" name="composicao_id" value={composicao.id} />
+      <select name="tipo_calculo" value={tipo} onChange={(e) => setTipo(e.target.value as PecaComposicao["tipo_calculo"])} style={{ ...inputStyle, width: "130px" }}>
+        {(Object.keys(TIPO_CALCULO_LABEL) as PecaComposicao["tipo_calculo"][]).map((v) => (
+          <option key={v} value={v}>
+            {TIPO_CALCULO_LABEL[v]}
+          </option>
+        ))}
+      </select>
+      {tipo !== "fixo" && (
+        <input
+          name="percentual_perda"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="% perda"
+          defaultValue={composicao.tipo_calculo !== "fixo" ? composicao.percentual_perda : 0}
+          style={{ ...inputStyle, width: "70px" }}
+        />
+      )}
+      <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
+        Salvar
+      </button>
+    </form>
+  );
+}
+
 function CaracteristicasPeca({
   pecaId,
   caracteristicas,
@@ -296,22 +422,7 @@ function CaracteristicasPeca({
       ) : (
         <ul style={{ ...hintStyle, margin: "0 0 6px", paddingLeft: "18px" }}>
           {caracteristicas.map((c) => (
-            <li key={c.id} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-              <span>
-                {c.nome} ({CARACTERISTICA_TIPOS.find(([v]) => v === c.tipo)?.[1] ?? c.tipo}
-                {c.unidade ? `, ${c.unidade}` : ""}
-                {c.opcoes ? `: ${c.opcoes.join(", ")}` : ""}
-                {c.obrigatoria ? ", obrigatória" : ""})
-              </span>
-              {canManage && (
-                <form action={removerCaracteristicaPecaAction}>
-                  <input type="hidden" name="id" value={c.id} />
-                  <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#9b2c2c" }}>
-                    Remover
-                  </button>
-                </form>
-              )}
-            </li>
+            <CaracteristicaItem key={c.id} c={c} canManage={canManage} />
           ))}
         </ul>
       )}
@@ -344,6 +455,111 @@ function CaracteristicasPeca({
         </form>
       )}
     </div>
+  );
+}
+
+// Editar era o buraco: a tela só tinha "Remover", então corrigir a unidade
+// ou acrescentar uma opção obrigava a apagar e recadastrar — e remover é
+// bloqueado assim que existe valor informado em algum pedido, o que
+// deixava a característica sem conserto. Nome e tipo continuam imutáveis
+// (a função do banco não os aceita): valores já gravados em orçamento e
+// pedido foram registrados sob aquele tipo.
+function CaracteristicaItem({ c, canManage }: { c: Caracteristica; canManage: boolean }) {
+  const [editando, setEditando] = useState(false);
+  const tipoLabel = CARACTERISTICA_TIPOS.find(([v]) => v === c.tipo)?.[1] ?? c.tipo;
+
+  if (editando) {
+    return (
+      <li style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+        <form
+          action={atualizarCaracteristicaPecaAction}
+          onSubmit={() => setEditando(false)}
+          style={{ display: "flex", gap: "4px", alignItems: "center", flexWrap: "wrap" }}
+        >
+          <input type="hidden" name="id" value={c.id} />
+          <input type="hidden" name="tipo" value={c.tipo} />
+          <span style={{ fontWeight: 600 }}>{c.nome}</span>
+          <span style={{ fontSize: "10px", color: "#6b7a76" }}>({tipoLabel} — nome e tipo não mudam)</span>
+          <input
+            name="unidade"
+            defaultValue={c.unidade ?? ""}
+            placeholder="unidade (opcional)"
+            style={{ ...inputStyle, width: "90px" }}
+          />
+          {c.tipo === "opcao" && (
+            <input
+              name="opcoes"
+              defaultValue={c.opcoes?.join(", ") ?? ""}
+              placeholder="opções, separadas por vírgula"
+              required
+              style={{ ...inputStyle, width: "180px" }}
+            />
+          )}
+          <label style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "11px", color: "#3e4d49" }}>
+            <input type="checkbox" name="obrigatoria" defaultChecked={c.obrigatoria} />
+            obrigatória
+          </label>
+          <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px" }}>
+            Salvar
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditando(false)}
+            style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
+          >
+            Cancelar
+          </button>
+        </form>
+      </li>
+    );
+  }
+
+  return (
+    <li style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+      <span>
+        {c.nome} ({tipoLabel}
+        {c.unidade ? `, ${c.unidade}` : ""}
+        {c.opcoes ? `: ${c.opcoes.join(", ")}` : ""}
+        {c.obrigatoria ? ", obrigatória" : ""})
+      </span>
+      {c.tipo === "numero" && (canManage ? (
+        <form action={definirPapelDimensionalAction} style={{ display: "flex", alignItems: "center" }}>
+          <input type="hidden" name="caracteristica_id" value={c.id} />
+          <select
+            name="papel_dimensional"
+            defaultValue={c.papel_dimensional ?? ""}
+            onChange={(e) => e.currentTarget.form?.requestSubmit()}
+            style={{ ...inputStyle, fontSize: "10px", padding: "1px 4px" }}
+            title="Papel dimensional (ADR-012) — alimenta a fórmula de perímetro/área"
+          >
+            <option value="">sem papel dimensional</option>
+            <option value="largura">largura</option>
+            <option value="altura">altura</option>
+          </select>
+        </form>
+      ) : (
+        c.papel_dimensional && (
+          <span style={{ fontSize: "10px", color: "#1f5d57", fontFamily: "monospace" }}>{c.papel_dimensional}</span>
+        )
+      ))}
+      {canManage && (
+        <>
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
+          >
+            Editar
+          </button>
+          <form action={removerCaracteristicaPecaAction}>
+            <input type="hidden" name="id" value={c.id} />
+            <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#9b2c2c" }}>
+              Remover
+            </button>
+          </form>
+        </>
+      )}
+    </li>
   );
 }
 

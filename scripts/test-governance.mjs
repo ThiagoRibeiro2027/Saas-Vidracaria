@@ -63,7 +63,10 @@ async function createTenant(slug, name, identifier) {
   });
   let userId = created?.user?.id;
   if (!userId) {
-    const { data: list } = await admin.auth.admin.listUsers();
+    // Banco único compartilhado entre as máquinas (CLAUDE.md) acumula
+    // usuários de teste entre sessões — sem perPage alto, o fixture antigo
+    // deste e-mail some da 1ª página do listUsers() e o fallback nunca acha.
+    const { data: list } = await admin.auth.admin.listUsers({ perPage: 10000 });
     userId = list.users.find((u) => u.email === email)?.id;
   }
   if (!userId) throw userError ?? new Error("usuário não criado");
@@ -231,6 +234,25 @@ async function main() {
       p_cep: null,
     });
     check("empresa suspensa não consegue cadastrar pessoa (SEC-007)", !!pessoaError);
+
+    // FIX (27/09/2026, 20261105020000): upsert_orcamento_item() regrediu em
+    // 02/10 e vincular_oportunidade_orcamento() nunca teve a checagem —
+    // assert_tenant_write() lança a exceção de suspensão antes de tocar
+    // qualquer linha, então IDs inexistentes bastam pra provar o bloqueio.
+    const { error: orcamentoItemError } = await tenantA.client.rpc("upsert_orcamento_item", {
+      p_id: null,
+      p_orcamento_id: crypto.randomUUID(),
+      p_item_id: crypto.randomUUID(),
+      p_quantidade: 1,
+      p_preco_unitario: 10,
+    });
+    check("empresa suspensa não consegue editar item de orçamento", !!orcamentoItemError);
+
+    const { error: vincularOportunidadeError } = await tenantA.client.rpc("vincular_oportunidade_orcamento", {
+      p_orcamento_id: crypto.randomUUID(),
+      p_oportunidade_id: crypto.randomUUID(),
+    });
+    check("empresa suspensa não consegue vincular oportunidade a orçamento", !!vincularOportunidadeError);
 
     const { error: readError } = await tenantA.client.from("files").select("id");
     check("empresa suspensa ainda consegue ler seus próprios dados", !readError);
