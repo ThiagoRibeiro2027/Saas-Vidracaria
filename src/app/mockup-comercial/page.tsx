@@ -2,7 +2,10 @@
 
 // PREVIEW DE DESIGN — não lê nem grava dado real (sem Supabase, sem
 // actions). Existe só pra avaliar um padrão visual novo antes de migrar
-// telas de verdade. Apagar depois que o padrão for aprovado/rejeitado.
+// telas de verdade. Reusa os componentes reais já existentes em
+// src/components/ui/ (Tabs, Modal, Button, Card, Badge) em vez de
+// reinventar — só o conteúdo/layout da página é novo. Apagar depois que o
+// padrão for aprovado/rejeitado.
 
 import { useState } from "react";
 import {
@@ -17,6 +20,9 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -108,15 +114,21 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-const TABS = ["orcamentos", "oportunidades", "propostas"] as const;
-const TAB_LABEL: Record<(typeof TABS)[number], string> = {
-  orcamentos: "Orçamentos",
-  oportunidades: "Oportunidades",
-  propostas: "Propostas",
-};
+// Mesmo formato de TabItem/Tabs real (src/components/ui/Tabs.tsx), só que
+// aqui o clique troca estado local em vez de navegar por ?tab= — o
+// componente real é dirigido por URL (Server Component), e esta página é
+// "use client" só pra viabilizar o preview sem servidor/dados. Numa
+// migração de verdade, isto volta a ser <Tabs tabs={...} active={tab}
+// basePath="/comercial" /> dirigido pelo searchParams, igual à tela real.
+const TABS = [
+  { slug: "orcamentos", label: "Orçamentos" },
+  { slug: "oportunidades", label: "Oportunidades" },
+  { slug: "propostas", label: "Propostas" },
+] as const;
 
 export default function MockupComercialPage() {
-  const [tab, setTab] = useState<(typeof TABS)[number]>("orcamentos");
+  const [tab, setTab] = useState<(typeof TABS)[number]["slug"]>("orcamentos");
+  const [novoOrcamentoOpen, setNovoOrcamentoOpen] = useState(false);
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -128,7 +140,7 @@ export default function MockupComercialPage() {
             Orçamentos, oportunidades e propostas em um só lugar.
           </p>
         </div>
-        <Button variant="primary" className="gap-1.5">
+        <Button variant="primary" className="gap-1.5" onClick={() => setNovoOrcamentoOpen(true)}>
           <Plus size={16} strokeWidth={2.5} />
           Novo orçamento
         </Button>
@@ -141,18 +153,18 @@ export default function MockupComercialPage() {
         <StatCard icon={Wallet} label="Ticket médio" value={currency(8018)} hint="5 orçamentos" />
       </div>
 
-      <div className="mt-6 flex gap-1 border-b border-border-subtle">
+      <div className="mt-6 flex gap-1 overflow-x-auto border-b border-border">
         {TABS.map((t) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`-mb-px rounded-t-md px-3.5 py-2 text-sm font-medium transition-colors ${
-              tab === t
-                ? "border-b-2 border-primary text-primary"
-                : "text-text-muted hover:text-text"
+            key={t.slug}
+            onClick={() => setTab(t.slug)}
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+              tab === t.slug
+                ? "border-primary text-primary"
+                : "border-transparent text-text-muted hover:text-text"
             }`}
           >
-            {TAB_LABEL[t]}
+            {t.label}
           </button>
         ))}
       </div>
@@ -225,6 +237,41 @@ export default function MockupComercialPage() {
           ))}
         </div>
       )}
+
+      {/* Modal real (src/components/ui/Modal.tsx) — mostra o padrão pra
+          formulário de criação em vez do form cru dentro do header, que é
+          como a tela real faz hoje. Puramente visual aqui: sem action. */}
+      <Modal open={novoOrcamentoOpen} onClose={() => setNovoOrcamentoOpen(false)} title="Novo orçamento">
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-xs text-text">
+            Cliente
+            <Select defaultValue="">
+              <option value="" disabled>
+                Selecione um cliente
+              </option>
+              <option>Mercado Bom Preço</option>
+              <option>Condomínio Jardins</option>
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text">
+            Obra (opcional)
+            <Select defaultValue="">
+              <option value="">Sem obra</option>
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text">
+            Validade
+            <Input type="date" />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text">
+            Condição comercial
+            <Input placeholder="ex.: 30/60/90 dias" />
+          </label>
+          <Button variant="primary" className="mt-1" onClick={() => setNovoOrcamentoOpen(false)}>
+            Criar orçamento
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
