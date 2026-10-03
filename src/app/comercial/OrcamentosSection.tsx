@@ -8,8 +8,6 @@ import {
   decidirOrcamentoAction,
   cancelarOrcamentoAction,
   vincularOportunidadeOrcamentoAction,
-  definirValorCaracteristicaOrcamentoAction,
-  calcularCustoOrcamentoItemAction,
   calcularMaoObraOrcamentoItemAction,
 } from "./actions";
 import { Badge } from "@/components/ui/Badge";
@@ -18,6 +16,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
+import ItemConfiguravelForm, { MOTIVO_OPERACAO_LABEL, type DefCaracteristica } from "./ItemConfiguravelForm";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string; pessoa_id: string; situacao: "ativo" | "inativo" };
@@ -90,7 +89,7 @@ export default function OrcamentosSection({
   todasPessoas,
   obras,
   itens,
-  pecaIdPorItemId,
+  caracteristicasPorItemId,
   caracteristicasPorOrcamentoItem,
   oportunidadesAbertas,
   canManage,
@@ -102,7 +101,7 @@ export default function OrcamentosSection({
   todasPessoas: Pessoa[];
   obras: Obra[];
   itens: Item[];
-  pecaIdPorItemId: Map<string, string>;
+  caracteristicasPorItemId: Map<string, DefCaracteristica[]>;
   caracteristicasPorOrcamentoItem: Map<string, Caracteristica[]>;
   oportunidadesAbertas: OportunidadeResumo[];
   canManage: boolean;
@@ -204,7 +203,7 @@ export default function OrcamentosSection({
             orcItens={itensPorOrcamento.get(viewing.id) ?? []}
             itensAtivos={itensAtivos}
             itens={itens}
-            pecaIdPorItemId={pecaIdPorItemId}
+            caracteristicasPorItemId={caracteristicasPorItemId}
             caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
             oportunidadesAbertas={oportunidadesAbertas.filter((o) => o.pessoa_id === viewing.pessoa_id)}
             clientesElegiveis={clientesElegiveis}
@@ -334,7 +333,7 @@ function OrcamentoReview({
   orcItens,
   itensAtivos,
   itens,
-  pecaIdPorItemId,
+  caracteristicasPorItemId,
   caracteristicasPorOrcamentoItem,
   oportunidadesAbertas,
   clientesElegiveis,
@@ -352,7 +351,7 @@ function OrcamentoReview({
   orcItens: OrcamentoItem[];
   itensAtivos: Item[];
   itens: Item[];
-  pecaIdPorItemId: Map<string, string>;
+  caracteristicasPorItemId: Map<string, DefCaracteristica[]>;
   caracteristicasPorOrcamentoItem: Map<string, Caracteristica[]>;
   oportunidadesAbertas: OportunidadeResumo[];
   clientesElegiveis: Pessoa[];
@@ -443,7 +442,7 @@ function OrcamentoReview({
                 itens={itens}
                 editavel={editavel}
                 canManage={canManage}
-                pecaId={pecaIdPorItemId.get(oi.item_id)}
+                caracteristicasPorItemId={caracteristicasPorItemId}
                 caracteristicas={caracteristicasPorOrcamentoItem.get(oi.id) ?? []}
               />
             ))}
@@ -456,6 +455,7 @@ function OrcamentoReview({
                 editavel={editavel}
                 canManage={canManage}
                 caracteristicas={[]}
+                caracteristicasPorItemId={caracteristicasPorItemId}
               />
             )}
             {!editavel && orcItens.length === 0 && (
@@ -566,8 +566,8 @@ function OrcamentoItemRow({
   itens,
   editavel,
   canManage,
-  pecaId,
   caracteristicas,
+  caracteristicasPorItemId,
 }: {
   item: OrcamentoItem | null;
   orcamentoId?: string;
@@ -576,11 +576,15 @@ function OrcamentoItemRow({
   itens: Item[];
   editavel: boolean;
   canManage: boolean;
-  pecaId?: string;
   caracteristicas: Caracteristica[];
+  caracteristicasPorItemId: Map<string, DefCaracteristica[]>;
 }) {
+  const [itemSel, setItemSel] = useState(item?.item_id ?? "");
   const subtotal = item ? item.quantidade * item.preco_unitario : 0;
-  const margem = item ? margemPercentual(item.preco_unitario, item.custo_unitario) : null;
+  // Margem sobre o custo total (material + mão de obra), o mesmo que o
+  // cálculo automático usa pra sugerir o preço.
+  const custoTotal = item && item.custo_unitario !== null ? item.custo_unitario + (item.custo_mao_obra ?? 0) : null;
+  const margem = item ? margemPercentual(item.preco_unitario, custoTotal) : null;
   const totalColumns = 4 + (canManage ? 1 : 0) + (editavel ? 1 : 0);
   // Mesmo guard de seleção atual do cabeçalho (ver comentário acima): sem
   // isso, editar quantidade/preço de uma linha cujo item foi desativado
@@ -626,6 +630,53 @@ function OrcamentoItemRow({
     );
   }
 
+  const itemSelectEl = (
+    <Select name="item_id" value={itemSel} onChange={(e) => setItemSel(e.target.value)} required className="min-w-40">
+      <option value="" disabled>
+        Item
+      </option>
+      {itemOpcoes.map((it) => (
+        <option key={it.id} value={it.id}>
+          {it.codigo} — {it.descricao}
+          {itemAtualFallback?.id === it.id && !itensAtivos.some((a) => a.id === it.id) ? " (inativo)" : ""}
+        </option>
+      ))}
+    </Select>
+  );
+
+  const removerForm = item && (
+    <form action={removeOrcamentoItemAction} className="mt-1">
+      <input type="hidden" name="id" value={item.id} />
+      <Button type="submit" variant="danger">
+        Remover
+      </Button>
+    </form>
+  );
+
+  // Peça configurável: as características aparecem assim que o item é
+  // escolhido, e custo + mão de obra + preço se calculam sozinhos (ADR-012
+  // v1.1) — sem item gravado antes e sem preço digitado antes.
+  const definicoes = caracteristicasPorItemId.get(itemSel);
+  if (definicoes) {
+    return (
+      <tr>
+        <Td colSpan={totalColumns}>
+          <ItemConfiguravelForm
+            key={`${item?.id ?? "novo"}:${itemSel}`}
+            orcamentoId={item?.orcamento_id ?? orcamentoId ?? ""}
+            item={item ? { id: item.id, quantidade: item.quantidade, preco_unitario: item.preco_unitario } : null}
+            itemId={itemSel}
+            itemSelect={itemSelectEl}
+            definicoes={definicoes}
+            valoresSalvos={item && item.item_id === itemSel ? caracteristicas : []}
+            onSaved={item ? undefined : () => setItemSel("")}
+          />
+          {removerForm}
+        </Td>
+      </tr>
+    );
+  }
+
   return (
     <>
       <tr>
@@ -633,17 +684,7 @@ function OrcamentoItemRow({
         <form action={upsertOrcamentoItemAction} className="flex flex-wrap items-center gap-1.5">
           {item && <input type="hidden" name="id" value={item.id} />}
           <input type="hidden" name="orcamento_id" value={item?.orcamento_id ?? orcamentoId} />
-          <Select name="item_id" defaultValue={item?.item_id ?? ""} required className="min-w-40">
-            <option value="" disabled>
-              Item
-            </option>
-            {itemOpcoes.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.codigo} — {it.descricao}
-                {itemAtualFallback?.id === it.id && !itensAtivos.some((a) => a.id === it.id) ? " (inativo)" : ""}
-              </option>
-            ))}
-          </Select>
+          {itemSelectEl}
           <Input
             name="quantidade"
             type="number"
@@ -693,36 +734,9 @@ function OrcamentoItemRow({
           </Button>
           {item && <span className="text-text-muted">subtotal: {currency(subtotal)}</span>}
         </form>
-        {item && (
-          <form action={removeOrcamentoItemAction} className="mt-1">
-            <input type="hidden" name="id" value={item.id} />
-            <Button type="submit" variant="danger">
-              Remover
-            </Button>
-          </form>
-        )}
+        {removerForm}
       </Td>
       </tr>
-      {item && pecaId && (
-        <tr>
-          <Td colSpan={totalColumns}>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-              <span className="font-medium text-text">Características (configurador):</span>
-              {caracteristicas.length === 0 && <span>peça configurável sem características cadastradas</span>}
-              {caracteristicas.map((c) => (
-                <CaracteristicaOrcamentoValor key={c.peca_caracteristica_id} orcamentoItemId={item.id} caracteristica={c} />
-              ))}
-            </div>
-          </Td>
-        </tr>
-      )}
-      {item && pecaId && canManage && (
-        <tr>
-          <Td colSpan={totalColumns}>
-            <CalculadoraCustoConfigurador orcamentoItemId={item.id} />
-          </Td>
-        </tr>
-      )}
       {item && canManage && (
         <tr>
           <Td colSpan={totalColumns}>
@@ -731,82 +745,6 @@ function OrcamentoItemRow({
         </tr>
       )}
     </>
-  );
-}
-
-type ComponenteCusto = {
-  item_id: string;
-  codigo: string;
-  descricao: string;
-  quantidade: number;
-  custo_unitario?: number;
-  subtotal?: number;
-  comprimento_metros?: number;
-  necessidade_metros?: number;
-};
-type CalculoCustoResultado = {
-  aplica_configurador: boolean;
-  custo_total?: number;
-  componentes?: ComponenteCusto[];
-  materiais_sem_custo?: ComponenteCusto[];
-};
-
-function CalculadoraCustoConfigurador({ orcamentoItemId }: { orcamentoItemId: string }) {
-  const [resultado, setResultado] = useState<CalculoCustoResultado | null>(null);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function calcular() {
-    setPending(true);
-    setError(null);
-    const r = await calcularCustoOrcamentoItemAction(orcamentoItemId);
-    setPending(false);
-    if ("error" in r) {
-      setError(r.error);
-      return;
-    }
-    setResultado(r.data as CalculoCustoResultado);
-  }
-
-  function usarCusto() {
-    if (resultado?.custo_total === undefined) return;
-    const campo = document.getElementById(`custo-unitario-${orcamentoItemId}`) as HTMLInputElement | null;
-    if (campo) campo.value = String(resultado.custo_total);
-  }
-
-  return (
-    <div className="flex flex-col gap-1 rounded border border-border-subtle bg-page-bg p-2 text-xs">
-      <div className="flex items-center gap-2">
-        <span className="font-medium text-text">Custo dimensional (ADR-012):</span>
-        <Button type="button" variant="secondary" onClick={calcular} disabled={pending}>
-          {pending ? "Calculando..." : "Calcular"}
-        </Button>
-        {resultado?.custo_total !== undefined && (
-          <Button type="button" variant="primary" onClick={usarCusto}>
-            Usar este custo ({currency(resultado.custo_total)})
-          </Button>
-        )}
-      </div>
-      {error && <p className="text-danger">{error}</p>}
-      {resultado && !resultado.aplica_configurador && <p className="text-text-muted">Este item não é uma peça configurável — custo continua manual.</p>}
-      {resultado?.aplica_configurador && (
-        <div className="flex flex-col gap-0.5">
-          {(resultado.componentes ?? []).map((c) => (
-            <div key={c.item_id} className="flex justify-between">
-              <span>
-                {c.codigo} — {c.descricao} ({c.comprimento_metros ? `${c.quantidade} barra(s) de ${c.comprimento_metros}m` : c.quantidade})
-              </span>
-              <span>{currency(c.subtotal ?? 0)}</span>
-            </div>
-          ))}
-          {(resultado.materiais_sem_custo ?? []).length > 0 && (
-            <p className="text-danger">
-              Sem custo cadastrado: {(resultado.materiais_sem_custo ?? []).map((m) => `${m.codigo} (${m.quantidade})`).join(", ")} — não entram no total acima.
-            </p>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -827,14 +765,9 @@ type CalculoMaoObraResultado = {
   operacoes_sem_custo?: OperacaoMaoObra[];
 };
 
-const MOTIVO_LABEL: Record<string, string> = {
-  sem_tempo_previsto: "sem tempo previsto no roteiro",
-  sem_recurso_definido: "sem recurso definido na operação",
-  recurso_sem_custo_hora: "recurso sem custo/hora cadastrado",
-};
-
-// ADR-012 Fase 4 — mesmo padrão de CalculadoraCustoConfigurador: leitura
-// pura, o vendedor decide se aplica o resultado (nunca autoridade cega).
+// ADR-012 Fase 4 — leitura pura, o vendedor decide se aplica o resultado
+// (nunca autoridade cega). Só para itens que NÃO são peça configurável: nas
+// peças, a mão de obra já entra no cálculo automático (ADR-012 v1.1).
 function CalculadoraMaoDeObraConfigurador({ orcamentoItemId }: { orcamentoItemId: string }) {
   const [resultado, setResultado] = useState<CalculoMaoObraResultado | null>(null);
   const [pending, setPending] = useState(false);
@@ -889,7 +822,7 @@ function CalculadoraMaoDeObraConfigurador({ orcamentoItemId }: { orcamentoItemId
             <p className="text-danger">
               Sem custo calculável:{" "}
               {(resultado.operacoes_sem_custo ?? [])
-                .map((o) => `${o.sequencia}. ${o.descricao} (${MOTIVO_LABEL[o.motivo ?? ""] ?? o.motivo})`)
+                .map((o) => `${o.sequencia}. ${o.descricao} (${MOTIVO_OPERACAO_LABEL[o.motivo ?? ""] ?? o.motivo})`)
                 .join(", ")}{" "}
               — não entram no total acima.
             </p>
@@ -897,28 +830,5 @@ function CalculadoraMaoDeObraConfigurador({ orcamentoItemId }: { orcamentoItemId
         </div>
       )}
     </div>
-  );
-}
-
-function CaracteristicaOrcamentoValor({
-  orcamentoItemId,
-  caracteristica,
-}: {
-  orcamentoItemId: string;
-  caracteristica: Caracteristica;
-}) {
-  const valorAtual = caracteristica.valor_numero ?? caracteristica.valor_texto ?? "";
-
-  return (
-    <form action={definirValorCaracteristicaOrcamentoAction} className="flex items-center gap-1">
-      <input type="hidden" name="orcamento_item_id" value={orcamentoItemId} />
-      <input type="hidden" name="peca_caracteristica_id" value={caracteristica.peca_caracteristica_id} />
-      <input type="hidden" name="tipo" value={caracteristica.tipo} />
-      <span>{caracteristica.nome}:</span>
-      <Input name="valor" defaultValue={valorAtual} placeholder={caracteristica.unidade ?? "valor"} className="w-24" />
-      <Button type="submit" variant="primary">
-        Salvar
-      </Button>
-    </form>
   );
 }

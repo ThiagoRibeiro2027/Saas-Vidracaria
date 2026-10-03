@@ -98,6 +98,22 @@ export default async function ComercialPage({
   // Mesmo padrão de N chamadas via Promise.all já usado em
   // engenharia/page.tsx pro equivalente do lado do Pedido.
   const pecaIdPorItemId = new Map((pecas ?? []).map((p) => [p.item_id, p.id]));
+
+  // ADR-012 v1.1 — definições das características de cada peça configurável,
+  // pro formulário do item mostrar os campos assim que a peça é escolhida
+  // (antes de o item existir). Só quem edita orçamento precisa delas.
+  const caracteristicasPorItemId = new Map<
+    string,
+    { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean; papel_dimensional: string | null }[]
+  >();
+  if (canManage) {
+    await Promise.all(
+      (pecas ?? []).map(async (p) => {
+        const { data } = await supabase.rpc("listar_caracteristicas_configurador", { p_item_id: p.item_id });
+        caracteristicasPorItemId.set(p.item_id, data ?? []);
+      }),
+    );
+  }
   const caracteristicasPorOrcamentoItem = new Map<
     string,
     { peca_caracteristica_id: string; nome: string; tipo: string; unidade: string | null; obrigatoria: boolean; valor_numero: number | null; valor_texto: string | null }[]
@@ -151,7 +167,7 @@ export default async function ComercialPage({
             todasPessoas={pessoas ?? []}
             obras={obras ?? []}
             itens={itens ?? []}
-            pecaIdPorItemId={pecaIdPorItemId}
+            caracteristicasPorItemId={caracteristicasPorItemId}
             caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
             oportunidadesAbertas={oportunidadesAbertas}
             canManage={!!canManage}

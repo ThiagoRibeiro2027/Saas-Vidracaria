@@ -231,51 +231,57 @@ export async function vincularOportunidadeOrcamentoAction(formData: FormData) {
   revalidatePath("/comercial");
 }
 
-// TÓPICO 10 §9 — mesmo padrão de definirValorCaracteristicaAction
-// (src/app/engenharia/actions.ts), só que grava em orcamento_item_
-// caracteristicas via definir_valor_caracteristica_orcamento_item()
-// (gate orcamentos.manage, só com orçamento em rascunho).
-export async function definirValorCaracteristicaOrcamentoAction(formData: FormData) {
-  const orcamentoItemId = String(formData.get("orcamento_item_id") ?? "");
-  const pecaCaracteristicaId = String(formData.get("peca_caracteristica_id") ?? "");
-  const tipo = String(formData.get("tipo") ?? "");
-  const valorRaw = String(formData.get("valor") ?? "").trim();
-  if (!orcamentoItemId || !pecaCaracteristicaId || !valorRaw) {
-    throw new Error("Característica e valor são obrigatórios.");
-  }
-
-  const valorNumero = tipo === "numero" ? Number(valorRaw) : null;
-  if (tipo === "numero" && !Number.isFinite(valorNumero)) throw new Error("Valor numérico inválido.");
-  const valorTexto = tipo === "numero" ? null : valorRaw;
-
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("definir_valor_caracteristica_orcamento_item", {
-    p_orcamento_item_id: orcamentoItemId,
-    p_peca_caracteristica_id: pecaCaracteristicaId,
-    p_valor_numero: valorNumero,
-    p_valor_texto: valorTexto,
-  });
-  if (error) throw new Error(error.message);
-
-  revalidatePath("/comercial");
-}
-
-// ADR-012 §2 — leitura pura (não grava nada). O vendedor decide se
-// aplica o custo_total ao campo custo_unitario, via o form de edição do
-// item já existente — nunca aplicado automaticamente.
-export async function calcularCustoOrcamentoItemAction(
-  orcamentoItemId: string,
+// ADR-012 v1.1 — pré-cálculo (leitura pura, não grava nada): custo de
+// material + mão de obra + preço sugerido a partir das características
+// ainda não gravadas. Erro esperado volta como valor, não como exceção
+// (o formulário mostra a mensagem sem derrubar a página).
+export async function calcularPrecoConfiguradorAction(
+  itemId: string,
+  valores: Record<string, { n?: number; t?: string }>,
 ): Promise<{ error: string } | { data: Record<string, unknown> }> {
+  if (!itemId) return { error: "Item inválido." };
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcamentoItemId });
+  const { data, error } = await supabase.rpc("calcular_preco_configurador", { p_item_id: itemId, p_valores: valores });
   if (error) return { error: error.message };
   return { data: data as Record<string, unknown> };
 }
 
+// ADR-012 v1.1 — grava item + características + custos + preço numa
+// transação só. O servidor SEMPRE recalcula custo e preço; do navegador só
+// vêm quantidade, valores das características e, se o vendedor digitou, o
+// preço ajustado (precoOverride) — nunca custo.
+export async function salvarItemConfiguradoAction(input: {
+  id: string | null;
+  orcamentoId: string;
+  itemId: string;
+  quantidade: number;
+  valores: Record<string, { n?: number; t?: string }>;
+  precoOverride: number | null;
+}): Promise<{ error: string } | { ok: true }> {
+  if (!input.orcamentoId || !input.itemId) return { error: "Orçamento e item são obrigatórios." };
+  if (!Number.isFinite(input.quantidade) || input.quantidade <= 0) return { error: "Quantidade deve ser maior que zero." };
+  if (input.precoOverride !== null && (!Number.isFinite(input.precoOverride) || input.precoOverride < 0)) {
+    return { error: "Preço unitário inválido." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_orcamento_item_configurado", {
+    p_id: input.id,
+    p_orcamento_id: input.orcamentoId,
+    p_item_id: input.itemId,
+    p_quantidade: input.quantidade,
+    p_valores: input.valores,
+    p_preco_override: input.precoOverride,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath("/comercial");
+  return { ok: true };
+}
+
 // ADR-012 Fase 4 — leitura pura (não grava nada). O vendedor decide se
 // aplica o custo_total ao campo custo_mao_obra, via o form de edição do
-// item já existente — nunca aplicado automaticamente (mesmo padrão de
-// calcularCustoOrcamentoItemAction).
+// item já existente — nunca aplicado automaticamente.
 export async function calcularMaoObraOrcamentoItemAction(
   orcamentoItemId: string,
 ): Promise<{ error: string } | { data: Record<string, unknown> }> {
