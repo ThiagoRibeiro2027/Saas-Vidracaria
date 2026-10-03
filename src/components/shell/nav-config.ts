@@ -7,7 +7,6 @@ import {
   Ruler,
   Factory,
   BadgeCheck,
-  Boxes,
   Truck,
   Wrench,
   Smartphone,
@@ -25,7 +24,6 @@ import {
   Download,
   Plug,
   FileSignature,
-  Handshake,
   type LucideIcon,
 } from "lucide-react";
 
@@ -42,6 +40,12 @@ export type NavChild = {
   // sub-rota real (ex. Compras "/compras") — sem isso o prefix-match da
   // Sidebar marcaria essa raiz como ativa em qualquer sub-rota irmã.
   exact?: boolean;
+  // Um filho pode ter seus próprios filhos (ex.: Suprimentos → Estoque →
+  // Saldo/Reserva/Sobra) — Estoque e Compras viraram sub-módulos de
+  // Suprimentos (2026-09-29, mesma alçada de negócio) sem perder a própria
+  // navegação interna que já tinham. Sidebar.tsx renderiza isso
+  // recursivamente, não só um nível.
+  children?: NavChild[];
 };
 
 export type NavItem = {
@@ -118,16 +122,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Fila de Produção", href: "/fila-producao", icon: ListOrdered },
       { label: "Peças Fabricadas", href: "/pecas", icon: Puzzle },
       { label: "Qualidade", href: "/qualidade", icon: BadgeCheck },
-      {
-        label: "Estoque",
-        href: "/estoque",
-        icon: Boxes,
-        children: [
-          { label: "Saldo por item", href: "/estoque", tab: "saldo" },
-          { label: "Reserva para pedidos", href: "/estoque?tab=reserva", tab: "reserva" },
-          { label: "Registrar sobra", href: "/estoque?tab=sobra", tab: "sobra" },
-        ],
-      },
       { label: "Expedição", href: "/expedicao", icon: Truck },
       {
         label: "Instalação",
@@ -140,25 +134,43 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
       },
       { label: "Instalação — Campo (PWA)", href: "/campo", icon: Smartphone },
-      { label: "Suprimentos", href: "/suprimentos", icon: PackageSearch },
-      // Compras (ADR-011, 9 fases) vive em rotas separadas de verdade (não
-      // ?tab=) — ver ComprasTabs.tsx (removido das páginas, mas o comentário
-      // ali explica o porquê das sub-rotas reais).
+      // Estoque, Compras e Suprimentos são a mesma alçada de negócio
+      // (2026-09-29) — unidos num só item de topo, com Suprimentos como
+      // principal (é quem abre ao clicar no rótulo); Estoque e Compras
+      // entram como sub-módulos, cada um com a navegação interna que já
+      // tinha (Compras continua em rotas reais, não ?tab=; ver
+      // ComprasTabs.tsx, removido das páginas mas com o comentário do
+      // porquê).
       {
-        label: "Compras",
-        href: "/compras",
-        icon: Handshake,
+        label: "Suprimentos",
+        href: "/suprimentos",
+        icon: PackageSearch,
         children: [
-          { label: "Fornecedores e Políticas", href: "/compras", exact: true },
-          { label: "Solicitações", href: "/compras/solicitacoes" },
-          { label: "Cotações", href: "/compras/cotacoes" },
-          { label: "Pedidos", href: "/compras/pedidos" },
-          { label: "Recebimentos", href: "/compras/recebimentos" },
-          { label: "Avaliação de Fornecedores", href: "/compras/fornecedores" },
-          { label: "Mapa de Necessidades", href: "/compras/mapa" },
-          { label: "Orçado × Realizado", href: "/compras/orcamento" },
-          { label: "Dashboard", href: "/compras/dashboard" },
-          { label: "Configurações", href: "/compras/configuracoes" },
+          {
+            label: "Estoque",
+            href: "/estoque",
+            children: [
+              { label: "Saldo por item", href: "/estoque", tab: "saldo" },
+              { label: "Reserva para pedidos", href: "/estoque?tab=reserva", tab: "reserva" },
+              { label: "Registrar sobra", href: "/estoque?tab=sobra", tab: "sobra" },
+            ],
+          },
+          {
+            label: "Compras",
+            href: "/compras",
+            children: [
+              { label: "Fornecedores e Políticas", href: "/compras", exact: true },
+              { label: "Solicitações", href: "/compras/solicitacoes" },
+              { label: "Cotações", href: "/compras/cotacoes" },
+              { label: "Pedidos", href: "/compras/pedidos" },
+              { label: "Recebimentos", href: "/compras/recebimentos" },
+              { label: "Avaliação de Fornecedores", href: "/compras/fornecedores" },
+              { label: "Mapa de Necessidades", href: "/compras/mapa" },
+              { label: "Orçado × Realizado", href: "/compras/orcamento" },
+              { label: "Dashboard", href: "/compras/dashboard" },
+              { label: "Configurações", href: "/compras/configuracoes" },
+            ],
+          },
         ],
       },
     ],
