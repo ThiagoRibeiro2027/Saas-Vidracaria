@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.17\
+**Versão:** 2.18\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -25,7 +25,8 @@ CSV; §4.3 revisado em 2026-09-26 — TÓPICO 10 §9, configurador de peça
 ligado ao orçamento; §4.17 revisado em 2026-09-29 — Fases 7 e 8 do
 TÓPICO 13, importação genérica de dados (registro retroativo); §4.17
 revisado novamente em 2026-09-29 — Fase 9, integrações internas entre
-módulos)\
+módulos; §4.19 acrescentado em 2026-10-03 — fechamento do TÓPICO 18,
+Contratos, registro retroativo)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
 ADR-011
@@ -1496,6 +1497,65 @@ transição paralela).
 Continua fora, mesmo com o escopo completo aprovado, por pertencer a
 outro ADR: nota fiscal de entrada vinculada automaticamente ao
 recebimento (TÓPICO 13, captura/conferência fiscal — ADR-004).
+
+**4.19 Contratos**
+
+O TÓPICO 18 (Prompt TÓPICO 18 — Contratos, aprovado em 11/09/2026) é a
+ferramenta com que a vidraçaria controla os contratos que ela mesma
+firma com terceiros — não se confunde com o ADR-006 (modelo comercial do
+próprio SaaS).
+
+**Fechamento do TÓPICO 18 (03/10/2026 — registro retroativo: o código
+foi entregue entre 23/09 e 29/09/2026 sem atualização deste ADR na
+hora).** O módulo foi entregue em quatro etapas, todas já em produção:
+
+- **23/09/2026 — recorte mínimo (Prompt §12):** estrutura genérica com os
+  três tipos (cliente, fornecedor, funcionário/prestador), cada um
+  vinculado ao seu cadastro (Pessoa/Obra/Pedido, fornecedor, funcionário),
+  vigência (início, fim, renovação manual/automática) e ciclo básico
+  rascunho → vigente → encerrado.
+- **25/09/2026 — completo (§4-6):** ciclo de vida de seis estados
+  (rascunho → em aprovação → vigente → suspenso → encerrado → cancelado)
+  com aprovação por alçada — `aprovar_contrato()` e `reprovar_contrato()`
+  exigem `contratos.aprovar`, e `contratos.manage` sozinho não basta;
+  garantia (só tipo cliente), independente da vigência; valor, forma de
+  pagamento, parcelas e reajuste previsto como campos descritivos, sem
+  automação de reajuste; vínculo rastreável com o Financeiro por
+  `titulos_financeiros.contrato_id` (alternativo a `pedido_id`) e
+  `gerar_titulos_contrato()`.
+- **26/09/2026 — alerta de vencimento (§7):** cron diário
+  (`/api/cron/contratos-vencimento`) que notifica vencimento de vigência
+  e de garantia com 30 dias de antecedência, via ADR-007, idempotente por
+  marcador independente para cada data. A notificação não tem autoridade
+  sobre o estado do contrato.
+- **29/09/2026 — anexos e assinatura (§8/§10):** PDF assinado anexado pela
+  infraestrutura genérica de arquivos, com gate por `entity_type='contrato'`
+  (`contratos.manage` para anexar/apagar, `contratos.view` para ler
+  metadados); `delete_file()` passou a exigir gate por `entity_type`
+  também. Gancho de assinatura eletrônica é só o campo
+  `assinatura_referencia_externa`, sem integrar nenhum provedor.
+
+Toda mudança relevante (criação, edição, envio para aprovação, aprovação,
+reprovação, suspensão, encerramento, cancelamento) grava linha em
+`activity_logs` (§9).
+
+**Verificação:** `scripts/test-contratos.mjs` — 99 verificações, 0 falhas,
+executado contra o banco real em 03/10/2026; cobre os caminhos de negação
+(permissão ausente, tipo/vínculo inválidos, transições de estado
+inválidas) e o isolamento entre tenants.
+
+**Decisões conscientes de recorte (permanecem fora):**
+
+- **Histórico de aditivos (§3):** não existe tabela nem fluxo de aditivo.
+  Contrato vigente não é editável; alterá-lo exige suspender ou encerrar.
+  Aditivo formal fica para quando o piloto validar a necessidade.
+- **Consequência registrada:** como não há alteração de contrato vigente,
+  o marcador de alerta de vencimento não é reiniciado se a vigência ou a
+  garantia mudar depois de notificada. Deve ser revisto junto com o
+  aditivo.
+- Assinatura eletrônica com provedor (DocuSign, Clicksign etc.), por
+  decisão do próprio Prompt §10.
+- Automação de reajuste e cálculo de folha (este último vedado pelo §2).
 
 **5. Funcionalidades explicitamente fora do MVP**
 
