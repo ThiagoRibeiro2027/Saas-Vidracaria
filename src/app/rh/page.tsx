@@ -25,7 +25,7 @@ export default async function RHPage() {
     );
   }
 
-  const [{ data: funcionarios }, { data: unidades }, { data: profiles }, { data: documentos }, { data: afastamentos }, { data: recursos }] =
+  const [{ data: funcionarios }, { data: unidades }, { data: profiles }, { data: documentos }, { data: afastamentos }, { data: recursos }, { data: anexos }] =
     await Promise.all([
       supabase.from("funcionarios").select("*").order("nome"),
       supabase.from("company_units").select("id, name").eq("active", true).order("name"),
@@ -33,6 +33,14 @@ export default async function RHPage() {
       supabase.from("funcionario_documentos").select("*").order("created_at", { ascending: false }),
       supabase.from("funcionario_afastamentos").select("*").order("data_inicio", { ascending: false }),
       supabase.from("recursos_produtivos").select("id, codigo, nome, tipo").in("tipo", ["maquina", "equipamento"]).order("nome"),
+      // §6 — anexos por documento; files_select já filtra por rh.view pra
+      // entity_type='funcionario_documento' (migration 20261010000000).
+      supabase
+        .from("files")
+        .select("id, entity_id, original_name, mime_type, size_bytes, created_at")
+        .eq("entity_type", "funcionario_documento")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
     ]);
 
   return (
@@ -55,6 +63,7 @@ export default async function RHPage() {
           documentos={documentos ?? []}
           afastamentos={afastamentos ?? []}
           recursos={recursos ?? []}
+          anexos={anexos ?? []}
           canManage={!!canManage}
         />
       </div>

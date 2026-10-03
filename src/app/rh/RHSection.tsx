@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   cancelarAfastamentoAction,
   cancelarDocumentoFuncionarioAction,
+  deleteDocumentoFuncionarioAnexoAction,
+  getDocumentoFuncionarioAnexoSignedUrlAction,
   desligarFuncionarioAction,
   encerrarAfastamentoAction,
   registrarAfastamentoAction,
   registrarDocumentoFuncionarioAction,
+  uploadDocumentoFuncionarioAnexoAction,
   upsertFuncionarioAction,
 } from "./actions";
 import { Badge } from "@/components/ui/Badge";
@@ -15,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
 
 const STATUS_LABEL: Record<string, string> = {
   ativo: "Ativo",
@@ -56,6 +60,15 @@ type Funcionario = {
   observacoes: string | null;
 };
 
+type Anexo = {
+  id: string;
+  entity_id: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+};
+
 type Recurso = { id: string; codigo: string; nome: string; tipo: string };
 
 type Documento = {
@@ -93,6 +106,7 @@ export default function RHSection({
   documentos,
   afastamentos,
   recursos,
+  anexos,
   canManage,
 }: {
   rows: Funcionario[];
@@ -101,6 +115,7 @@ export default function RHSection({
   documentos: Documento[];
   afastamentos: Afastamento[];
   recursos: Recurso[];
+  anexos: Anexo[];
   canManage: boolean;
 }) {
   const unidadePorId = new Map(unidades.map((u) => [u.id, u.name]));
@@ -110,6 +125,8 @@ export default function RHSection({
   const funcionariosAtivos = rows.filter((r) => r.status !== "desligado");
 
   const recursoPorId = new Map(recursos.map((r) => [r.id, r.nome]));
+  const anexosPorDocumento = new Map<string, Anexo[]>();
+  for (const a of anexos) anexosPorDocumento.set(a.entity_id, [...(anexosPorDocumento.get(a.entity_id) ?? []), a]);
 
   return (
     <>
@@ -170,7 +187,7 @@ export default function RHSection({
         <p className="mt-1 text-xs text-text-muted">
           Documento de admissão, certificação/treinamento, entrega de EPI e habilitação para operar
           equipamento — uma estrutura só, com vínculo opcional a um recurso produtivo cadastrado
-          quando o tipo for habilitação. Anexar o arquivo em si é feito pela tela de Arquivos.
+          quando o tipo for habilitação. O arquivo do comprovante (PDF ou imagem) é anexado na própria linha do documento.
           Cancelar corrige um registro errado, sem apagar o histórico.
         </p>
 
@@ -189,6 +206,7 @@ export default function RHSection({
                 <Th>Nome</Th>
                 <Th>Referência</Th>
                 <Th>Validade</Th>
+                <Th>Anexos</Th>
                 <Th>Status</Th>
                 {canManage && <Th />}
               </tr>
@@ -205,6 +223,13 @@ export default function RHSection({
                   <Td>{doc.data_referencia ?? "—"}</Td>
                   <Td>{doc.validade ?? "—"}</Td>
                   <Td>
+                    <DocumentoAnexos
+                      documentoId={doc.id}
+                      anexos={anexosPorDocumento.get(doc.id) ?? []}
+                      canManage={canManage && doc.status === "ativo"}
+                    />
+                  </Td>
+                  <Td>
                     <Badge variant={doc.status === "ativo" ? "success" : "danger"}>
                       {doc.status === "ativo" ? "Ativo" : `Cancelado${doc.motivo_cancelamento ? ` — ${doc.motivo_cancelamento}` : ""}`}
                     </Badge>
@@ -214,7 +239,7 @@ export default function RHSection({
               ))}
               {documentos.length === 0 && (
                 <tr>
-                  <Td colSpan={canManage ? 7 : 6}>Nenhum documento registrado ainda.</Td>
+                  <Td colSpan={canManage ? 8 : 7}>Nenhum documento registrado ainda.</Td>
                 </tr>
               )}
             </tbody>
@@ -390,6 +415,126 @@ function DocumentoForm({ funcionarios, recursos }: { funcionarios: Funcionario[]
         Registrar
       </Button>
     </form>
+  );
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// §6 — anexo do documento do colaborador. Upload e remoção exigem rh.manage
+// (register_file()/delete_file() checam isso no banco — este componente só
+// mostra os controles pra quem já tem canManage, mas a checagem real nunca é
+// só a UI). Baixar exige só rh.view.
+function DocumentoAnexos({ documentoId, anexos, canManage }: { documentoId: string; anexos: Anexo[]; canManage: boolean }) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleDownload(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      const url = await getDocumentoFuncionarioAnexoSignedUrlAction(id);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao gerar link.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setBusyId(id);
+    setError(null);
+    try {
+      await deleteDocumentoFuncionarioAnexoAction(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao remover arquivo.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const files = Array.from(inputRef.current?.files ?? []);
+    if (files.length === 0) return;
+    if (files.length > MAX_FILES_PER_UPLOAD) {
+      setError(`Selecione no máximo ${MAX_FILES_PER_UPLOAD} arquivos por vez.`);
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    const failed: string[] = [];
+    // Um arquivo por chamada, mesmo motivo de /files (limite de corpo da
+    // Server Action é dimensionado para 1 arquivo).
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        failed.push(`${file.name}: excede ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MiB.`);
+        continue;
+      }
+      const fd = new FormData();
+      fd.set("documento_id", documentoId);
+      fd.set("file", file);
+      try {
+        const result = await uploadDocumentoFuncionarioAnexoAction(fd);
+        if (!result.ok) failed.push(`${result.name}: ${result.error}`);
+      } catch {
+        failed.push(`${file.name}: falha ao enviar (arquivo grande demais ou conexão interrompida).`);
+      }
+    }
+    setUploading(false);
+    setError(failed.length > 0 ? failed.join(" | ") : null);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div className="flex min-w-[160px] flex-col gap-1">
+      {anexos.length === 0 && <span className="text-xs text-text-muted">Sem anexos.</span>}
+      {anexos.map((a) => (
+        <div key={a.id} className="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => handleDownload(a.id)}
+            disabled={busyId === a.id}
+            title={formatSize(a.size_bytes)}
+            className="cursor-pointer text-primary underline disabled:opacity-50"
+          >
+            {a.original_name}
+          </button>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => handleDelete(a.id)}
+              disabled={busyId === a.id}
+              className="cursor-pointer text-danger disabled:opacity-50"
+            >
+              remover
+            </button>
+          )}
+        </div>
+      ))}
+      {canManage && (
+        <form onSubmit={handleUpload} className="mt-1 flex flex-col gap-1">
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            className="max-w-[160px] text-xs text-text"
+          />
+          <Button type="submit" size="sm" disabled={uploading} className="w-fit">
+            {uploading ? "Enviando..." : "Anexar"}
+          </Button>
+        </form>
+      )}
+      {error && <span className="text-xs text-danger">{error}</span>}
+    </div>
   );
 }
 

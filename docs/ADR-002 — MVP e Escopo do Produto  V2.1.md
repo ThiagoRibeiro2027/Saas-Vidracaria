@@ -1592,15 +1592,14 @@ de Arquivos.
 executado contra o banco real em 03/10/2026; cobre os caminhos de
 negação e o isolamento entre tenants.
 
-**Pendência conhecida — anexo do documento (§6):** o backend aceita
-anexar o arquivo de um documento de RH (PDF do certificado, comprovante
-de entrega de EPI), mas **não existe caminho na interface para fazê-lo**.
-A tela de Arquivos (`/files`) grava sempre `entity_type='geral'`, e a
-tela de RH não tem upload próprio — o texto da tela diz que o anexo é
-feito pela tela de Arquivos, o que hoje não produz um anexo ligado ao
-documento. Contratos resolveu o mesmo caso com upload na própria tela;
-o RH ainda não. Não bloqueia o cadastro nem o controle de validade, só o
-anexo do comprovante.
+**Anexo do documento (§6) — resolvido em 03/10/2026:** o backend já
+aceitava o anexo, mas a interface não tinha caminho para fazê-lo (a tela
+de Arquivos grava sempre `entity_type='geral'`). A tela de RH ganhou, na
+linha de cada documento, upload, download por URL assinada e remoção,
+no mesmo padrão de Contratos (`uploadCompanyFiles` com
+`entity_type='funcionario_documento'` e `entity_id` igual ao documento).
+Documento cancelado não aceita anexo novo. Sem migration. Validado por
+`tsc` e `eslint`; não testado interativamente no navegador.
 
 **Fora do módulo (decisão do próprio Prompt §8):** folha de pagamento,
 encargos e rescisão, escala/jornada e ponto/frequência. Fica reservado

@@ -2,6 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { uploadCompanyFiles } from "@/lib/storage/upload";
+
+const ANEXO_ENTITY_TYPE = "funcionario_documento";
 
 export async function upsertFuncionarioAction(formData: FormData) {
   const id = String(formData.get("id") ?? "") || null;
@@ -143,4 +146,70 @@ export async function cancelarAfastamentoAction(formData: FormData) {
   if (error) throw new Error(error.message);
 
   revalidatePath("/rh");
+}
+
+// §6 — anexo do documento do colaborador (PDF do certificado, comprovante de
+// entrega de EPI), reaproveitando a infraestrutura genérica de
+// files/register_file(). register_file() exige rh.manage pra
+// entity_type='funcionario_documento' (não só o files.upload genérico) — a
+// checagem real é sempre no banco; aqui só confirmamos, pelo RLS (rh.view),
+// que o documento existe nesta empresa e ainda está ativo.
+export async function uploadDocumentoFuncionarioAnexoAction(
+  formData: FormData,
+): Promise<{ name: string; ok: true; fileId: string } | { name: string; ok: false; error: string }> {
+  const documentoId = String(formData.get("documento_id") ?? "");
+  const file = formData.get("file");
+  if (!documentoId) return { name: "arquivo", ok: false, error: "Documento inválido." };
+  if (!(file instanceof File) || file.size === 0) {
+    return { name: "arquivo", ok: false, error: "Nenhum arquivo enviado." };
+  }
+
+  try {
+    const supabase = await createClient();
+    const { data: documento } = await supabase
+      .from("funcionario_documentos")
+      .select("status")
+      .eq("id", documentoId)
+      .maybeSingle();
+    if (!documento) return { name: file.name, ok: false, error: "Documento não encontrado." };
+    if (documento.status !== "ativo") {
+      return { name: file.name, ok: false, error: "Documento cancelado não aceita anexo." };
+    }
+
+    const [result] = await uploadCompanyFiles([file], ANEXO_ENTITY_TYPE, documentoId);
+    revalidatePath("/rh");
+    return result;
+  } catch (err) {
+    return {
+      name: file.name,
+      ok: false,
+      error: err instanceof Error ? err.message : "Erro ao enviar arquivo.",
+    };
+  }
+}
+
+export async function deleteDocumentoFuncionarioAnexoAction(fileId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("delete_file", { p_file_id: fileId });
+  if (error) throw new Error(error.message);
+  revalidatePath("/rh");
+}
+
+export async function getDocumentoFuncionarioAnexoSignedUrlAction(fileId: string): Promise<string> {
+  const supabase = await createClient();
+  const { data: file, error } = await supabase
+    .from("files")
+    .select("bucket_id, storage_path")
+    .eq("id", fileId)
+    .eq("entity_type", ANEXO_ENTITY_TYPE)
+    .is("deleted_at", null)
+    .single();
+  if (error || !file) throw new Error("Arquivo não encontrado.");
+
+  const { data: signed, error: signError } = await supabase.storage
+    .from(file.bucket_id)
+    .createSignedUrl(file.storage_path, 60);
+  if (signError || !signed) throw new Error("Não foi possível gerar o link de download.");
+
+  return signed.signedUrl;
 }
