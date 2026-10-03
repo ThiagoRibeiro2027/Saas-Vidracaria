@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.18\
+**Versão:** 2.19\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -26,7 +26,8 @@ ligado ao orçamento; §4.17 revisado em 2026-09-29 — Fases 7 e 8 do
 TÓPICO 13, importação genérica de dados (registro retroativo); §4.17
 revisado novamente em 2026-09-29 — Fase 9, integrações internas entre
 módulos; §4.19 acrescentado em 2026-10-03 — fechamento do TÓPICO 18,
-Contratos, registro retroativo)\
+Contratos, registro retroativo; §4.20 acrescentado em 2026-10-03 —
+fechamento do TÓPICO 17, RH, registro retroativo)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
 ADR-011
@@ -1556,6 +1557,58 @@ inválidas) e o isolamento entre tenants.
 - Assinatura eletrônica com provedor (DocuSign, Clicksign etc.), por
   decisão do próprio Prompt §10.
 - Automação de reajuste e cálculo de folha (este último vedado pelo §2).
+
+**4.20 RH**
+
+O TÓPICO 17 (Prompt TÓPICO 17 — RH) cobre o cadastro dos colaboradores
+da vidraçaria, sem substituir folha de pagamento.
+
+**Fechamento do TÓPICO 17 (03/10/2026 — registro retroativo: o código
+foi entregue entre 16/09 e 23/09/2026 sem atualização deste ADR na
+hora).** O módulo foi entregue em duas etapas, ambas já com migration
+aplicada no banco real:
+
+- **16/09/2026 — recorte mínimo (Prompt §11):** cadastro de funcionários
+  (dados, cargo, unidade de lotação, admissão, status ativo/afastado/
+  desligado), vínculo funcionário-usuário (ADR-001) e desligamento com
+  revogação de acesso. O cadastro de equipes (§5) não é deste módulo: já
+  existia desde o TÓPICO 16 (`equipes_instalacao`/`equipe_membros`) e
+  continua sendo a fonte única.
+- **22/09 e 23/09/2026 — completo (§6-7):** `funcionario_documentos`,
+  estrutura única separada por `tipo` (documento de admissão,
+  certificação/treinamento, EPI e habilitação para operar equipamento),
+  com data de referência, validade opcional e cancelamento; e
+  `funcionario_afastamentos` (afastamento e férias, só datas e motivo),
+  com registrar, encerrar e cancelar. Habilitação é texto livre, não um
+  enum fechado, já que o prompt lista equipamentos só como exemplo.
+
+Acesso restrito por permissão (`rh.view` para leitura, `rh.manage` para
+mutação), com isolamento por tenant (§9). O gate de `register_file()`,
+`files_select` e `delete_file()` também exige `rh.manage`/`rh.view` para
+`entity_type='funcionario_documento'`, e não apenas a permissão genérica
+de Arquivos.
+
+**Verificação:** `scripts/test-rh.mjs` — 80 verificações, 0 falhas,
+executado contra o banco real em 03/10/2026; cobre os caminhos de
+negação e o isolamento entre tenants.
+
+**Pendência conhecida — anexo do documento (§6):** o backend aceita
+anexar o arquivo de um documento de RH (PDF do certificado, comprovante
+de entrega de EPI), mas **não existe caminho na interface para fazê-lo**.
+A tela de Arquivos (`/files`) grava sempre `entity_type='geral'`, e a
+tela de RH não tem upload próprio — o texto da tela diz que o anexo é
+feito pela tela de Arquivos, o que hoje não produz um anexo ligado ao
+documento. Contratos resolveu o mesmo caso com upload na própria tela;
+o RH ainda não. Não bloqueia o cadastro nem o controle de validade, só o
+anexo do comprovante.
+
+**Fora do módulo (decisão do próprio Prompt §8):** folha de pagamento,
+encargos e rescisão, escala/jornada e ponto/frequência. Fica reservado
+espaço arquitetural para um sistema externo de folha, sem implementá-lo.
+
+**Não verificado neste registro:** se Produção e Instalação consultam a
+habilitação por equipamento (§10 do Prompt). O cadastro existe, mas o
+consumo por esses módulos não foi conferido.
 
 **5. Funcionalidades explicitamente fora do MVP**
 
