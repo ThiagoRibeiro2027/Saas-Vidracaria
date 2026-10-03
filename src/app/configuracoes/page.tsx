@@ -3,9 +3,10 @@ import NumberingSequencesSection from "./NumberingSequencesSection";
 import CuttingMarginsSection from "./CuttingMarginsSection";
 import MeasurementRulesSection from "./MeasurementRulesSection";
 import ApprovalThresholdsSection from "./ApprovalThresholdsSection";
+import MargemPrecoSection from "./MargemPrecoSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
-type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada";
+type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada" | "preco";
 
 // TÓPICO 15 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // seção 4): numeração, margem de quebra, regra de medição e alçadas de
@@ -44,6 +45,7 @@ export default async function ConfiguracoesPage({
     { data: roles },
     { data: approvalThresholds },
     { data: documentTypes },
+    { data: pricingSettings },
   ] = await Promise.all([
     supabase.from("numbering_sequences").select("*").order("document_type"),
     supabase
@@ -59,6 +61,8 @@ export default async function ConfiguracoesPage({
     // novos tipos (Compras/ADR-011, Contratos) — puxa do catálogo real
     // (next_document_number() já consulta esta mesma tabela).
     supabase.from("numbering_document_types").select("document_type"),
+    // ADR-012 v1.1 — no máximo uma linha por empresa (unique em company_id).
+    supabase.from("pricing_settings").select("id, margem_percentual").maybeSingle(),
   ]);
 
   const documentTypeKeys = Array.from(new Set((documentTypes ?? []).map((d) => d.document_type))).sort();
@@ -68,6 +72,7 @@ export default async function ConfiguracoesPage({
     { slug: "quebra", label: "Margem de quebra" },
     { slug: "medicao", label: "Regra de medição" },
     { slug: "alcada", label: "Alçada de aprovação" },
+    { slug: "preco", label: "Margem de preço" },
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "numeracao";
 
@@ -77,7 +82,7 @@ export default async function ConfiguracoesPage({
       <h1 className="mt-1 text-lg font-semibold text-text">Configurações da empresa</h1>
       <p className="mt-1 text-sm text-text">
         Recorte mínimo do M1: numeração, margem de quebra, regra de medição e alçada de
-        aprovação. Não substitui os cadastros dos módulos operacionais (item 1 do TÓPICO 15).
+        aprovação, mais a margem de preço do orçamento (ADR-012). Não substitui os cadastros dos módulos operacionais (item 1 do TÓPICO 15).
       </p>
 
       <div className="mt-6">
@@ -99,6 +104,7 @@ export default async function ConfiguracoesPage({
             canManage={!!canManage}
           />
         )}
+        {activeTab === "preco" && <MargemPrecoSection row={pricingSettings ?? null} canManage={!!canManage} />}
       </div>
     </div>
   );

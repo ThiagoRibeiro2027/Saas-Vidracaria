@@ -61,6 +61,20 @@ export async function upsertCuttingMarginAction(formData: FormData) {
   revalidatePath("/configuracoes");
 }
 
+export async function upsertMargemPrecoAction(formData: FormData) {
+  const margem = Number(formData.get("margem_percentual") ?? "");
+
+  if (Number.isNaN(margem) || margem < 0 || margem >= 100) {
+    throw new Error("A margem deve ser maior ou igual a 0 e menor que 100.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_margem_preco", { p_percentual: margem });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+}
+
 export async function upsertMeasurementRuleAction(formData: FormData) {
   const tipoItem = String(formData.get("tipo_item") ?? "").trim();
   const exigeMedicao = formData.get("exige_medicao_confirmada") === "on";
