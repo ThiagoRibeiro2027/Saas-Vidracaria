@@ -1,9 +1,10 @@
 **ADR-012 — Precificação Dimensional do Configurador**
 
 **Status:** APROVADO\
-**Versão:** 1.0\
+**Versão:** 1.1\
 **Tipo:** Architecture Decision Record (ADR)\
-**Data:** 2026-09-27\
+**Data:** 2026-09-27 (emenda v1.1 em 2026-10-03 — cálculo automático de custo e
+preço no orçamento, ver §8)\
 **Decisão:** Escopo funcional do motor de precificação dimensional para
 peças configuráveis — liga o Orçamento (Comercial) diretamente à
 composição técnica que hoje só existia do lado da Engenharia — e ordem
@@ -138,6 +139,11 @@ passa a poder ser preenchido automaticamente por essa função, em vez de
 só digitado — a formação de preço (markup) já existente atua em cima do
 que sair daqui, sem mudança nela.
 
+> **Nota (v1.1, 03/10/2026):** a premissa acima estava errada — a "formação
+> de preço (markup)" existente era só exibição de margem, não uma regra
+> que calculasse preço. Corrigido pela emenda do §8, que cria a margem por
+> empresa e o preço sugerido automático.
+
 **Fase 2 — Combinação de barras de menor custo.** Uma linha de
 composição `linear` (perfil) ganha um catálogo de comprimentos de barra
 candidatos (nova tabela — cada comprimento é um item comprável distinto,
@@ -243,7 +249,90 @@ fase:
   do lado da Engenharia, salvo o que a Fase 3 explicitamente decide
   mudar.
 
+**8. Emenda v1.1 — cálculo automático de custo e preço no orçamento
+(03/10/2026)**
+
+**8.1 O que estava errado.** A Fase 1 entregou o cálculo de custo, mas o
+fluxo real não era o do §2.6 ("caminho principal"): (a) o preço unitário
+era obrigatório para criar o item do orçamento, então o vendedor tinha de
+digitar um valor antes de qualquer cálculo; (b) as características
+(largura, altura...) e o botão "Calcular" só existiam depois de o item
+estar gravado, porque os valores só podiam ser salvos para um item
+existente; (c) o cálculo devolvia só custo de material — a "formação de
+preço (markup)" citada no §2 e na Fase 1 nunca existiu como regra, só
+como exibição derivada de margem (TÓPICO 10 §12-14). O responsável do
+produto identificou isso testando e pediu o fluxo automático: escolher a
+peça, informar as dimensões e já ver o preço final, sem cliques extras.
+
+**8.2 Decisões (aprovadas pelo responsável do produto via chat em
+03/10/2026).**
+
+- **Margem de preço por empresa.** Uma margem percentual única por
+  empresa, definida em Configurações → Margem de preço (`pricing_settings`,
+  gate `configuracoes.manage`, `0 <= margem < 100`).
+- **Fórmula.** `preço sugerido = (custo de material + custo de mão de
+  obra) / (1 - margem/100)`, arredondado a 2 casas.
+- **Fluxo na tela.** Ao escolher uma peça configurável no item do
+  orçamento, as características aparecem na hora (largura e altura
+  primeiro); custo, mão de obra e preço sugerido são recalculados
+  automaticamente conforme as dimensões são digitadas; um único botão
+  grava item, características, custos e preço numa transação.
+- **Mão de obra automática.** O custo de mão de obra da Fase 4 entra no
+  mesmo cálculo quando o item tem roteiro produtivo ativo.
+- **O servidor recalcula sempre.** Na gravação, custo de material, mão de
+  obra e preço são recalculados no banco; do navegador só vêm quantidade,
+  valores das características e, opcionalmente, um preço digitado pelo
+  vendedor. Nunca um custo. O preço digitado prevalece sobre o sugerido e
+  fica marcado na auditoria (`preco_ajustado_pelo_vendedor`).
+- **Sem preço sugerido quando o custo não é confiável** (nunca assumir zero
+  em silêncio, §2.3): característica obrigatória pendente, dimensões
+  pendentes, nenhum componente com custo, material sem histórico de
+  compra, operação sem tempo ou custo/hora, ou margem não configurada. O
+  painel diz o motivo, e o vendedor digita o preço.
+- **Custo incompleto não é gravado.** Em `orcamento_itens.custo_unitario`
+  e `custo_mao_obra` só entra custo completo; um custo parcial
+  subestimaria o custo real e distorceria a margem exibida.
+- **Correção associada.** Linha de composição linear/área sem largura ou
+  altura informada era ignorada em silêncio, e o custo parecia completo;
+  agora sinaliza "dimensões pendentes" e bloqueia a sugestão de preço.
+- **Margem exibida.** A margem mostrada na lista de itens passa a
+  considerar material + mão de obra, igual ao cálculo do preço.
+
+**8.3 O que continua fora.** Margem por peça ou família de produto
+(evolução possível, se uma margem única não servir a todos); descontos e
+arredondamento comercial do preço; recálculo automático de itens já
+gravados quando o custo de compra muda — o preço gravado nunca muda
+sozinho e só é recalculado quando um item em rascunho é reaberto e
+salvo (a Fase 3 continua cuidando do preço congelado depois da
+aprovação, §5).
+
+**8.4 Implementação.** Migrations `20261211000000_adr012_calculo_
+automatico_orcamento.sql` (margem, núcleo de cálculo reaproveitável,
+pré-cálculo `calcular_preco_configurador`, gravação atômica
+`upsert_orcamento_item_configurado`, listagem de características para o
+vendedor) e `20261211010000_fix_listar_caracteristicas_configurador_
+ambiguidade.sql`. As funções públicas antigas
+(`calcular_custo_orcamento_item`, `calcular_mao_obra_orcamento_item`)
+viram wrappers do mesmo núcleo, com resultado idêntico (teste de
+regressão). Tela: `src/app/comercial/ItemConfiguravelForm.tsx` e
+Configurações → Margem de preço. Testes: seção 65 de
+`scripts/test-pecas.mjs` (isolamento cross-tenant, injeção de
+característica alheia, acesso de `anon`, funções internas não chamáveis,
+custo incompleto, orçamento fora de rascunho) — 182/182 — e
+`scripts/test-comercial.mjs` — 87/87.
+
+**8.5 Consequências aceitas.** Além das do §6: o preço de venda passa a
+ser sugerido pelo sistema (um erro de custo ou de margem agora chega ao
+preço sem digitação), mitigado por o vendedor sempre ver o
+detalhamento e poder ajustar; e a margem única por empresa é uma
+simplificação — peças com margens muito diferentes exigirão o ajuste
+manual até existir margem por peça.
+
 **Status final: APROVADO** — aprovação explícita do responsável do
 produto em 27/09/2026, via chat, depois de revisão do texto completo
 desta ADR. As 4 fases do §4 ficam pré-autorizadas, sujeitas ao
 checkpoint por fase já descrito no §7.
+
+**Emenda v1.1:** aprovação explícita do responsável do produto em
+03/10/2026, via chat, depois de revisão do plano completo (§8), com
+checkpoint por etapa (banco, configurações, tela, documentação).
