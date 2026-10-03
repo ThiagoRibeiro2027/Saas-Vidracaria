@@ -8,6 +8,50 @@ aprovação explícita")\
 **Base documental:** PLANO DE ENTREGA — MVP DO PILOTO v1.0 (§6), ADR-002,
 ADR-004, ADR-007, Prompt TÓPICO 12/13/17/18
 
+**ATUALIZAÇÃO DE 03/10/2026 — leia antes das seções abaixo**
+
+O texto abaixo é o roteiro original de 19/09/2026 e ficou desatualizado.
+O estado verificado em 03/10/2026 (histórico de commits, migrations e
+suítes de teste executadas contra o banco real) é:
+
+- **5.1 T17 RH completo — FECHADO.** Documentos, EPI, habilitações e
+  afastamentos/férias entregues em 22-23/09; anexo do documento com upload
+  na tela entregue em 03/10. `test-rh`: 83 verificações, 0 falhas. ADR-002
+  §4.20.
+- **5.2 Fiscal completo — FECHADO PARA O PILOTO, nada a implementar.** O
+  ADR-004 §9.1/§9.3/§10 mantém o faturamento da JR Box fora do SaaS e
+  condiciona qualquer emissão a definir o cenário do cliente. O que o
+  ADR-004 pede para o piloto (§15) está entregue. `test-fiscal`: 70
+  verificações, 0 falhas. ADR-002 §4.15.
+- **5.3 T12 BI completo — RECORTE DO PILOTO FECHADO; resto ADIADO.** As
+  Fases 2 e 3 (indicadores e dashboards por área) estão entregues. O
+  responsável do produto decidiu em 03/10/2026 deixar o restante para
+  depois. ADR-002 §4.16.
+- **5.4 T18 Contratos — FECHADO**, incluindo o que o §12 do prompt deixou
+  para etapa seguinte (alçada, garantia, vínculo financeiro, alerta de
+  vencimento, anexos, gancho de assinatura). Só o histórico de aditivos
+  ficou de fora, por decisão consciente. `test-contratos`: 102
+  verificações, 0 falhas. ADR-002 §4.19.
+- **5.5 T13 Integrações — Fases 1 a 9 entregues** (central, filas, webhooks
+  de entrada e saída, bancos/boletos/PIX, exportação, importação genérica,
+  integrações internas). Conectores externos reais (ERP, cartão,
+  certificado digital) não foram verificados nesta atualização.
+- **5.6 Campos personalizados — continua sem ADR**, portanto sem
+  implementação.
+- **Seção 3 (frente de design system):** a unificação do AppShell foi
+  estendida aos demais módulos em 22/09, e a sidebar passou a navegação
+  por sub-rotas, com Estoque e Compras dentro de Suprimentos (03/10).
+  Contratos ainda usa estilos inline.
+- **Segurança (03/10):** a policy de SELECT do Storage passou a impor o
+  mesmo RBAC por entidade que a tabela `files` (migration
+  `20261210000000`).
+
+**Pendências reais hoje:** itens de go-live da seção 4 e do ROTEIRO de
+Fechamento da Fase 1 (upgrade Supabase Pro e Vercel, região da Vercel,
+residência de dados do Resend, inventário LGPD, publicação da relação de
+suboperadores, volume de obras/mês e limites de storage por plano),
+teste manual no navegador e homologação com a JR Box.
+
 **1. Por que este roteiro existe**
 
 O PLANO DE ENTREGA já define a ordem macro (M1 → M2 → M3 → M4). Este

@@ -1,7 +1,7 @@
 **ADR-002 — MVP e Escopo do Produto**
 
 **Status:** APROVADO\
-**Versão:** 2.19\
+**Versão:** 2.20\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-09 (§4.7 e §5 revisados em 2026-09-16 — ampliação de
 escopo do TÓPICO 4; §4.7 corrigido em 2026-09-17 — contradição interna
@@ -27,7 +27,8 @@ TÓPICO 13, importação genérica de dados (registro retroativo); §4.17
 revisado novamente em 2026-09-29 — Fase 9, integrações internas entre
 módulos; §4.19 acrescentado em 2026-10-03 — fechamento do TÓPICO 18,
 Contratos, registro retroativo; §4.20 acrescentado em 2026-10-03 —
-fechamento do TÓPICO 17, RH, registro retroativo)\
+fechamento do TÓPICO 17, RH, registro retroativo; §4.15 e §4.16
+revisados em 2026-10-03 — fechamento do que está pronto em Fiscal e BI)\
 **Decisão:** Definição do escopo funcional e dos limites do MVP\
 **Decisão vinculada:** ADR-003, ADR-004, ADR-005, ADR-007, ADR-008 e
 ADR-011
@@ -1011,6 +1012,26 @@ O escopo fiscal do MVP será condicionado às decisões do ADR-004.
 
 Não deverão ser criadas premissas fiscais não definidas nesse ADR.
 
+**Fechamento do Fiscal no piloto (03/10/2026 — registro; a implementação
+ocorreu em 16/09, 22/09 e 23/09/2026).** O ADR-004 v2.3 já registra que os
+critérios de aceite do §15 foram atendidos; este parágrafo só espelha o
+resultado no escopo do MVP. Está pronto, dentro do recorte do ADR-004
+§9.2: estrutura de documentos fiscais (registro, tipo, associação com
+operações internas, rastreabilidade e auditoria — 16/09), conferência com
+aprovação, rejeição e pendência, mantendo recepção e aprovação como
+processos distintos (§6 — 23/09), e reprocessamento controlado com
+idempotência (§7 — 22/09). `scripts/test-fiscal.mjs`: 70 verificações,
+0 falhas, executado contra o banco real em 03/10/2026.
+
+**Não há "Fiscal completo" a implementar no piloto:** o ADR-004 §9.1 e §9.3
+mantêm o faturamento da JR Box no sistema atual e deixam fora emissão de
+NF-e/NFS-e, cancelamento e inutilização fiscais, transmissão de produção e
+operação dependente de certificado digital. Pelo §10, habilitar emissão
+exige antes definir o cenário real do cliente (regime tributário,
+município, operações, provedor, homologação). Até essa definição, nenhuma
+emissão fiscal real deve ser construída — não por pendência de código, mas
+por decisão de escopo.
+
 **4.16 Indicadores**
 
 O MVP deverá possuir somente indicadores operacionais básicos
@@ -1154,6 +1175,19 @@ Fase 2 (KPI versionado, Cockpit Executivo, metas, construtor de
 dashboards, alertas, benchmark, Assistente Analítico, análise temporal/
 desvios/impacto, rentabilidade em geral) — esta fase não abre nada
 disso, só aprofunda §14-20 dentro do que o schema atual já sustenta.
+
+**Fechamento do BI no piloto (03/10/2026 — registro).** Está pronto o
+recorte das Fases 2 e 3 acima: os quatro indicadores simples e o filtro de
+período personalizado (Fase 2), e os dashboards por área com dados já
+existentes — Comercial, PCP/Produção, Estoque, Suprimentos, Qualidade,
+Expedição e Financeiro (Fase 3). Tudo é leitura agregada, sem tabela nova.
+
+**O restante do TÓPICO 12 continua fora e sem aprovação**, conforme os
+parágrafos das Fases 2 e 3. O responsável do produto decidiu em
+03/10/2026 **adiar o BI para depois do piloto**; qualquer nova fase
+(por exemplo comparação com período anterior, drill-down, desvios, metas,
+alertas ou relatórios) exige nova decisão registrada aqui, como as Fases 2
+e 3, e não deve ser antecipada por interpretação de outros documentos.
 
 **4.17 Integrações**
 
