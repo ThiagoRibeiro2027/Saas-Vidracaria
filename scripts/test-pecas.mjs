@@ -1379,6 +1379,84 @@ async function main() {
     check("orçamento cancelado (fora de rascunho) não aceita gravação de item configurado", !!eAposCancelado);
   }
 
+  console.log("\n66. ADR-012 v1.1 — unidade das dimensões (mm, cm, m) lida do cadastro da característica");
+  {
+    async function registrarCustoCompra(companyId, solicitanteId, itemId, custoUnitario, fornecedorId) {
+      const { data: sc } = await admin.from("solicitacoes_compra").insert({ company_id: companyId, numero: `SC-V12-${itemId.slice(0, 8)}`, solicitante_id: solicitanteId, status: "aberta" }).select().single();
+      const { data: sci } = await admin.from("solicitacao_compra_itens").insert({ company_id: companyId, solicitacao_compra_id: sc.id, item_id: itemId, quantidade: 100 }).select().single();
+      const { data: cot } = await admin.from("cotacoes").insert({ company_id: companyId, numero: `COT-V12-${itemId.slice(0, 8)}`, solicitacao_compra_id: sc.id, status: "selecionada" }).select().single();
+      const { data: ci } = await admin.from("cotacao_itens").insert({ company_id: companyId, cotacao_id: cot.id, solicitacao_compra_item_id: sci.id }).select().single();
+      const { data: pc } = await admin.from("pedidos_compra").insert({ company_id: companyId, numero: `PC-V12-${itemId.slice(0, 8)}`, cotacao_id: cot.id, pessoa_id: fornecedorId, status: "confirmado" }).select().single();
+      await admin.from("pedido_compra_itens").insert({ company_id: companyId, pedido_compra_id: pc.id, cotacao_item_id: ci.id, item_id: itemId, quantidade: 100, preco_unitario: custoUnitario, custo_unitario: custoUnitario });
+    }
+    const novoItem = async (codigo, descricao, tipo, classificacao, unidade) =>
+      (await admTenant.client.rpc("upsert_item", { p_id: null, p_codigo: codigo, p_descricao: descricao, p_tipo: tipo, p_classificacao: classificacao, p_unidade_principal: unidade, p_situacao: "ativo" })).data;
+
+    const { data: fornecedorRow } = await admin.from("pessoas").select("id").eq("company_id", admTenant.company.id).eq("nome", "Fornecedor ADR012 Teste").single();
+    const { data: clienteRow } = await admin.from("pessoas").select("id").eq("company_id", admTenant.company.id).eq("nome", "Cliente ADR012 Teste").single();
+    const perfilId = await novoItem("PERFIL-V12", "Perfil v1.2", "materia_prima", "perfil", "M");
+    const vidroId = await novoItem("VIDRO-V12", "Vidro v1.2", "materia_prima", "vidro", "M2");
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, perfilId, 25.5, fornecedorRow.id);
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, vidroId, 180.0, fornecedorRow.id);
+
+    // Peça com perfil linear + vidro por área (sem perda) e dimensões na unidade informada.
+    // 2 m x 1,5 m: perímetro 7 m x 25,50 = 178,50; área 3 m² x 180 = 540,00 => material 718,50.
+    async function criarPecaDim(sufixo, unidade) {
+      const itemId = await novoItem(`JAN-${sufixo}-V12`, `Janela ${sufixo} v1.2`, "produto_acabado", "janela", "UN");
+      const { data: pecaId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemId, p_descricao_tecnica: null });
+      const { data: cL } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaId, p_nome: "largura", p_tipo: "numero", p_unidade: unidade, p_opcoes: null, p_obrigatoria: true });
+      const { data: cA } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaId, p_nome: "altura", p_tipo: "numero", p_unidade: unidade, p_opcoes: null, p_obrigatoria: true });
+      await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: cL, p_papel: "largura" });
+      await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: cA, p_papel: "altura" });
+      const { data: compP } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaId, material_item_id: perfilId, quantidade_por_unidade: 1 }).select().single();
+      const { data: compV } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaId, material_item_id: vidroId, quantidade_por_unidade: 1 }).select().single();
+      await admTenant.client.rpc("definir_tipo_calculo_composicao", { p_composicao_id: compP.id, p_tipo_calculo: "linear", p_percentual_perda: 0 });
+      await admTenant.client.rpc("definir_tipo_calculo_composicao", { p_composicao_id: compV.id, p_tipo_calculo: "area", p_percentual_perda: 0 });
+      return { itemId, cL, cA };
+    }
+    const prever = (p, largura, altura) =>
+      admTenant.client.rpc("calcular_preco_configurador", { p_item_id: p.itemId, p_valores: { [p.cL]: { n: largura }, [p.cA]: { n: altura } } }).then((r) => r.data);
+
+    const pM = await criarPecaDim("M", "m");
+    const pCm = await criarPecaDim("CM", "cm");
+    const pMaiusc = await criarPecaDim("MAIUSC", "MM");
+    const pPol = await criarPecaDim("POL", "pol");
+    const pVazia = await criarPecaDim("VAZIA", null);
+
+    const calcM = await prever(pM, 2, 1.5);
+    check("unidade 'm': 2 m x 1,5 m dá material 718,50 (antes dava ~0,00 por supor mm)", calcM?.custo_material === 718.5 && calcM?.material?.unidade_dimensao_invalida === false);
+    const calcCm = await prever(pCm, 200, 150);
+    check("unidade 'cm': 200 cm x 150 cm dá o mesmo material, 718,50", calcCm?.custo_material === 718.5);
+    const calcMaiusc = await prever(pMaiusc, 2000, 1500);
+    check("unidade 'MM' (maiúscula) é aceita e dá 718,50", calcMaiusc?.custo_material === 718.5);
+    check("preço sugerido segue a margem de 30% (718,50 / 0,70 = 1026,43)", calcM?.preco_sugerido === 1026.43 && calcM?.motivo_sem_preco === null);
+
+    const calcPol = await prever(pPol, 2, 1.5);
+    check("unidade desconhecida ('pol'): sinaliza, não calcula as linhas dimensionais e não sugere preço", calcPol?.material?.unidade_dimensao_invalida === true
+      && calcPol?.motivo_sem_preco === "unidade_dimensao_invalida" && calcPol?.preco_sugerido === null && calcPol?.custo_completo === false && calcPol?.custo_material === 0);
+    const calcVazia = await prever(pVazia, 2, 1.5);
+    check("unidade vazia: mesmo bloqueio (não adivinha mm)", calcVazia?.motivo_sem_preco === "unidade_dimensao_invalida" && calcVazia?.preco_sugerido === null);
+
+    const { data: orcamentoId } = await admTenant.client.rpc("upsert_orcamento", { p_id: null, p_pessoa_id: clienteRow.id, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null });
+    const { data: orcItemM, error: eSalvarM } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: pM.itemId, p_quantidade: 1, p_valores: { [pM.cL]: { n: 2 }, [pM.cA]: { n: 1.5 } }, p_preco_override: null,
+    });
+    const { data: rowM } = await admin.from("orcamento_itens").select("preco_unitario, custo_unitario").eq("id", orcItemM).single();
+    check("grava item de peça em metros com preço 1026,43 e custo 718,50", !eSalvarM && Number(rowM?.preco_unitario) === 1026.43 && Number(rowM?.custo_unitario) === 718.5);
+    const { data: antigaM } = await admTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItemM });
+    check("regressão: calcular_custo_orcamento_item (gravado) também respeita a unidade (718,50)", antigaM?.custo_total === 718.5);
+
+    const { error: eSalvarPol } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: pPol.itemId, p_quantidade: 1, p_valores: { [pPol.cL]: { n: 2 }, [pPol.cA]: { n: 1.5 } }, p_preco_override: null,
+    });
+    check("unidade inválida sem preço digitado bloqueia a gravação, dizendo o motivo", !!eSalvarPol && /unidade/i.test(eSalvarPol.message));
+    const { data: orcItemPol, error: eSalvarPolOverride } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: pPol.itemId, p_quantidade: 1, p_valores: { [pPol.cL]: { n: 2 }, [pPol.cA]: { n: 1.5 } }, p_preco_override: 500,
+    });
+    const { data: rowPol } = await admin.from("orcamento_itens").select("preco_unitario, custo_unitario").eq("id", orcItemPol).single();
+    check("com preço digitado grava, e o custo (incompleto por unidade inválida) fica nulo", !eSalvarPolOverride && Number(rowPol?.preco_unitario) === 500 && rowPol?.custo_unitario === null);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

@@ -73,6 +73,8 @@ function mensagemSemPreco(calculo: Calculo): string | null {
       return `Informe: ${(calculo.caracteristicas_pendentes ?? []).join(", ")}.`;
     case "dimensoes_pendentes":
       return "Informe largura e altura para calcular.";
+    case "unidade_dimensao_invalida":
+      return "A unidade de largura/altura desta peça precisa ser mm, cm ou m (corrija no cadastro da peça) — digite o preço manualmente.";
     case "sem_componentes_custeados":
       return "Nenhum componente da peça tem custo — digite o preço manualmente.";
     case "custo_material_incompleto":
@@ -264,7 +266,6 @@ export default function ItemConfiguravelForm({
                 <Input
                   type={d.tipo === "numero" ? "number" : "text"}
                   step={d.tipo === "numero" ? "any" : undefined}
-                  min={d.tipo === "numero" && d.papel_dimensional ? "1" : undefined}
                   value={digitado[d.id] ?? ""}
                   onChange={(e) => alterarValor(d.id, e.target.value)}
                   className="w-28"

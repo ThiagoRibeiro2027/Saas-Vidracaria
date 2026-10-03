@@ -318,8 +318,8 @@ regressão). Tela: `src/app/comercial/ItemConfiguravelForm.tsx` e
 Configurações → Margem de preço. Testes: seção 65 de
 `scripts/test-pecas.mjs` (isolamento cross-tenant, injeção de
 característica alheia, acesso de `anon`, funções internas não chamáveis,
-custo incompleto, orçamento fora de rascunho) — 182/182 — e
-`scripts/test-comercial.mjs` — 87/87.
+custo incompleto, orçamento fora de rascunho) e seção 66 (unidade das
+dimensões, §8.6) — 192/192 — e `scripts/test-comercial.mjs` — 87/87.
 
 **8.5 Consequências aceitas.** Além das do §6: o preço de venda passa a
 ser sugerido pelo sistema (um erro de custo ou de margem agora chega ao
@@ -327,6 +327,36 @@ preço sem digitação), mitigado por o vendedor sempre ver o
 detalhamento e poder ajustar; e a margem única por empresa é uma
 simplificação — peças com margens muito diferentes exigirão o ajuste
 manual até existir margem por peça.
+
+**8.6 Correção de unidade das dimensões (03/10/2026).** Testando na tela
+com o catálogo real da JR Box, apareceu que o cálculo da Fase 1 supunha
+largura e altura sempre em milímetros (perímetro = 2 × (L + A) ÷ 1.000;
+área = L × A ÷ 1.000.000), enquanto as peças `BOX-COR-VID`, `JAN-ALU-2F`
+e `PORT-VID-TEMP` têm dimensões em **metros**. Com 2 m × 1,5 m o sistema
+calculava 0,00756 m de perfil e 0,00000315 m² de vidro — 1.000× e
+1.000.000× abaixo do real. Não houve preço errado gravado: esses materiais
+ainda não tinham custo, a margem não estava configurada e nenhum orçamento
+real tinha custo calculado por esse motor. Decisão (aprovada pelo
+responsável do produto em 03/10/2026):
+
+- A unidade é lida de `peca_caracteristicas.unidade` da largura e da
+  altura (`mm`, `cm` ou `m`, sem diferenciar maiúscula de minúscula) e as
+  dimensões são convertidas para metros antes do cálculo. Para `mm` o
+  resultado é idêntico ao anterior.
+- Unidade vazia ou desconhecida **não é adivinhada**: as linhas por
+  perímetro/área ficam de fora, o cálculo sinaliza
+  `unidade_dimensao_invalida` e o preço não é sugerido (motivo
+  `unidade_dimensao_invalida`); o vendedor digita o preço e o custo
+  incompleto não é gravado, como nos demais casos do §8.2.
+- Defeito de tela corrigido junto: os campos de dimensão tinham mínimo 1,
+  o que bloqueava valores como 0,8 m.
+- Fica a cargo do cadastro da peça manter a unidade correta; peças
+  cadastradas sem unidade (ou com unidade fora de mm/cm/m) passam a avisar
+  em vez de calcular errado.
+
+Implementação: migration `20261212000000_adr012_unidade_dimensoes.sql`
+(recria `_calcular_custo_peca`, `_calcular_preco_configurador` e
+`upsert_orcamento_item_configurado`).
 
 **Status final: APROVADO** — aprovação explícita do responsável do
 produto em 27/09/2026, via chat, depois de revisão do texto completo
