@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { criarRegraPecaAction, desativarRegraPecaAction } from "./actions";
-import { hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 
 type Caracteristica = { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean };
 type MaterialOpcao = { id: string; label: string };
@@ -65,76 +68,74 @@ export default function RegrasPeca({
   const regrasInativas = regras.filter((r) => !r.ativo);
 
   return (
-    <div style={{ marginTop: "10px", borderTop: "1px solid #eef1ef", paddingTop: "8px" }}>
-      <p style={{ ...hintStyle, margin: "0 0 4px", fontWeight: 600, color: "#3e4d49" }}>
+    <div className="mt-2.5 border-t border-border-subtle pt-2">
+      <p className="mb-1 text-xs font-semibold text-text">
         Regras (motor básico) — &quot;o sistema sugere, a Engenharia decide&quot;
       </p>
 
       {regrasAtivas.length === 0 ? (
-        <p style={hintStyle}>Nenhuma regra ativa ainda.</p>
+        <p className="text-xs text-text-muted">Nenhuma regra ativa ainda.</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", marginBottom: "6px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-              <th style={thStyle}>Condição</th>
-              <th style={thStyle}>Ação</th>
-              <th style={thStyle}>Versão</th>
-              <th style={thStyle}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {regrasAtivas.map((r) => (
-              <tr key={r.id} style={{ borderBottom: "1px solid #f4f6f5" }}>
-                <td style={tdStyle}>
-                  {r.caracteristica_nome} {r.operador} {r.valor_comparacao_numero ?? r.valor_comparacao_texto}
-                </td>
-                <td style={tdStyle}>
-                  {ACAO_LABEL[r.acao]} {materialLabel(r.acao_material_item_id)}
-                  {r.acao_quantidade != null ? ` → ${r.acao_quantidade}` : ""}
-                </td>
-                <td style={tdStyle}>v{r.versao}</td>
-                <td style={tdStyle}>
-                  <form action={desativarRegraPecaAction}>
-                    <input type="hidden" name="id" value={r.id} />
-                    <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#9b2c2c" }}>
-                      Desativar
-                    </button>
-                  </form>
-                </td>
+        <div className="mb-1.5 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Condição</Th>
+                <Th>Ação</Th>
+                <Th>Versão</Th>
+                <Th />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {regrasAtivas.map((r) => (
+                <tr key={r.id}>
+                  <Td>
+                    {r.caracteristica_nome} {r.operador} {r.valor_comparacao_numero ?? r.valor_comparacao_texto}
+                  </Td>
+                  <Td>
+                    {ACAO_LABEL[r.acao]} {materialLabel(r.acao_material_item_id)}
+                    {r.acao_quantidade != null ? ` → ${r.acao_quantidade}` : ""}
+                  </Td>
+                  <Td>v{r.versao}</Td>
+                  <Td>
+                    <form action={desativarRegraPecaAction}>
+                      <input type="hidden" name="id" value={r.id} />
+                      <Button type="submit" variant="danger" size="sm">
+                        Desativar
+                      </Button>
+                    </form>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
       )}
 
       {regrasInativas.length > 0 && (
-        <p style={{ ...hintStyle, fontSize: "10px" }}>
+        <p className="text-[11px] text-text-muted">
           {regrasInativas.length} regra{regrasInativas.length > 1 ? "s" : ""} desativada{regrasInativas.length > 1 ? "s" : ""} (histórico preservado).
         </p>
       )}
 
       {!mostrarNovaRegra ? (
-        <button
-          type="button"
-          onClick={() => setMostrarNovaRegra(true)}
-          style={{ ...buttonStyle, fontSize: "11px", padding: "3px 8px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
-        >
+        <Button type="button" variant="secondary" size="sm" onClick={() => setMostrarNovaRegra(true)}>
           Nova regra
-        </button>
+        </Button>
       ) : (
         <form
           action={criarRegraPecaAction}
           onSubmit={() => setMostrarNovaRegra(false)}
-          style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}
+          className="flex flex-wrap items-center gap-1.5"
         >
           <input type="hidden" name="peca_id" value={pecaId} />
           <input type="hidden" name="tipo" value={caracteristicaSelecionada?.tipo ?? ""} />
-          <select
+          <Select
             name="caracteristica_id"
             required
             value={caracteristicaSelecionadaId}
             onChange={(e) => setCaracteristicaSelecionadaId(e.target.value)}
-            style={{ ...inputStyle, width: "110px" }}
+            className="w-28"
           >
             <option value="">se...</option>
             {caracteristicas.map((c) => (
@@ -142,62 +143,58 @@ export default function RegrasPeca({
                 {c.nome}
               </option>
             ))}
-          </select>
-          <select name="operador" required style={{ ...inputStyle, width: "60px" }}>
+          </Select>
+          <Select name="operador" required className="w-16">
             {operadoresDisponiveis.map((op) => (
               <option key={op} value={op}>
                 {op}
               </option>
             ))}
-          </select>
+          </Select>
           {caracteristicaSelecionada?.tipo === "opcao" ? (
-            <select name="valor_comparacao" required style={{ ...inputStyle, width: "110px" }}>
+            <Select name="valor_comparacao" required className="w-28">
               {(caracteristicaSelecionada.opcoes ?? []).map((o) => (
                 <option key={o} value={o}>
                   {o}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : (
-            <input
+            <Input
               name="valor_comparacao"
               type={caracteristicaSelecionada?.tipo === "numero" ? "number" : "text"}
               step="any"
               placeholder="valor"
               required
-              style={{ ...inputStyle, width: "90px" }}
+              className="w-24"
             />
           )}
-          <span style={{ fontSize: "11px", color: "#6b7a75" }}>→</span>
-          <select name="acao" value={acaoSelecionada} onChange={(e) => setAcaoSelecionada(e.target.value)} style={{ ...inputStyle, width: "150px" }}>
+          <span className="text-xs text-text-muted">→</span>
+          <Select name="acao" value={acaoSelecionada} onChange={(e) => setAcaoSelecionada(e.target.value)} className="w-40">
             {ACOES.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
-          </select>
-          <select name="acao_material_item_id" required style={{ ...inputStyle, width: "180px" }}>
+          </Select>
+          <Select name="acao_material_item_id" required className="w-44">
             <option value="">material...</option>
             {materiais.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
               </option>
             ))}
-          </select>
+          </Select>
           {acaoSelecionada !== "remover_material" && (
-            <input name="acao_quantidade" type="number" step="0.0001" min="0.0001" placeholder="qtd." required style={{ ...inputStyle, width: "70px" }} />
+            <Input name="acao_quantidade" type="number" step="0.0001" min="0.0001" placeholder="qtd." required className="w-20" />
           )}
-          <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "140px" }} />
-          <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "3px 8px" }}>
+          <Input name="motivo" placeholder="motivo (opcional)" className="w-36" />
+          <Button type="submit" variant="primary" size="sm">
             Criar regra
-          </button>
-          <button
-            type="button"
-            onClick={() => setMostrarNovaRegra(false)}
-            style={{ ...buttonStyle, fontSize: "11px", padding: "3px 8px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
-          >
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => setMostrarNovaRegra(false)}>
             Cancelar
-          </button>
+          </Button>
         </form>
       )}
     </div>

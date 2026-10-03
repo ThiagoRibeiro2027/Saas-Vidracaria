@@ -12,7 +12,6 @@ import {
   calcularCustoOrcamentoItemAction,
   calcularMaoObraOrcamentoItemAction,
 } from "./actions";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -113,20 +112,12 @@ export default function OrcamentosSection({
   const obrasAtivas = obras.filter((o) => o.situacao === "ativo");
   const itensAtivos = itens.filter((i) => i.situacao === "ativo");
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [modal, setModal] = useState<{ mode: "create" } | { mode: "edit"; orcamento: Orcamento } | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [viewId, setViewId] = useState<string | null>(null);
 
-  const selected = orcamentos.find((o) => o.id === selectedId) ?? null;
-  const editavelSelecionado = canManage && selected?.status === "rascunho";
-  const podeCancelarSelecionado = canManage && !!selected && (selected.status === "rascunho" || selected.status === "aprovado");
-
-  function closeModal() {
-    setModal(null);
-  }
-
-  function selectRow(id: string) {
-    setSelectedId((prev) => (prev === id ? null : id));
-  }
+  const viewing = orcamentos.find((o) => o.id === viewId) ?? null;
+  const viewingEditavel = canManage && viewing?.status === "rascunho";
+  const viewingPodeCancelar = canManage && !!viewing && (viewing.status === "rascunho" || viewing.status === "aprovado");
 
   return (
     <section>
@@ -136,45 +127,14 @@ export default function OrcamentosSection({
         de preços, descontos, versionamento ou proposta formal. Orçamento aprovado fica pronto
         para o módulo de Pedidos (TÓPICO 3) converter — ainda não implementado. Um orçamento em
         rascunho pode ser editado livremente; depois de decidido, é terminal (corrigir = cancelar
-        e criar outro).
+        e criar outro). Clique numa linha para abrir, revisar e editar.
       </p>
 
       {canManage && (
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <Button type="button" variant="primary" onClick={() => setModal({ mode: "create" })}>
+        <div className="mb-3">
+          <Button type="button" variant="primary" onClick={() => setCreateOpen(true)}>
             + Incluir
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={!editavelSelecionado}
-            onClick={() => selected && setModal({ mode: "edit", orcamento: selected })}
-          >
-            Editar
-          </Button>
-          <form action={decidirOrcamentoAction}>
-            <input type="hidden" name="id" value={selected?.id ?? ""} />
-            <input type="hidden" name="decisao" value="aprovado" />
-            <Button type="submit" variant="primary" disabled={!editavelSelecionado}>
-              Aprovar
-            </Button>
-          </form>
-          <form action={decidirOrcamentoAction}>
-            <input type="hidden" name="id" value={selected?.id ?? ""} />
-            <input type="hidden" name="decisao" value="rejeitado" />
-            <Button type="submit" variant="danger" disabled={!editavelSelecionado}>
-              Rejeitar
-            </Button>
-          </form>
-          <form action={cancelarOrcamentoAction}>
-            <input type="hidden" name="id" value={selected?.id ?? ""} />
-            <Button type="submit" variant="danger" disabled={!podeCancelarSelecionado}>
-              Cancelar
-            </Button>
-          </form>
-          <span className="ml-auto text-xs text-text-muted">
-            {selected ? `${selected.numero} selecionado` : "nenhum orçamento selecionado"}
-          </span>
         </div>
       )}
 
@@ -194,8 +154,8 @@ export default function OrcamentosSection({
             {orcamentos.map((orc) => (
               <tr
                 key={orc.id}
-                onClick={() => selectRow(orc.id)}
-                className={`cursor-pointer ${selectedId === orc.id ? "bg-primary-soft" : "hover:bg-page-bg"}`}
+                onClick={() => setViewId(orc.id)}
+                className="cursor-pointer hover:bg-page-bg"
               >
                 <Td className="font-medium text-text">{orc.numero}</Td>
                 <Td>{pessoaNome(orc.pessoa_id)}</Td>
@@ -218,29 +178,41 @@ export default function OrcamentosSection({
         </Table>
       </div>
 
-      {selected && (
-        <OrcamentoDetalhe
-          orcamento={selected}
-          orcItens={itensPorOrcamento.get(selected.id) ?? []}
-          editavel={!!editavelSelecionado}
-          canManage={canManage}
-          itensAtivos={itensAtivos}
-          itens={itens}
-          pecaIdPorItemId={pecaIdPorItemId}
-          caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
-          oportunidadesAbertas={oportunidadesAbertas.filter((o) => o.pessoa_id === selected.pessoa_id)}
+      <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Novo orçamento">
+        <OrcamentoForm
+          clientesElegiveis={clientesElegiveis}
+          obrasAtivas={obrasAtivas}
+          todasPessoas={todasPessoas}
+          obras={obras}
+          onSuccess={() => setCreateOpen(false)}
         />
-      )}
+      </Modal>
 
-      <Modal open={modal !== null} onClose={closeModal} title={modal?.mode === "edit" ? "Editar orçamento" : "Novo orçamento"}>
-        {modal && (
-          <OrcamentoForm
-            orcamento={modal.mode === "edit" ? modal.orcamento : undefined}
+      <Modal
+        open={viewing !== null}
+        onClose={() => setViewId(null)}
+        title={viewing ? `Orçamento ${viewing.numero}` : "Orçamento"}
+        size="lg"
+      >
+        {viewing && (
+          <OrcamentoReview
+            orcamento={viewing}
+            total={totais.get(viewing.id) ?? 0}
+            editavel={!!viewingEditavel}
+            podeCancelar={!!viewingPodeCancelar}
+            canManage={canManage}
+            orcItens={itensPorOrcamento.get(viewing.id) ?? []}
+            itensAtivos={itensAtivos}
+            itens={itens}
+            pecaIdPorItemId={pecaIdPorItemId}
+            caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
+            oportunidadesAbertas={oportunidadesAbertas.filter((o) => o.pessoa_id === viewing.pessoa_id)}
             clientesElegiveis={clientesElegiveis}
             obrasAtivas={obrasAtivas}
             todasPessoas={todasPessoas}
             obras={obras}
-            onSuccess={closeModal}
+            pessoaNome={pessoaNome}
+            obraNome={obraNome}
           />
         )}
       </Modal>
@@ -347,30 +319,96 @@ function OrcamentoForm({
   );
 }
 
-function OrcamentoDetalhe({
+// Modal de revisão aberto ao clicar numa linha da lista — cabeçalho
+// (editável só em rascunho), itens e decisão, tudo num só lugar em vez de
+// espalhado pela página. Fica aberto depois de Aprovar/Rejeitar/Cancelar
+// (o conteúdo se atualiza sozinho com o novo status, já que `orcamento`
+// vem de `orcamentos.find(...)` no componente pai) — quem revisa decide
+// quando fechar.
+function OrcamentoReview({
   orcamento,
-  orcItens,
+  total,
   editavel,
+  podeCancelar,
   canManage,
+  orcItens,
   itensAtivos,
   itens,
   pecaIdPorItemId,
   caracteristicasPorOrcamentoItem,
   oportunidadesAbertas,
+  clientesElegiveis,
+  obrasAtivas,
+  todasPessoas,
+  obras,
+  pessoaNome,
+  obraNome,
 }: {
   orcamento: Orcamento;
-  orcItens: OrcamentoItem[];
+  total: number;
   editavel: boolean;
+  podeCancelar: boolean;
   canManage: boolean;
+  orcItens: OrcamentoItem[];
   itensAtivos: Item[];
   itens: Item[];
   pecaIdPorItemId: Map<string, string>;
   caracteristicasPorOrcamentoItem: Map<string, Caracteristica[]>;
   oportunidadesAbertas: OportunidadeResumo[];
+  clientesElegiveis: Pessoa[];
+  obrasAtivas: Obra[];
+  todasPessoas: Pessoa[];
+  obras: Obra[];
+  pessoaNome: (id: string) => string;
+  obraNome: (id: string | null) => string;
 }) {
+  const origemOportunidade = orcamento.oportunidade_id
+    ? oportunidadesAbertas.find((o) => o.id === orcamento.oportunidade_id)?.descricao ?? orcamento.oportunidade_id
+    : null;
+
   return (
-    <Card padding="xs" className="mt-3">
-      <strong className="text-sm text-text">Itens do orçamento {orcamento.numero}</strong>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <Badge variant={STATUS_TONE[orcamento.status]}>{STATUS_LABEL[orcamento.status]}</Badge>
+        <span className="text-text-muted">{orcamento.data_orcamento}</span>
+        <span className="ml-auto text-sm font-semibold text-text">{currency(total)}</span>
+      </div>
+
+      {editavel ? (
+        <OrcamentoForm
+          orcamento={orcamento}
+          clientesElegiveis={clientesElegiveis}
+          obrasAtivas={obrasAtivas}
+          todasPessoas={todasPessoas}
+          obras={obras}
+          onSuccess={() => {}}
+        />
+      ) : (
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+          <div>
+            <dt className="text-text-muted">Cliente</dt>
+            <dd className="text-text">{pessoaNome(orcamento.pessoa_id)}</dd>
+          </div>
+          <div>
+            <dt className="text-text-muted">Obra</dt>
+            <dd className="text-text">{obraNome(orcamento.obra_id)}</dd>
+          </div>
+          <div>
+            <dt className="text-text-muted">Validade</dt>
+            <dd className="text-text">{orcamento.validade ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-text-muted">Condição comercial</dt>
+            <dd className="text-text">{orcamento.condicao_comercial ?? "—"}</dd>
+          </div>
+          {orcamento.observacoes && (
+            <div className="col-span-2">
+              <dt className="text-text-muted">Observações</dt>
+              <dd className="text-text">{orcamento.observacoes}</dd>
+            </div>
+          )}
+        </dl>
+      )}
 
       {editavel && (
         <OportunidadeVinculoForm
@@ -379,8 +417,11 @@ function OrcamentoDetalhe({
           oportunidades={oportunidadesAbertas}
         />
       )}
+      {!editavel && origemOportunidade && (
+        <p className="text-xs text-text-muted">Origem: oportunidade {origemOportunidade}</p>
+      )}
 
-      <div className="mt-2 overflow-x-auto">
+      <div className="overflow-x-auto">
         <Table>
           <thead>
             <tr>
@@ -417,10 +458,52 @@ function OrcamentoDetalhe({
                 caracteristicas={[]}
               />
             )}
+            {!editavel && orcItens.length === 0 && (
+              <tr>
+                <Td colSpan={canManage ? 5 : 4} className="text-text-muted">
+                  Nenhum item.
+                </Td>
+              </tr>
+            )}
           </tbody>
         </Table>
       </div>
-    </Card>
+
+      {canManage && orcamento.status === "rascunho" && (
+        <div className="flex gap-1.5">
+          <form action={decidirOrcamentoAction}>
+            <input type="hidden" name="id" value={orcamento.id} />
+            <input type="hidden" name="decisao" value="aprovado" />
+            <Button type="submit" variant="primary">
+              Aprovar
+            </Button>
+          </form>
+          <form action={decidirOrcamentoAction}>
+            <input type="hidden" name="id" value={orcamento.id} />
+            <input type="hidden" name="decisao" value="rejeitado" />
+            <Button type="submit" variant="danger">
+              Rejeitar
+            </Button>
+          </form>
+          <form action={cancelarOrcamentoAction}>
+            <input type="hidden" name="id" value={orcamento.id} />
+            <Button type="submit" variant="danger">
+              Cancelar
+            </Button>
+          </form>
+        </div>
+      )}
+      {canManage && !editavel && podeCancelar && (
+        <div className="flex gap-1.5">
+          <form action={cancelarOrcamentoAction}>
+            <input type="hidden" name="id" value={orcamento.id} />
+            <Button type="submit" variant="danger">
+              Cancelar
+            </Button>
+          </form>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -436,7 +519,7 @@ function OportunidadeVinculoForm({
   if (oportunidadeAtualId) {
     const op = oportunidades.find((o) => o.id === oportunidadeAtualId);
     return (
-      <p className="mt-1.5 text-xs text-text-muted">
+      <p className="text-xs text-text-muted">
         Origem: oportunidade {op?.descricao ?? oportunidadeAtualId}
       </p>
     );
@@ -444,7 +527,7 @@ function OportunidadeVinculoForm({
   if (oportunidades.length === 0) return null;
 
   return (
-    <form action={vincularOportunidadeOrcamentoAction} className="mt-1.5 flex flex-wrap items-center gap-1.5">
+    <form action={vincularOportunidadeOrcamentoAction} className="flex flex-wrap items-center gap-1.5">
       <input type="hidden" name="orcamento_id" value={orcamentoId} />
       <Select name="oportunidade_id" defaultValue="" required className="min-w-40">
         <option value="" disabled>

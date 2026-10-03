@@ -16,7 +16,12 @@ import {
   definirComprimentoBarraAction,
   removerComprimentoBarraAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 import RegrasPeca from "./RegrasPeca";
 
 type Item = { id: string; codigo: string; descricao: string; tipo: string; unidade_principal: string };
@@ -105,8 +110,8 @@ export default function PecasSection({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Peças e composição de materiais</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Peças e composição de materiais</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Uma peça é um item do catálogo (tipo componente ou produto acabado); a composição é a lista
         de perfis/vidro/acessórios/insumos — ou de outra peça já cadastrada, como subconjunto — e a
         quantidade necessária por 1 unidade da peça. Toda mudança na composição gera uma revisão
@@ -114,150 +119,139 @@ export default function PecasSection({
       </p>
 
       {canManage && (
-        <form
-          action={criarPecaAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "16px" }}
-        >
-          <select name="item_id" required style={{ ...inputStyle, width: "260px" }}>
+        <form action={criarPecaAction} className="mt-3 flex flex-wrap items-center gap-1.5">
+          <Select name="item_id" required className="w-64">
             <option value="">Selecione o item (componente/produto acabado)...</option>
             {itensDisponiveisParaPeca.map((it) => (
               <option key={it.id} value={it.id}>
                 {it.codigo} — {it.descricao}
               </option>
             ))}
-          </select>
-          <input name="descricao_tecnica" placeholder="descrição técnica (opcional)" style={{ ...inputStyle, width: "220px" }} />
-          <button type="submit" style={buttonStyle}>
+          </Select>
+          <Input name="descricao_tecnica" placeholder="descrição técnica (opcional)" className="w-56" />
+          <Button type="submit" variant="primary">
             Cadastrar peça
-          </button>
+          </Button>
         </form>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      <div className="mt-4 flex flex-col gap-4">
         {pecas.map((p) => {
           const linhas = composicaoPorPeca.get(p.id) ?? [];
           // Subconjunto não pode ser a própria peça (o backend trava ciclo
           // indireto também — isso aqui é só conveniência de UI).
           const pecasComoSubconjunto = pecas.filter((sp) => sp.situacao === "ativo" && sp.id !== p.id);
           return (
-            <div key={p.id} style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px", opacity: p.situacao === "ativo" ? 1 : 0.55 }}>
-              <div style={{ display: "flex", gap: "8px", alignItems: "baseline", fontSize: "13px" }}>
-                <strong>{itemLabel(p.item_id)}</strong>
-                <span style={{ color: p.situacao === "ativo" ? "#1f5d57" : "#6b7a75", fontFamily: "monospace", fontSize: "11px" }}>
+            <Card key={p.id} padding="xs" className={p.situacao === "ativo" ? "" : "opacity-55"}>
+              <div className="flex items-baseline gap-2 text-sm">
+                <strong className="text-text">{itemLabel(p.item_id)}</strong>
+                <Badge variant={p.situacao === "ativo" ? "success" : "neutral"}>
                   {p.situacao === "ativo" ? "Ativa" : "Inativa"}
-                </span>
-                <span style={{ color: "#6b7a75", fontSize: "11px" }}>rev. {p.revisao_atual}</span>
+                </Badge>
+                <span className="text-xs text-text-muted">rev. {p.revisao_atual}</span>
                 {canManage && (
                   <form action={p.situacao === "ativo" ? inativarPecaAction : reativarPecaAction}>
                     <input type="hidden" name="id" value={p.id} />
-                    <button
-                      type="submit"
-                      style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: p.situacao === "ativo" ? "#6b7a75" : "#1f5d57" }}
-                    >
+                    <Button type="submit" variant={p.situacao === "ativo" ? "danger" : "primary"} size="sm">
                       {p.situacao === "ativo" ? "Inativar" : "Reativar"}
-                    </button>
+                    </Button>
                   </form>
                 )}
               </div>
-              {p.descricao_tecnica && <p style={{ ...hintStyle, margin: "4px 0" }}>{p.descricao_tecnica}</p>}
+              {p.descricao_tecnica && <p className="mt-1 text-xs text-text-muted">{p.descricao_tecnica}</p>}
 
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginTop: "6px" }}>
-                <thead>
-                  <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                    <th style={thStyle}>Material</th>
-                    <th style={thStyle}>Qtd. por unidade</th>
-                    <th style={thStyle}>Observação</th>
-                    <th style={thStyle}>Cálculo (ADR-012)</th>
-                    {canManage && <th style={thStyle}></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {linhas.map((c) => {
-                    const ehPeca = pecaPorItemId.has(c.material_item_id);
-                    return (
-                      <Fragment key={c.id}>
-                      <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
-                        <td style={tdStyle}>
-                          {itemLabel(c.material_item_id)}
-                          {ehPeca && (
-                            <span style={{ marginLeft: "6px", fontSize: "10px", color: "#1f5d57", fontFamily: "monospace" }}>
-                              subconjunto
-                            </span>
-                          )}
-                        </td>
-                        <td style={tdStyle}>
-                          {canManage ? (
-                            <form action={atualizarMaterialPecaAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                              <input type="hidden" name="id" value={c.id} />
-                              <input type="hidden" name="observacao" value={c.observacao ?? ""} />
-                              <input
-                                name="quantidade_por_unidade"
-                                type="number"
-                                min="0.0001"
-                                step="0.0001"
-                                defaultValue={c.quantidade_por_unidade}
-                                style={{ ...inputStyle, width: "90px" }}
-                              />
-                              <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
-                                Salvar
-                              </button>
-                            </form>
-                          ) : (
-                            c.quantidade_por_unidade
-                          )}
-                        </td>
-                        <td style={tdStyle}>{c.observacao ?? "—"}</td>
-                        <td style={tdStyle}>
-                          {canManage ? (
-                            <TipoCalculoComposicao composicao={c} />
-                          ) : (
-                            `${TIPO_CALCULO_LABEL[c.tipo_calculo]}${c.tipo_calculo !== "fixo" ? ` (perda ${c.percentual_perda}%)` : ""}`
-                          )}
-                        </td>
-                        {canManage && (
-                          <td style={tdStyle}>
-                            <form action={removerMaterialPecaAction}>
-                              <input type="hidden" name="id" value={c.id} />
-                              <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#9b2c2c" }}>
-                                Remover
-                              </button>
-                            </form>
-                          </td>
-                        )}
-                      </tr>
-                      {c.tipo_calculo === "linear" && (
-                        <tr style={{ borderBottom: "1px solid #f4f6f5" }}>
-                          <td style={tdStyle} colSpan={canManage ? 5 : 4}>
-                            <ComprimentosBarraComposicao
-                              composicaoId={c.id}
-                              comprimentos={comprimentosPorComposicao.get(c.id) ?? []}
-                              itens={itens}
-                              itemLabel={itemLabel}
-                              canManage={canManage}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                      </Fragment>
-                    );
-                  })}
-                  {linhas.length === 0 && (
+              <div className="mt-1.5 overflow-x-auto">
+                <Table>
+                  <thead>
                     <tr>
-                      <td style={tdStyle} colSpan={canManage ? 5 : 4}>
-                        <span style={{ color: "#6b7a75" }}>Peça sem materiais na composição ainda.</span>
-                      </td>
+                      <Th>Material</Th>
+                      <Th>Qtd. por unidade</Th>
+                      <Th>Observação</Th>
+                      <Th>Cálculo (ADR-012)</Th>
+                      {canManage && <Th />}
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {linhas.map((c) => {
+                      const ehPeca = pecaPorItemId.has(c.material_item_id);
+                      return (
+                        <Fragment key={c.id}>
+                        <tr>
+                          <Td>
+                            {itemLabel(c.material_item_id)}
+                            {ehPeca && <span className="ml-1.5 font-mono text-[10px] text-primary">subconjunto</span>}
+                          </Td>
+                          <Td>
+                            {canManage ? (
+                              <form action={atualizarMaterialPecaAction} className="flex items-center gap-1">
+                                <input type="hidden" name="id" value={c.id} />
+                                <input type="hidden" name="observacao" value={c.observacao ?? ""} />
+                                <Input
+                                  name="quantidade_por_unidade"
+                                  type="number"
+                                  min="0.0001"
+                                  step="0.0001"
+                                  defaultValue={c.quantidade_por_unidade}
+                                  className="w-24"
+                                />
+                                <Button type="submit" variant="primary" size="sm">
+                                  Salvar
+                                </Button>
+                              </form>
+                            ) : (
+                              c.quantidade_por_unidade
+                            )}
+                          </Td>
+                          <Td>{c.observacao ?? "—"}</Td>
+                          <Td>
+                            {canManage ? (
+                              <TipoCalculoComposicao composicao={c} />
+                            ) : (
+                              `${TIPO_CALCULO_LABEL[c.tipo_calculo]}${c.tipo_calculo !== "fixo" ? ` (perda ${c.percentual_perda}%)` : ""}`
+                            )}
+                          </Td>
+                          {canManage && (
+                            <Td>
+                              <form action={removerMaterialPecaAction}>
+                                <input type="hidden" name="id" value={c.id} />
+                                <Button type="submit" variant="danger" size="sm">
+                                  Remover
+                                </Button>
+                              </form>
+                            </Td>
+                          )}
+                        </tr>
+                        {c.tipo_calculo === "linear" && (
+                          <tr>
+                            <Td colSpan={canManage ? 5 : 4}>
+                              <ComprimentosBarraComposicao
+                                composicaoId={c.id}
+                                comprimentos={comprimentosPorComposicao.get(c.id) ?? []}
+                                itens={itens}
+                                itemLabel={itemLabel}
+                                canManage={canManage}
+                              />
+                            </Td>
+                          </tr>
+                        )}
+                        </Fragment>
+                      );
+                    })}
+                    {linhas.length === 0 && (
+                      <tr>
+                        <Td colSpan={canManage ? 5 : 4} className="text-text-muted">
+                          Peça sem materiais na composição ainda.
+                        </Td>
+                      </tr>
+                    )}
+                  </tbody>
+                </Table>
+              </div>
 
               {canManage && p.situacao === "ativo" && (
-                <form
-                  action={adicionarMaterialPecaAction}
-                  style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px", alignItems: "center" }}
-                >
+                <form action={adicionarMaterialPecaAction} className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   <input type="hidden" name="peca_id" value={p.id} />
-                  <select name="material_item_id" required style={{ ...inputStyle, width: "260px" }}>
+                  <Select name="material_item_id" required className="w-64">
                     <option value="">Selecione o material ou subconjunto...</option>
                     <optgroup label="Matéria-prima / insumo / material auxiliar">
                       {itensMateriais.map((it) => (
@@ -275,20 +269,20 @@ export default function PecasSection({
                         ))}
                       </optgroup>
                     )}
-                  </select>
-                  <input
+                  </Select>
+                  <Input
                     name="quantidade_por_unidade"
                     type="number"
                     min="0.0001"
                     step="0.0001"
                     placeholder="qtd. por unidade"
                     required
-                    style={{ ...inputStyle, width: "110px" }}
+                    className="w-28"
                   />
-                  <input name="observacao" placeholder="observação (opcional)" style={{ ...inputStyle, width: "160px" }} />
-                  <button type="submit" style={buttonStyle}>
+                  <Input name="observacao" placeholder="observação (opcional)" className="w-40" />
+                  <Button type="submit" variant="primary">
                     Adicionar
-                  </button>
+                  </Button>
                 </form>
               )}
 
@@ -307,10 +301,10 @@ export default function PecasSection({
               )}
 
               <HistoricoRevisoes revisoes={revisoesPorPeca.get(p.id) ?? []} />
-            </div>
+            </Card>
           );
         })}
-        {pecas.length === 0 && <p style={hintStyle}>Nenhuma peça cadastrada ainda.</p>}
+        {pecas.length === 0 && <p className="text-xs text-text-muted">Nenhuma peça cadastrada ainda.</p>}
       </div>
     </section>
   );
@@ -333,26 +327,26 @@ function ComprimentosBarraComposicao({
   const itensJaUsados = new Set(comprimentos.map((c) => c.item_id));
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", fontSize: "11px", color: "#3e4d49" }}>
-      <span style={{ fontWeight: 600 }}>Comprimentos de barra (ADR-012 Fase 2):</span>
-      {comprimentos.length === 0 && <span style={{ color: "#6b7a75" }}>nenhum — custo por metro corrido, sem arredondar em barra</span>}
+    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-text">
+      <span className="font-semibold">Comprimentos de barra (ADR-012 Fase 2):</span>
+      {comprimentos.length === 0 && <span className="text-text-muted">nenhum — custo por metro corrido, sem arredondar em barra</span>}
       {comprimentos.map((c) => (
-        <span key={c.id} style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+        <span key={c.id} className="flex items-center gap-1">
           {itemLabel(c.item_id)} ({c.comprimento_metros}m)
           {canManage && (
             <form action={removerComprimentoBarraAction}>
               <input type="hidden" name="id" value={c.id} />
-              <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 4px", background: "#9b2c2c" }}>
+              <Button type="submit" variant="danger" size="sm">
                 x
-              </button>
+              </Button>
             </form>
           )}
         </span>
       ))}
       {canManage && (
-        <form action={definirComprimentoBarraAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+        <form action={definirComprimentoBarraAction} className="flex items-center gap-1">
           <input type="hidden" name="composicao_id" value={composicaoId} />
-          <select name="item_id" required style={{ ...inputStyle, width: "180px", fontSize: "11px" }}>
+          <Select name="item_id" required className="w-40 text-[11px]">
             <option value="">item da barra...</option>
             {itensMateriais
               .filter((it) => !itensJaUsados.has(it.id))
@@ -361,11 +355,11 @@ function ComprimentosBarraComposicao({
                   {it.codigo} — {it.descricao}
                 </option>
               ))}
-          </select>
-          <input name="comprimento_metros" type="number" min="0.001" step="0.001" placeholder="metros" style={{ ...inputStyle, width: "70px", fontSize: "11px" }} />
-          <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "2px 6px" }}>
+          </Select>
+          <Input name="comprimento_metros" type="number" min="0.001" step="0.001" placeholder="metros" className="w-16 text-[11px]" />
+          <Button type="submit" variant="primary" size="sm">
             Adicionar
-          </button>
+          </Button>
         </form>
       )}
     </div>
@@ -376,29 +370,34 @@ function TipoCalculoComposicao({ composicao }: { composicao: PecaComposicao }) {
   const [tipo, setTipo] = useState<PecaComposicao["tipo_calculo"]>(composicao.tipo_calculo);
 
   return (
-    <form action={definirTipoCalculoComposicaoAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+    <form action={definirTipoCalculoComposicaoAction} className="flex items-center gap-1">
       <input type="hidden" name="composicao_id" value={composicao.id} />
-      <select name="tipo_calculo" value={tipo} onChange={(e) => setTipo(e.target.value as PecaComposicao["tipo_calculo"])} style={{ ...inputStyle, width: "130px" }}>
+      <Select
+        name="tipo_calculo"
+        value={tipo}
+        onChange={(e) => setTipo(e.target.value as PecaComposicao["tipo_calculo"])}
+        className="w-36"
+      >
         {(Object.keys(TIPO_CALCULO_LABEL) as PecaComposicao["tipo_calculo"][]).map((v) => (
           <option key={v} value={v}>
             {TIPO_CALCULO_LABEL[v]}
           </option>
         ))}
-      </select>
+      </Select>
       {tipo !== "fixo" && (
-        <input
+        <Input
           name="percentual_perda"
           type="number"
           min="0"
           step="0.01"
           placeholder="% perda"
           defaultValue={composicao.tipo_calculo !== "fixo" ? composicao.percentual_perda : 0}
-          style={{ ...inputStyle, width: "70px" }}
+          className="w-20"
         />
       )}
-      <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px" }}>
+      <Button type="submit" variant="primary" size="sm">
         Salvar
-      </button>
+      </Button>
     </form>
   );
 }
@@ -415,12 +414,12 @@ function CaracteristicasPeca({
   const [tipoNovo, setTipoNovo] = useState<string>("numero");
 
   return (
-    <div style={{ marginTop: "10px", borderTop: "1px solid #eef1ef", paddingTop: "8px" }}>
-      <p style={{ ...hintStyle, margin: "0 0 4px", fontWeight: 600, color: "#3e4d49" }}>Características (configurador)</p>
+    <div className="mt-2.5 border-t border-border-subtle pt-2">
+      <p className="mb-1 text-xs font-semibold text-text">Características (configurador)</p>
       {caracteristicas.length === 0 ? (
-        <p style={hintStyle}>Nenhuma característica configurada — a peça não tem configurador ainda.</p>
+        <p className="text-xs text-text-muted">Nenhuma característica configurada — a peça não tem configurador ainda.</p>
       ) : (
-        <ul style={{ ...hintStyle, margin: "0 0 6px", paddingLeft: "18px" }}>
+        <ul className="mb-1.5 flex flex-col gap-1 pl-4 text-xs text-text-muted">
           {caracteristicas.map((c) => (
             <CaracteristicaItem key={c.id} c={c} canManage={canManage} />
           ))}
@@ -428,30 +427,27 @@ function CaracteristicasPeca({
       )}
 
       {canManage && (
-        <form
-          action={definirCaracteristicaPecaAction}
-          style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}
-        >
+        <form action={definirCaracteristicaPecaAction} className="flex flex-wrap items-center gap-1.5">
           <input type="hidden" name="peca_id" value={pecaId} />
-          <input name="nome" placeholder="nome (ex.: largura)" required style={{ ...inputStyle, width: "120px" }} />
-          <select name="tipo" value={tipoNovo} onChange={(e) => setTipoNovo(e.target.value)} style={{ ...inputStyle, width: "110px" }}>
+          <Input name="nome" placeholder="nome (ex.: largura)" required className="w-32" />
+          <Select name="tipo" value={tipoNovo} onChange={(e) => setTipoNovo(e.target.value)} className="w-32">
             {CARACTERISTICA_TIPOS.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
-          </select>
-          <input name="unidade" placeholder="unidade (opcional)" style={{ ...inputStyle, width: "90px" }} />
+          </Select>
+          <Input name="unidade" placeholder="unidade (opcional)" className="w-24" />
           {tipoNovo === "opcao" && (
-            <input name="opcoes" placeholder="opções, separadas por vírgula" required style={{ ...inputStyle, width: "180px" }} />
+            <Input name="opcoes" placeholder="opções, separadas por vírgula" required className="w-44" />
           )}
-          <label style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "11px", color: "#3e4d49" }}>
-            <input type="checkbox" name="obrigatoria" defaultChecked />
+          <label className="flex items-center gap-1 text-xs text-text">
+            <input type="checkbox" name="obrigatoria" defaultChecked className="accent-primary" />
             obrigatória
           </label>
-          <button type="submit" style={{ ...buttonStyle, fontSize: "11px", padding: "3px 8px" }}>
+          <Button type="submit" variant="primary" size="sm">
             Adicionar característica
-          </button>
+          </Button>
         </form>
       )}
     </div>
@@ -470,52 +466,37 @@ function CaracteristicaItem({ c, canManage }: { c: Caracteristica; canManage: bo
 
   if (editando) {
     return (
-      <li style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+      <li className="flex flex-wrap items-center gap-1.5">
         <form
           action={atualizarCaracteristicaPecaAction}
           onSubmit={() => setEditando(false)}
-          style={{ display: "flex", gap: "4px", alignItems: "center", flexWrap: "wrap" }}
+          className="flex flex-wrap items-center gap-1.5"
         >
           <input type="hidden" name="id" value={c.id} />
           <input type="hidden" name="tipo" value={c.tipo} />
-          <span style={{ fontWeight: 600 }}>{c.nome}</span>
-          <span style={{ fontSize: "10px", color: "#6b7a76" }}>({tipoLabel} — nome e tipo não mudam)</span>
-          <input
-            name="unidade"
-            defaultValue={c.unidade ?? ""}
-            placeholder="unidade (opcional)"
-            style={{ ...inputStyle, width: "90px" }}
-          />
+          <span className="font-semibold text-text">{c.nome}</span>
+          <span className="text-[10px] text-text-muted">({tipoLabel} — nome e tipo não mudam)</span>
+          <Input name="unidade" defaultValue={c.unidade ?? ""} placeholder="unidade (opcional)" className="w-24" />
           {c.tipo === "opcao" && (
-            <input
-              name="opcoes"
-              defaultValue={c.opcoes?.join(", ") ?? ""}
-              placeholder="opções, separadas por vírgula"
-              required
-              style={{ ...inputStyle, width: "180px" }}
-            />
+            <Input name="opcoes" defaultValue={c.opcoes?.join(", ") ?? ""} placeholder="opções, separadas por vírgula" required className="w-44" />
           )}
-          <label style={{ display: "flex", alignItems: "center", gap: "3px", fontSize: "11px", color: "#3e4d49" }}>
-            <input type="checkbox" name="obrigatoria" defaultChecked={c.obrigatoria} />
+          <label className="flex items-center gap-1 text-xs text-text">
+            <input type="checkbox" name="obrigatoria" defaultChecked={c.obrigatoria} className="accent-primary" />
             obrigatória
           </label>
-          <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px" }}>
+          <Button type="submit" variant="primary" size="sm">
             Salvar
-          </button>
-          <button
-            type="button"
-            onClick={() => setEditando(false)}
-            style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
-          >
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(false)}>
             Cancelar
-          </button>
+          </Button>
         </form>
       </li>
     );
   }
 
   return (
-    <li style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+    <li className="flex items-center gap-1.5">
       <span>
         {c.nome} ({tipoLabel}
         {c.unidade ? `, ${c.unidade}` : ""}
@@ -523,39 +504,33 @@ function CaracteristicaItem({ c, canManage }: { c: Caracteristica; canManage: bo
         {c.obrigatoria ? ", obrigatória" : ""})
       </span>
       {c.tipo === "numero" && (canManage ? (
-        <form action={definirPapelDimensionalAction} style={{ display: "flex", alignItems: "center" }}>
+        <form action={definirPapelDimensionalAction} className="flex items-center">
           <input type="hidden" name="caracteristica_id" value={c.id} />
-          <select
+          <Select
             name="papel_dimensional"
             defaultValue={c.papel_dimensional ?? ""}
             onChange={(e) => e.currentTarget.form?.requestSubmit()}
-            style={{ ...inputStyle, fontSize: "10px", padding: "1px 4px" }}
+            className="text-[10px]"
             title="Papel dimensional (ADR-012) — alimenta a fórmula de perímetro/área"
           >
             <option value="">sem papel dimensional</option>
             <option value="largura">largura</option>
             <option value="altura">altura</option>
-          </select>
+          </Select>
         </form>
       ) : (
-        c.papel_dimensional && (
-          <span style={{ fontSize: "10px", color: "#1f5d57", fontFamily: "monospace" }}>{c.papel_dimensional}</span>
-        )
+        c.papel_dimensional && <span className="font-mono text-[10px] text-primary">{c.papel_dimensional}</span>
       ))}
       {canManage && (
         <>
-          <button
-            type="button"
-            onClick={() => setEditando(true)}
-            style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(true)}>
             Editar
-          </button>
+          </Button>
           <form action={removerCaracteristicaPecaAction}>
             <input type="hidden" name="id" value={c.id} />
-            <button type="submit" style={{ ...buttonStyle, fontSize: "10px", padding: "1px 5px", background: "#9b2c2c" }}>
+            <Button type="submit" variant="danger" size="sm">
               Remover
-            </button>
+            </Button>
           </form>
         </>
       )}
@@ -569,16 +544,12 @@ function HistoricoRevisoes({ revisoes }: { revisoes: Revisao[] }) {
   if (revisoes.length === 0) return null;
 
   return (
-    <div style={{ marginTop: "8px" }}>
-      <button
-        type="button"
-        onClick={() => setAberto((v) => !v)}
-        style={{ ...buttonStyle, fontSize: "11px", padding: "2px 6px", background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}
-      >
-        {aberto ? "Ocultar histórico" : `Ver histórico (${revisoes.length} revisão${revisoes.length > 1 ? "ões" : ""})`}
-      </button>
+    <div className="mt-2">
+      <Button type="button" variant="secondary" size="sm" onClick={() => setAberto((v) => !v)}>
+        {aberto ? "Ocultar histórico" : `Ver histórico (${revisoes.length} ${revisoes.length > 1 ? "revisões" : "revisão"})`}
+      </Button>
       {aberto && (
-        <ul style={{ ...hintStyle, margin: "6px 0 0", paddingLeft: "18px" }}>
+        <ul className="mt-1.5 flex flex-col gap-0.5 pl-4 text-xs text-text-muted">
           {revisoes.map((r) => (
             <li key={r.revisao}>
               rev. {r.revisao} — {r.motivo ?? "sem motivo registrado"} — {fmtData(r.created_at)}
