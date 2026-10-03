@@ -1165,6 +1165,220 @@ async function main() {
     check("com só o comprimento de 6m restante, usa 2 barras de 6m (12m cobre os 7m necessários)", perfil6mSozinho?.quantidade === 2 && Math.abs(perfil6mSozinho.subtotal - 300) < 0.01);
   }
 
+  console.log("\n65. ADR-012 v1.1 — cálculo automático (calcular_preco_configurador, margem por empresa, gravação atômica)");
+  {
+    async function registrarCustoCompra(companyId, solicitanteId, itemId, custoUnitario, fornecedorId) {
+      const { data: sc } = await admin.from("solicitacoes_compra").insert({ company_id: companyId, numero: `SC-V11-${itemId.slice(0, 8)}`, solicitante_id: solicitanteId, status: "aberta" }).select().single();
+      const { data: sci } = await admin.from("solicitacao_compra_itens").insert({ company_id: companyId, solicitacao_compra_id: sc.id, item_id: itemId, quantidade: 100 }).select().single();
+      const { data: cot } = await admin.from("cotacoes").insert({ company_id: companyId, numero: `COT-V11-${itemId.slice(0, 8)}`, solicitacao_compra_id: sc.id, status: "selecionada" }).select().single();
+      const { data: ci } = await admin.from("cotacao_itens").insert({ company_id: companyId, cotacao_id: cot.id, solicitacao_compra_item_id: sci.id }).select().single();
+      const { data: pc } = await admin.from("pedidos_compra").insert({ company_id: companyId, numero: `PC-V11-${itemId.slice(0, 8)}`, cotacao_id: cot.id, pessoa_id: fornecedorId, status: "confirmado" }).select().single();
+      await admin.from("pedido_compra_itens").insert({ company_id: companyId, pedido_compra_id: pc.id, cotacao_item_id: ci.id, item_id: itemId, quantidade: 100, preco_unitario: custoUnitario, custo_unitario: custoUnitario });
+    }
+    const novoItem = async (tenant, codigo, descricao, tipo, classificacao, unidade) =>
+      (await tenant.client.rpc("upsert_item", { p_id: null, p_codigo: codigo, p_descricao: descricao, p_tipo: tipo, p_classificacao: classificacao, p_unidade_principal: unidade, p_situacao: "ativo" })).data;
+
+    // Reaproveita fornecedor e cliente já criados na seção 63 (mesmo tenant).
+    const { data: fornecedorRow } = await admin.from("pessoas").select("id").eq("company_id", admTenant.company.id).eq("nome", "Fornecedor ADR012 Teste").single();
+    const { data: clienteRow } = await admin.from("pessoas").select("id").eq("company_id", admTenant.company.id).eq("nome", "Cliente ADR012 Teste").single();
+
+    const perfilId = await novoItem(admTenant, "PERFIL-V11", "Perfil v1.1", "materia_prima", "perfil", "M");
+    const vidroId = await novoItem(admTenant, "VIDRO-V11", "Vidro v1.1", "materia_prima", "vidro", "M2");
+    const acessId = await novoItem(admTenant, "ACESS-V11", "Acessório v1.1", "materia_prima", "acessorio", "UN");
+    const fechoId = await novoItem(admTenant, "FECHO-V11", "Fecho sem custo v1.1", "materia_prima", "acessorio", "UN");
+    const portaItemId = await novoItem(admTenant, "PORTA-V11", "Porta v1.1", "produto_acabado", "porta", "UN");
+    const simplesItemId = await novoItem(admTenant, "SIMPLES-V11", "Item simples v1.1", "produto_acabado", null, "UN");
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, perfilId, 25.5, fornecedorRow.id);
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, vidroId, 180.0, fornecedorRow.id);
+    await registrarCustoCompra(admTenant.company.id, admTenant.userId, acessId, 12.0, fornecedorRow.id);
+
+    const { data: pecaId } = await admTenant.client.rpc("criar_peca", { p_item_id: portaItemId, p_descricao_tecnica: "Porta v1.1" });
+    const { data: cLargura } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true });
+    const { data: cAltura } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaId, p_nome: "altura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true });
+    const { data: cVidro } = await admTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaId, p_nome: "vidro", p_tipo: "opcao", p_unidade: null, p_opcoes: ["temperado", "laminado"], p_obrigatoria: false });
+    await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: cLargura, p_papel: "largura" });
+    await admTenant.client.rpc("definir_papel_dimensional_caracteristica", { p_caracteristica_id: cAltura, p_papel: "altura" });
+
+    const { data: compPerfil } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaId, material_item_id: perfilId, quantidade_por_unidade: 1 }).select().single();
+    const { data: compVidro } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaId, material_item_id: vidroId, quantidade_por_unidade: 1 }).select().single();
+    await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaId, material_item_id: acessId, quantidade_por_unidade: 2 });
+    await admTenant.client.rpc("definir_tipo_calculo_composicao", { p_composicao_id: compPerfil.id, p_tipo_calculo: "linear", p_percentual_perda: 10 });
+    await admTenant.client.rpc("definir_tipo_calculo_composicao", { p_composicao_id: compVidro.id, p_tipo_calculo: "area", p_percentual_perda: 5 });
+
+    // Mão de obra: 1 operação de 30 min num recurso de R$ 60/h = R$ 30,00.
+    const { data: recursoMo } = await admin.from("recursos_produtivos").insert({ company_id: admTenant.company.id, codigo: "SERRA-V11", nome: "Serra v1.1", tipo: "maquina", custo_hora: 60 }).select().single();
+    const { data: roteiroMo } = await admin.from("roteiros_produtivos").insert({ company_id: admTenant.company.id, item_id: portaItemId, nome: "Roteiro v1.1", ativo: true }).select().single();
+    await admin.from("roteiro_operacoes").insert({ company_id: admTenant.company.id, roteiro_id: roteiroMo.id, sequencia: 1, descricao: "Corte", tempo_previsto_minutos: 30, recurso_produtivo_id: recursoMo.id });
+
+    const valoresOk = { [cLargura]: { n: 2000 }, [cAltura]: { n: 1500 } };
+    // perfil 7m*1,10*25,50 = 196,35; vidro 3m²*1,05*180 = 567,00; acessório 2*12 = 24,00 => material 787,35.
+
+    // --- listar_caracteristicas_configurador
+    const { data: listaCfg, error: eListaCfg } = await admTenant.client.rpc("listar_caracteristicas_configurador", { p_item_id: portaItemId });
+    check("listar_caracteristicas_configurador devolve as 3 características, com papel dimensional e opções", !eListaCfg && listaCfg?.length === 3
+      && listaCfg.find((c) => c.nome === "largura")?.papel_dimensional === "largura"
+      && listaCfg.find((c) => c.nome === "vidro")?.opcoes?.length === 2);
+    const { error: eListaSemPerm } = await noPermTenant.client.rpc("listar_caracteristicas_configurador", { p_item_id: portaItemId });
+    check("sem orcamentos.view não lista características", !!eListaSemPerm);
+    const { error: eListaOutro } = await otherTenant.client.rpc("listar_caracteristicas_configurador", { p_item_id: portaItemId });
+    check("outro tenant não lista características de item alheio", !!eListaOutro);
+
+    // --- pré-cálculo: gates e validação de entrada
+    const { error: ePrevSemPerm } = await noPermTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+    check("sem orcamentos.view não calcula preço", !!ePrevSemPerm);
+    const { error: ePrevOutro } = await otherTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+    check("outro tenant não calcula com item alheio", !!ePrevOutro);
+
+    const itemOutroId = await novoItem(otherTenant, "PORTA-V11-B", "Porta de outra empresa", "produto_acabado", "porta", "UN");
+    const { data: pecaOutroId } = await otherTenant.client.rpc("criar_peca", { p_item_id: itemOutroId, p_descricao_tecnica: null });
+    const { data: cOutro } = await otherTenant.client.rpc("definir_caracteristica_peca", { p_peca_id: pecaOutroId, p_nome: "largura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria: true });
+    const { error: eInjecao } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: { [cOutro]: { n: 2000 } } });
+    check("característica de outra empresa injetada no payload é rejeitada", !!eInjecao);
+    const { error: eInjecaoInversa } = await otherTenant.client.rpc("calcular_preco_configurador", { p_item_id: itemOutroId, p_valores: { [cLargura]: { n: 2000 } } });
+    check("característica de outra peça/empresa (direção inversa) é rejeitada", !!eInjecaoInversa);
+    const { error: eChaveInvalida } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: { "nao-e-uuid": { n: 1 } } });
+    check("chave que não é UUID é rejeitada", !!eChaveInvalida);
+    const { error: eNumeroTexto } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: { [cLargura]: { n: "2000" } } });
+    check("número enviado como texto é rejeitado", !!eNumeroTexto);
+    const { error: eDimZero } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: { [cLargura]: { n: 0 } } });
+    check("dimensão <= 0 é rejeitada", !!eDimZero);
+    const { error: eOpcaoInvalida } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: { ...valoresOk, [cVidro]: { t: "comum" } } });
+    check("opção fora da lista permitida é rejeitada", !!eOpcaoInvalida);
+    const { error: eNaoObjeto } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: [1, 2] });
+    check("p_valores que não é objeto é rejeitado", !!eNaoObjeto);
+    const { error: eCampoAusente } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: { [cLargura]: {} } });
+    check("valor sem 'n' nem 't' é rejeitado", !!eCampoAusente);
+
+    const { data: prevSimples } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: simplesItemId, p_valores: {} });
+    check("item que não é peça retorna aplica_configurador=false, sem erro", prevSimples?.aplica_configurador === false);
+
+    // --- pré-cálculo sem margem configurada
+    const { data: semMargem, error: eSemMargem } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+    check("pré-cálculo sem erro", !eSemMargem && semMargem?.aplica_configurador === true);
+    check("material 787,35 + mão de obra 30,00 = custo_total 817,35", semMargem?.custo_material === 787.35 && semMargem?.custo_mao_obra === 30 && semMargem?.custo_total === 817.35);
+    check("sem margem configurada: custo completo, mas sem preço sugerido (motivo margem_nao_configurada)", semMargem?.custo_completo === true && semMargem?.preco_sugerido === null && semMargem?.motivo_sem_preco === "margem_nao_configurada");
+
+    const { data: prevPendente } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: { [cLargura]: { n: 2000 } } });
+    check("característica obrigatória pendente (altura): motivo caracteristicas_pendentes, sem preço", prevPendente?.motivo_sem_preco === "caracteristicas_pendentes"
+      && prevPendente?.custo_completo === false && prevPendente?.caracteristicas_pendentes?.includes("altura") && prevPendente?.preco_sugerido === null);
+
+    // --- margem por empresa
+    const { error: eMargemSemPerm } = await noPermTenant.client.rpc("upsert_margem_preco", { p_percentual: 30 });
+    check("sem configuracoes.manage não define margem", !!eMargemSemPerm);
+    const { error: eMargem100 } = await admTenant.client.rpc("upsert_margem_preco", { p_percentual: 100 });
+    const { error: eMargemNeg } = await admTenant.client.rpc("upsert_margem_preco", { p_percentual: -1 });
+    const { error: eMargemNula } = await admTenant.client.rpc("upsert_margem_preco", { p_percentual: null });
+    check("margem >= 100, negativa ou nula é rejeitada", !!eMargem100 && !!eMargemNeg && !!eMargemNula);
+
+    // Salvar sem margem e sem preço digitado precisa falhar com mensagem clara (antes de configurar a margem).
+    const { data: orcamentoId } = await admTenant.client.rpc("upsert_orcamento", { p_id: null, p_pessoa_id: clienteRow.id, p_obra_id: null, p_validade: null, p_condicao_comercial: null, p_observacoes: null });
+    const { error: eSalvarSemMargem } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: null,
+    });
+    check("salvar sem margem configurada e sem preço digitado é rejeitado", !!eSalvarSemMargem);
+
+    const { error: eMargemOk } = await admTenant.client.rpc("upsert_margem_preco", { p_percentual: 30 });
+    check("ADMIN define margem de 30%", !eMargemOk);
+    const { data: margemRow } = await admTenant.client.from("pricing_settings").select("margem_percentual").eq("company_id", admTenant.company.id).single();
+    check("margem persistida (30)", Number(margemRow?.margem_percentual) === 30);
+    const { data: margemOutro } = await otherTenant.client.from("pricing_settings").select("id").eq("company_id", admTenant.company.id);
+    check("outro tenant não enxerga a margem da empresa", (margemOutro ?? []).length === 0);
+
+    const { data: comMargem } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+    // 817,35 / (1 - 0,30) = 1167,642857... => 1167,64
+    check("preço sugerido = custo / (1 - margem) = 1167,64", comMargem?.preco_sugerido === 1167.64 && comMargem?.margem_percentual === 30 && comMargem?.motivo_sem_preco === null);
+
+    // --- gravação atômica
+    const { error: eSalvarSemPerm } = await noPermTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: null,
+    });
+    check("sem orcamentos.manage não grava item configurado", !!eSalvarSemPerm);
+    const { error: eSalvarNaoPeca } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: simplesItemId, p_quantidade: 1, p_valores: {}, p_preco_override: null,
+    });
+    check("item que não é peça configurável é rejeitado na gravação", !!eSalvarNaoPeca);
+    const { error: eSalvarPendente } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: { [cLargura]: { n: 2000 } }, p_preco_override: null,
+    });
+    check("característica obrigatória pendente bloqueia a gravação", !!eSalvarPendente);
+    const { error: eSalvarQtd } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 0, p_valores: valoresOk, p_preco_override: null,
+    });
+    const { error: eSalvarPrecoNeg } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: -5,
+    });
+    check("quantidade 0 e preço negativo são rejeitados", !!eSalvarQtd && !!eSalvarPrecoNeg);
+    const { error: eSalvarOutro } = await otherTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: null,
+    });
+    check("outro tenant não grava item no orçamento alheio", !!eSalvarOutro);
+
+    const { data: orcItemId, error: eSalvar } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 2, p_valores: valoresOk, p_preco_override: null,
+    });
+    check("ADMIN grava item configurado sem digitar preço", !eSalvar && !!orcItemId);
+    const { data: orcRow } = await admin.from("orcamento_itens").select("preco_unitario, custo_unitario, custo_mao_obra, quantidade").eq("id", orcItemId).single();
+    check("servidor gravou preço 1167,64, custo 787,35 e mão de obra 30,00", Number(orcRow?.preco_unitario) === 1167.64 && Number(orcRow?.custo_unitario) === 787.35 && Number(orcRow?.custo_mao_obra) === 30 && Number(orcRow?.quantidade) === 2);
+    const { data: caracGravadas } = await admin.from("orcamento_item_caracteristicas").select("peca_caracteristica_id, valor_numero").eq("orcamento_item_id", orcItemId);
+    check("largura e altura gravadas junto com o item", caracGravadas?.length === 2 && Number(caracGravadas.find((c) => c.peca_caracteristica_id === cLargura)?.valor_numero) === 2000);
+
+    // Regressão: a função antiga (valores gravados) dá o mesmo resultado do pré-cálculo.
+    const { data: calcAntigo } = await admTenant.client.rpc("calcular_custo_orcamento_item", { p_orcamento_item_id: orcItemId });
+    check("regressão: calcular_custo_orcamento_item (gravado) == pré-cálculo (787,35)", calcAntigo?.custo_total === 787.35 && calcAntigo?.custo_total === comMargem?.material?.custo_total);
+    const { data: moAntiga } = await admTenant.client.rpc("calcular_mao_obra_orcamento_item", { p_orcamento_item_id: orcItemId });
+    check("regressão: calcular_mao_obra_orcamento_item continua devolvendo 30,00", moAntiga?.tem_roteiro === true && moAntiga?.custo_total === 30);
+
+    // Preço ajustado pelo vendedor prevalece; característica opcional entra e depois sai.
+    const { error: eOverride } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: orcItemId, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 2,
+      p_valores: { ...valoresOk, [cVidro]: { t: "temperado" } }, p_preco_override: 1500,
+    });
+    const { data: orcRow2 } = await admin.from("orcamento_itens").select("preco_unitario").eq("id", orcItemId).single();
+    const { data: carac3 } = await admin.from("orcamento_item_caracteristicas").select("id").eq("orcamento_item_id", orcItemId);
+    check("preço digitado pelo vendedor prevalece (1500) e a característica opcional foi gravada", !eOverride && Number(orcRow2?.preco_unitario) === 1500 && carac3?.length === 3);
+    await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: orcItemId, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 2, p_valores: valoresOk, p_preco_override: null,
+    });
+    const { data: carac2 } = await admin.from("orcamento_item_caracteristicas").select("id").eq("orcamento_item_id", orcItemId);
+    const { data: orcRow3 } = await admin.from("orcamento_itens").select("preco_unitario").eq("id", orcItemId).single();
+    check("regravar sem a característica opcional remove o valor antigo e volta ao preço sugerido", carac2?.length === 2 && Number(orcRow3?.preco_unitario) === 1167.64);
+
+    // Custo incompleto: material sem histórico => sem preço sugerido, custo não gravado.
+    const { data: compFecho } = await admin.from("peca_composicao").insert({ company_id: admTenant.company.id, peca_id: pecaId, material_item_id: fechoId, quantidade_por_unidade: 4 }).select().single();
+    const { data: prevIncompleto } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+    check("material sem histórico: motivo custo_material_incompleto, sem preço sugerido", prevIncompleto?.motivo_sem_preco === "custo_material_incompleto" && prevIncompleto?.custo_completo === false && prevIncompleto?.preco_sugerido === null);
+    const { error: eSalvarIncompleto } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: orcItemId, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 2, p_valores: valoresOk, p_preco_override: null,
+    });
+    check("custo incompleto sem preço digitado bloqueia a gravação", !!eSalvarIncompleto);
+    const { error: eSalvarIncompletoOverride } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: orcItemId, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 2, p_valores: valoresOk, p_preco_override: 2000,
+    });
+    const { data: orcRow4 } = await admin.from("orcamento_itens").select("preco_unitario, custo_unitario, custo_mao_obra").eq("id", orcItemId).single();
+    check("com preço digitado grava, mas o custo parcial NÃO é gravado (fica nulo)", !eSalvarIncompletoOverride && Number(orcRow4?.preco_unitario) === 2000 && orcRow4?.custo_unitario === null && orcRow4?.custo_mao_obra === null);
+    await admin.from("peca_composicao").delete().eq("id", compFecho.id);
+
+    // --- auditoria
+    const { data: eventosV11 } = await admin.from("activity_logs").select("action, metadata").eq("company_id", admTenant.company.id).in("action", ["config.margem_preco_upserted", "comercial.orcamento_item_upserted"]);
+    check("config.margem_preco_upserted registrado", (eventosV11 ?? []).some((e) => e.action === "config.margem_preco_upserted"));
+    check("orcamento_item_upserted registrado com origem 'configurador' e preço ajustado sinalizado", (eventosV11 ?? []).some((e) => e.metadata?.origem === "configurador" && e.metadata?.preco_ajustado_pelo_vendedor === true));
+
+    // --- privilégios: anon não executa; funções internas não são chamáveis por authenticated
+    const anonClient = createClient(url, anonKey);
+    const { error: eAnon } = await anonClient.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+    check("anon não executa calcular_preco_configurador", !!eAnon);
+    const { error: eInternaCusto } = await admTenant.client.rpc("_calcular_custo_peca", { p_company_id: admTenant.company.id, p_peca_id: pecaId, p_valores: valoresOk });
+    const { error: eInternaPreco } = await admTenant.client.rpc("_calcular_preco_configurador", { p_company_id: admTenant.company.id, p_item_id: portaItemId, p_valores: valoresOk });
+    check("funções internas (_calcular_*) não são chamáveis por usuário autenticado", !!eInternaCusto && !!eInternaPreco);
+
+    // --- orçamento fora de rascunho é terminal
+    await admTenant.client.rpc("cancelar_orcamento", { p_id: orcamentoId });
+    const { error: eAposCancelado } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+      p_id: orcItemId, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 2, p_valores: valoresOk, p_preco_override: 1500,
+    });
+    check("orçamento cancelado (fora de rascunho) não aceita gravação de item configurado", !!eAposCancelado);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }
