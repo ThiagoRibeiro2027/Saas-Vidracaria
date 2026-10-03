@@ -52,7 +52,15 @@ async function adminUpload(path, buffer = PNG_1X1, contentType = "image/png") {
   return admin.storage.from(BUCKET).upload(path, buffer, { contentType, upsert: false });
 }
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra; slug fixo faz a 2ª execução esbarrar em
+// estado antigo (mesmo problema e mesma correção de 0bb387b, que não chegou
+// a este harness). Custo conhecido: um tenant por execução, limpeza separada.
+const RUN = Date.now().toString(36);
+
 async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingCompany = null) {
+  slug = `${slug}-${RUN}`;
   let company = existingCompany;
   if (!company) {
     const { data, error: companyError } = await admin
@@ -152,6 +160,16 @@ async function main() {
     const { error: adminUploadBError } = await adminUpload(pathB);
     check("(fixture) service role consegue escrever pathB", !adminUploadBError);
 
+    // Desde 20261210000000 o binário só é visível se a linha de public.files
+    // correspondente também é — então pathA precisa estar registrado pra os
+    // testes de leitura abaixo continuarem exercitando o que dizem.
+    const { error: registerPathAError } = await tenantA.client.rpc("register_file", {
+      p_entity_type: "geral", p_entity_id: null, p_storage_path: pathA,
+      p_original_name: "teste-a.png", p_mime_type: "image/png",
+      p_size_bytes: PNG_1X1.byteLength, p_width: 1, p_height: 1,
+    });
+    check("(fixture) tenant A registra pathA em public.files", !registerPathAError);
+
     const { error: updateOwnError } = await tenantA.client.storage
       .from(BUCKET)
       .upload(pathA, PNG_1X1, { contentType: "image/png", upsert: true });
@@ -202,13 +220,24 @@ async function main() {
     check("usuário sem files.read não consegue gerar signed URL (SEC-002)", !!noPermSignedError);
   }
 
+  console.log("\n2b. Objeto sem linha em public.files (órfão) não é legível por usuário");
+  {
+    const orphanReadPath = `${tenantA.company.id}/geral/geral/${runId}-orfao-leitura.png`;
+    await adminUpload(orphanReadPath);
+    const { error: orphanDownloadError } = await tenantA.client.storage.from(BUCKET).download(orphanReadPath);
+    check("objeto não registrado não é baixável nem pelo ADMIN do próprio tenant", !!orphanDownloadError);
+    await admin.storage.from(BUCKET).remove([orphanReadPath]);
+  }
+
   console.log("\n3. register_file() — metadado só é aceito dentro do próprio escopo");
   {
+    const pathRegistro = `${tenantA.company.id}/geral/geral/${runId}-registro.png`;
+    await adminUpload(pathRegistro);
     const { data: fileId, error } = await tenantA.client.rpc("register_file", {
       p_entity_type: "geral",
       p_entity_id: null,
-      p_storage_path: pathA,
-      p_original_name: "teste-a.png",
+      p_storage_path: pathRegistro,
+      p_original_name: "teste-registro.png",
       p_mime_type: "image/png",
       p_size_bytes: PNG_1X1.byteLength,
       p_width: 1,
@@ -240,7 +269,7 @@ async function main() {
       .from("files")
       .select("id, original_name")
       .eq("id", tenantA.fileId);
-    check("tenant A enxerga o próprio metadado", ownRead?.[0]?.original_name === "teste-a.png");
+    check("tenant A enxerga o próprio metadado", ownRead?.[0]?.original_name === "teste-registro.png");
 
     const { error: directInsertError } = await tenantA.client.from("files").insert({
       company_id: tenantA.company.id,
@@ -319,8 +348,14 @@ async function main() {
       .from(BUCKET)
       .download(deletedPath);
     check(
+      "após soft-delete o dono deixa de conseguir baixar o binário (20261210000000)",
+      !!stillDownloadableError,
+    );
+
+    const { error: adminStillError } = await admin.storage.from(BUCKET).download(deletedPath);
+    check(
       "objeto físico permanece no Storage após soft-delete (sem purge físico ainda)",
-      !stillDownloadableError,
+      !adminStillError,
     );
   }
 

@@ -768,6 +768,15 @@ async function main() {
 
     const { data: readAdm } = await admTenant.client.from("files").select("id").eq("id", fileId);
     check("ADMIN (com contratos.view) lê metadado do anexo de contrato", (readAdm ?? []).length === 1);
+
+    // Mesmo conhecendo o caminho, o binário segue o RBAC da linha de files
+    // (policy company_files_select, 20261210000000) — antes bastava files.read.
+    const { data: signedSemContratos } = await filesOnlyClient.storage.from("company-files").createSignedUrl(path, 30);
+    check("papel só com files.read (sem contratos.view) não gera signed URL do binário de contrato", !signedSemContratos?.signedUrl);
+    const { error: eDownloadSemContratos } = await filesOnlyClient.storage.from("company-files").download(path);
+    check("papel só com files.read (sem contratos.view) não baixa o binário de contrato", !!eDownloadSemContratos);
+    const { data: signedAdm } = await admTenant.client.storage.from("company-files").createSignedUrl(path, 30);
+    check("ADMIN (com contratos.view) gera signed URL do binário de contrato", !!signedAdm?.signedUrl);
   }
 
   console.log("\n31. §8 — delete_file() também exige contratos.manage pra entity_type='contrato' (achado de passagem: nunca teve gate por entity_type, nem quando o T17 RH foi corrigido)");

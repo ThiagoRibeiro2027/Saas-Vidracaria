@@ -39,7 +39,15 @@ function check(label, condition) {
   }
 }
 
+// Sufixo de execução — o banco é único e compartilhado entre as máquinas
+// (CLAUDE.md, "Banco e ambiente de trabalho"), então o tenant de teste
+// sobrevive de uma sessão pra outra; slug fixo faz a 2ª execução esbarrar em
+// estado antigo (mesmo problema e mesma correção de 0bb387b, que não chegou
+// a este harness). Custo conhecido: um tenant por execução, limpeza separada.
+const RUN = Date.now().toString(36);
+
 async function createTenant(slug, name, identifier, roleKey = "ADMIN", existingCompany = null) {
+  slug = `${slug}-${RUN}`;
   let company = existingCompany;
   if (!company) {
     const { data } = await admin
@@ -501,7 +509,7 @@ async function main() {
       { role_id: filesOnlyRole.data.id, permission_id: readPerm.id },
     ]);
 
-    const email = "17r05.rh-test-admin@users.internal";
+    const email = `17r05.rh-test-admin-${RUN}@users.internal`;
     const { data: created } = await admin.auth.admin.createUser({ email, password: "senha-de-teste-123456", email_confirm: true });
     let userId = created?.user?.id;
     if (!userId) {
@@ -533,6 +541,15 @@ async function main() {
 
     const { data: readAdm } = await admTenant.client.from("files").select("id").eq("id", fileId);
     check("ADMIN (com rh.view) lê metadado do arquivo de RH", (readAdm ?? []).length === 1);
+
+    // Mesmo conhecendo o caminho, o binário segue o RBAC da linha de files
+    // (policy company_files_select, 20261210000000) — antes bastava files.read.
+    const { data: signedSemRh } = await filesOnlyClient.storage.from("company-files").createSignedUrl(path, 30);
+    check("papel só com files.read (sem rh.view) não gera signed URL do binário de RH", !signedSemRh?.signedUrl);
+    const { error: eDownloadSemRh } = await filesOnlyClient.storage.from("company-files").download(path);
+    check("papel só com files.read (sem rh.view) não baixa o binário de RH", !!eDownloadSemRh);
+    const { data: signedAdm } = await admTenant.client.storage.from("company-files").createSignedUrl(path, 30);
+    check("ADMIN (com rh.view) gera signed URL do binário de RH", !!signedAdm?.signedUrl);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
