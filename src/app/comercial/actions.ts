@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export type OrcamentoState = { error: string } | undefined;
+export type OrcamentoState = { error: string } | { id: string } | undefined;
 
 export async function upsertOrcamentoAction(
   _prevState: OrcamentoState,
@@ -19,7 +19,7 @@ export async function upsertOrcamentoAction(
   if (!pessoaId) return { error: "Cliente é obrigatório." };
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("upsert_orcamento", {
+  const { data, error } = await supabase.rpc("upsert_orcamento", {
     p_id: id,
     p_pessoa_id: pessoaId,
     p_obra_id: obraId,
@@ -30,6 +30,10 @@ export async function upsertOrcamentoAction(
   if (error) return { error: error.message };
 
   revalidatePath("/comercial");
+  // Devolve o id (upsert_orcamento retorna uuid) pra quem criou um orçamento
+  // novo poder continuar na mesma janela e já incluir os itens, sem precisar
+  // fechar e reabrir (ver OrcamentosSection.tsx).
+  return { id: data as string };
 }
 
 export async function upsertOrcamentoItemAction(formData: FormData) {

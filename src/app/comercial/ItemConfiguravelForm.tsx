@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { calcularPrecoConfiguradorAction, salvarItemConfiguradoAction } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -115,7 +115,6 @@ export default function ItemConfiguravelForm({
   orcamentoId,
   item,
   itemId,
-  itemSelect,
   definicoes,
   valoresSalvos,
   onSaved,
@@ -124,7 +123,13 @@ export default function ItemConfiguravelForm({
   orcamentoId: string;
   item: ItemExistente | null;
   itemId: string;
-  itemSelect: ReactNode;
+  // O <select> de item é renderizado pelo chamador (ItemEditavelExpandido,
+  // em OrcamentosSection.tsx), fora deste formulário, numa posição estável
+  // da árvore — esse componente é remontado a cada troca de peça (via
+  // `key`), e um <select> nativo que fica DENTRO do que acabou de disparar
+  // o próprio evento de troca pode "perder" a primeira escolha em alguns
+  // navegadores (relatado pelo usuário, 2026-10-04). `itemId` já chega como
+  // prop; não precisa do elemento do select aqui.
   definicoes: DefCaracteristica[];
   valoresSalvos: ValorSalvo[];
   onSaved?: () => void;
@@ -235,7 +240,6 @@ export default function ItemConfiguravelForm({
     <form onSubmit={salvar} className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start lg:gap-4">
       <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        {itemSelect}
         <label className="flex items-center gap-1 text-xs text-text">
           Qtd
           <Input

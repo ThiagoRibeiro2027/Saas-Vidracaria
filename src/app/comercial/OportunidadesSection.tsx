@@ -348,7 +348,10 @@ function NovaOportunidadeForm({ todasPessoas, onSaved }: { todasPessoas: Pessoa[
   return (
     <form onSubmit={enviar} className="flex flex-wrap items-center gap-1.5">
       <Select name="pessoa_id" defaultValue="" required className="min-w-40">
-        <option value="" disabled>
+        {/* `hidden` em vez de `disabled`: mesma correção aplicada em
+            OrcamentosSection.tsx (ver comentário lá) — evita que a primeira
+            escolha no select não "grude". */}
+        <option value="" hidden>
           Cliente/prospect
         </option>
         {todasPessoas.map((p) => (

@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -197,13 +196,21 @@ export default function OrcamentosSection({
   const obrasAtivas = obras.filter((o) => o.situacao === "ativo");
   const itensAtivos = itens.filter((i) => i.situacao === "ativo");
 
-  const [createOpen, setCreateOpen] = useState(false);
+  // viewId também aceita o sentinela "novo": abre a mesma janela, só que
+  // ainda sem orçamento — mostra só o cabeçalho. Assim que salva, vira o id
+  // real (ver aoCriar) e a MESMA janela passa a mostrar os itens também,
+  // sem precisar fechar e reabrir.
   const [viewId, setViewId] = useState<string | null>(null);
 
   // Orçamento novo entra no topo da lista (mais recente primeiro): quem
-  // está numa página mais adiante volta pra primeira, senão não o veria.
-  function aoCriar() {
-    setCreateOpen(false);
+  // está numa página mais adiante volta pra primeira, senão não o veria
+  // assim que a janela trocar para mostrar os itens.
+  function aoCriar(novoId?: string) {
+    if (!novoId) {
+      setViewId(null);
+      return;
+    }
+    setViewId(novoId);
     if (paginacao.pagina > 1) {
       const p = new URLSearchParams(searchParams.toString());
       p.delete("pagina");
@@ -212,7 +219,8 @@ export default function OrcamentosSection({
     }
   }
 
-  const viewing = orcamentos.find((o) => o.id === viewId) ?? null;
+  const criando = viewId === "novo";
+  const viewing = !criando ? (orcamentos.find((o) => o.id === viewId) ?? null) : null;
   const viewingEditavel = canManage && viewing?.status === "rascunho";
   const viewingPodeCancelar =
     canManage &&
@@ -236,7 +244,7 @@ export default function OrcamentosSection({
           <Button
             type="button"
             variant="primary"
-            onClick={() => setCreateOpen(true)}
+            onClick={() => setViewId("novo")}
           >
             + Incluir
           </Button>
@@ -289,26 +297,25 @@ export default function OrcamentosSection({
       </div>
 
       <Modal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="Novo orçamento"
-      >
-        <OrcamentoForm
-          clientesElegiveis={clientesElegiveis}
-          obrasAtivas={obrasAtivas}
-          todasPessoas={todasPessoas}
-          obras={obras}
-          onSuccess={aoCriar}
-        />
-      </Modal>
-
-      <Modal
-        open={viewing !== null}
+        open={criando || viewing !== null}
         onClose={() => setViewId(null)}
-        title={viewing ? `Orçamento ${viewing.numero}` : "Orçamento"}
+        // Sem prefixo fixo "Orçamento " aqui: a numeração é configurável por
+        // empresa (Configurações → Numeração) e pode já incluir essa palavra
+        // no próprio número — prefixar de novo duplicava o texto no título.
+        title={criando ? "Novo orçamento" : (viewing?.numero ?? "Orçamento")}
         size="xl"
       >
-        {viewing && (
+        {criando && (
+          <OrcamentoForm
+            clientesElegiveis={clientesElegiveis}
+            obrasAtivas={obrasAtivas}
+            todasPessoas={todasPessoas}
+            obras={obras}
+            onSuccess={aoCriar}
+            largo
+          />
+        )}
+        {!criando && viewing && (
           <OrcamentoReview
             orcamento={viewing}
             total={totais.get(viewing.id) ?? 0}
@@ -355,7 +362,11 @@ function OrcamentoForm({
   obrasAtivas: Obra[];
   todasPessoas: Pessoa[];
   obras: Obra[];
-  onSuccess: () => void;
+  // Chamado com o id só quando o orçamento é criado agora (upsert_orcamento
+  // devolve o id) — quem chama usa isso pra, na mesma janela, trocar do
+  // formulário de cabeçalho para a revisão com os itens (ver aoCriar em
+  // OrcamentosSection). Editar um orçamento existente chama sem argumento.
+  onSuccess: (novoId?: string) => void;
   // Na janela larga de revisão os campos do cabeçalho ficam em 2 colunas.
   largo?: boolean;
 }) {
@@ -365,7 +376,9 @@ function OrcamentoForm({
   );
   const wasPending = useRef(false);
   useEffect(() => {
-    if (wasPending.current && !isPending && !state?.error) onSuccess();
+    if (wasPending.current && !isPending && !(state && "error" in state)) {
+      onSuccess(state && "id" in state ? state.id : undefined);
+    }
     wasPending.current = isPending;
   }, [isPending, state, onSuccess]);
 
@@ -416,7 +429,11 @@ function OrcamentoForm({
           className="w-full"
         >
           {!orcamento && (
-            <option value="" disabled>
+            // `hidden` em vez de `disabled`: um placeholder desabilitado faz
+            // alguns navegadores não disparar o primeiro `onChange` real
+            // (a opção escolhida não "gruda" na primeira tentativa, só na
+            // segunda) — problema relatado pelo usuário, 2026-10-04.
+            <option value="" hidden>
               Selecione...
             </option>
           )}
@@ -480,7 +497,7 @@ function OrcamentoForm({
           className="w-full"
         />
       </div>
-      {state?.error && (
+      {state && "error" in state && (
         <p className="col-span-2 text-xs text-danger">{state.error}</p>
       )}
       <Button
@@ -925,7 +942,7 @@ function OportunidadeVinculoForm({
         required
         className="min-w-40"
       >
-        <option value="" disabled>
+        <option value="" hidden>
           Vincular a oportunidade
         </option>
         {oportunidades.map((o) => (
@@ -1262,6 +1279,15 @@ function ItemEditavelExpandido({
       ? [itemAtualFallback, ...itensAtivos]
       : itensAtivos;
 
+  // O <select> fica numa posição ESTÁVEL da árvore (direto aqui, fora de
+  // ItemConfiguravelForm/ItemSimplesForm) de propósito: escolher uma peça
+  // pode trocar qual dos dois formulários está montado (a característica
+  // determina configurável x simples), e esses dois são remontados via
+  // `key`/troca de tipo. Um <select> nativo que vive DENTRO do que acabou
+  // de ser destruído e recriado pelo seu próprio evento de troca perde a
+  // primeira escolha em alguns navegadores — só a segunda "gruda"
+  // (problema relatado pelo usuário, 2026-10-04). Com o select fora dessa
+  // troca, o nó do DOM nunca é destruído por causa da própria seleção.
   const itemSelectEl = (
     <Select
       name="item_id"
@@ -1273,7 +1299,7 @@ function ItemEditavelExpandido({
       required
       className="min-w-40"
     >
-      <option value="" disabled>
+      <option value="" hidden>
         Item
       </option>
       {itemOpcoes.map((it) => (
@@ -1296,9 +1322,10 @@ function ItemEditavelExpandido({
   // escolhido, e custo + mão de obra + preço se calculam sozinhos (ADR-012
   // v1.1) — sem item gravado antes e sem preço digitado antes.
   const definicoes = caracteristicasPorItemId.get(itemSel);
-  if (definicoes) {
-    return (
-      <div className="flex flex-col gap-2">
+  return (
+    <div className="flex flex-col gap-2">
+      <div>{itemSelectEl}</div>
+      {definicoes ? (
         <ItemConfiguravelForm
           key={`${item?.id ?? "novo"}:${itemSel}`}
           orcamentoId={item?.orcamento_id ?? orcamentoId}
@@ -1312,7 +1339,6 @@ function ItemEditavelExpandido({
               : null
           }
           itemId={itemSel}
-          itemSelect={itemSelectEl}
           definicoes={definicoes}
           valoresSalvos={
             item && item.item_id === itemSel ? caracteristicas : []
@@ -1320,23 +1346,18 @@ function ItemEditavelExpandido({
           onSaved={onSaved}
           onDirtyChange={onDirtyChange}
         />
-        {removerForm}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <ItemSimplesForm
-        item={item}
-        orcamentoId={orcamentoId}
-        itemSelect={itemSelectEl}
-        canManage={canManage}
-        onSaved={onSaved}
-        onDirtyChange={onDirtyChange}
-      />
+      ) : (
+        <ItemSimplesForm
+          item={item}
+          orcamentoId={orcamentoId}
+          itemSel={itemSel}
+          canManage={canManage}
+          onSaved={onSaved}
+          onDirtyChange={onDirtyChange}
+        />
+      )}
       {removerForm}
-      {item && canManage && (
+      {!definicoes && item && canManage && (
         <CalculadoraMaoDeObraConfigurador orcamentoItemId={item.id} />
       )}
     </div>
@@ -1349,14 +1370,17 @@ function ItemEditavelExpandido({
 function ItemSimplesForm({
   item,
   orcamentoId,
-  itemSelect,
+  itemSel,
   canManage,
   onSaved,
   onDirtyChange,
 }: {
   item: OrcamentoItem | null;
   orcamentoId: string;
-  itemSelect: ReactNode;
+  // O <select> de item é renderizado pelo chamador (fora deste form, numa
+  // posição estável — ver comentário em ItemEditavelExpandido); aqui só
+  // precisamos do valor já escolhido, pra mandar junto no FormData.
+  itemSel: string;
   canManage: boolean;
   onSaved: () => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -1367,6 +1391,12 @@ function ItemSimplesForm({
 
   async function enviar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // O <select> de item mora fora deste form (ver comentário acima), então
+    // perdeu a validação nativa `required` do navegador — repõe aqui.
+    if (!itemSel) {
+      setErro("Escolha um item.");
+      return;
+    }
     setEnviando(true);
     setErro(null);
     try {
@@ -1394,7 +1424,7 @@ function ItemSimplesForm({
         name="orcamento_id"
         value={item?.orcamento_id ?? orcamentoId}
       />
-      {itemSelect}
+      <input type="hidden" name="item_id" value={itemSel} />
       <Input
         name="quantidade"
         type="number"
