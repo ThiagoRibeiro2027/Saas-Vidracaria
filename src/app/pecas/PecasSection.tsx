@@ -16,12 +16,14 @@ import {
   definirComprimentoBarraAction,
   removerComprimentoBarraAction,
 } from "./actions";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Modal } from "@/components/ui/Modal";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import RegrasPeca from "./RegrasPeca";
 
 type Item = { id: string; codigo: string; descricao: string; tipo: string; unidade_principal: string };
@@ -78,8 +80,13 @@ const MATERIAL_TIPOS = ["materia_prima", "insumo", "material_auxiliar"];
 
 const fmtData = (v: string) => new Date(v).toLocaleString("pt-BR");
 
+// Mesmo padrão de Orçamentos (OrcamentosSection.tsx, 2026-10-03): lista
+// compacta e paginada no servidor; composição, características, regras
+// e histórico de cada peça só aparecem no modal, ao clicar na linha —
+// antes tudo ficava sempre empilhado na tela, peça após peça.
 export default function PecasSection({
   pecas,
+  paginacao,
   composicao,
   itens,
   revisoesPorPeca,
@@ -89,6 +96,7 @@ export default function PecasSection({
   canManage,
 }: {
   pecas: Peca[];
+  paginacao: PaginacaoInfo;
   composicao: PecaComposicao[];
   itens: Item[];
   revisoesPorPeca: Map<string, Revisao[]>;
@@ -113,6 +121,9 @@ export default function PecasSection({
     composicaoPorPeca.set(c.peca_id, list);
   }
 
+  const [viewId, setViewId] = useState<string | null>(null);
+  const viewing = pecas.find((p) => p.id === viewId) ?? null;
+
   return (
     <section>
       <h2 className="text-sm font-semibold text-text">Peças e composição de materiais</h2>
@@ -120,7 +131,7 @@ export default function PecasSection({
         Uma peça é um item do catálogo (tipo componente ou produto acabado); a composição é a lista
         de perfis/vidro/acessórios/insumos — ou de outra peça já cadastrada, como subconjunto — e a
         quantidade necessária por 1 unidade da peça. Toda mudança na composição gera uma revisão
-        nova (histórico abaixo, nada é sobrescrito).
+        nova (histórico no modal, nada é sobrescrito). Clique numa peça para abrir.
       </p>
 
       {canManage && (
@@ -140,187 +151,263 @@ export default function PecasSection({
         </form>
       )}
 
-      <div className="mt-4 flex flex-col gap-4">
-        {pecas.map((p) => {
-          const linhas = composicaoPorPeca.get(p.id) ?? [];
-          // Subconjunto não pode ser a própria peça (o backend trava ciclo
-          // indireto também — isso aqui é só conveniência de UI).
-          const pecasComoSubconjunto = pecas.filter((sp) => sp.situacao === "ativo" && sp.id !== p.id);
-          return (
-            <Card key={p.id} padding="xs" className={p.situacao === "ativo" ? "" : "opacity-55"}>
-              <div className="flex items-baseline gap-2 text-sm">
-                <strong className="text-text">{itemLabel(p.item_id)}</strong>
-                <Badge variant={p.situacao === "ativo" ? "success" : "neutral"}>
-                  {p.situacao === "ativo" ? "Ativa" : "Inativa"}
-                </Badge>
-                <span className="text-xs text-text-muted">rev. {p.revisao_atual}</span>
-                {canManage && (
-                  <form action={p.situacao === "ativo" ? inativarPecaAction : reativarPecaAction}>
-                    <input type="hidden" name="id" value={p.id} />
-                    <Button type="submit" variant={p.situacao === "ativo" ? "danger" : "primary"} size="sm">
-                      {p.situacao === "ativo" ? "Inativar" : "Reativar"}
-                    </Button>
-                  </form>
-                )}
-              </div>
-              {p.descricao_tecnica && <p className="mt-1 text-xs text-text-muted">{p.descricao_tecnica}</p>}
-
-              <div className="mt-1.5 overflow-x-auto">
-                <Table>
-                  <thead>
-                    <tr>
-                      <Th>Material</Th>
-                      <Th>Qtd. por unidade</Th>
-                      <Th>Observação</Th>
-                      <Th>Cálculo (ADR-012)</Th>
-                      {canManage && <Th />}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {linhas.map((c) => {
-                      const ehPeca = pecaPorItemId.has(c.material_item_id);
-                      return (
-                        <Fragment key={c.id}>
-                        <tr>
-                          <Td>
-                            {itemLabel(c.material_item_id)}
-                            {ehPeca && <span className="ml-1.5 font-mono text-[10px] text-primary">subconjunto</span>}
-                          </Td>
-                          <Td>
-                            {canManage ? (
-                              <form action={atualizarMaterialPecaAction} className="flex items-center gap-1">
-                                <input type="hidden" name="id" value={c.id} />
-                                <input type="hidden" name="observacao" value={c.observacao ?? ""} />
-                                <Input
-                                  name="quantidade_por_unidade"
-                                  type="number"
-                                  min="0.0001"
-                                  step="0.0001"
-                                  defaultValue={c.quantidade_por_unidade}
-                                  className="w-24"
-                                />
-                                <Button type="submit" variant="primary" size="sm">
-                                  Salvar
-                                </Button>
-                              </form>
-                            ) : (
-                              c.quantidade_por_unidade
-                            )}
-                          </Td>
-                          <Td>{c.observacao ?? "—"}</Td>
-                          <Td>
-                            {canManage ? (
-                              <TipoCalculoComposicao
-                                // Remonta quando o tipo salvo muda (depois de
-                                // "Salvar" + revalidação): sem isso, o select
-                                // ficava preso no valor antigo na tela — o
-                                // salvamento já tinha funcionado no banco,
-                                // só a tela não refletia (achado ao testar
-                                // Largura/Altura em 2026-10-04).
-                                key={`${c.id}:${c.tipo_calculo}`}
-                                composicao={c}
-                              />
-                            ) : (
-                              `${TIPO_CALCULO_LABEL[c.tipo_calculo]}${c.tipo_calculo !== "fixo" ? ` (perda ${c.percentual_perda}%)` : ""}`
-                            )}
-                          </Td>
-                          {canManage && (
-                            <Td>
-                              <form action={removerMaterialPecaAction}>
-                                <input type="hidden" name="id" value={c.id} />
-                                <Button type="submit" variant="danger" size="sm">
-                                  Remover
-                                </Button>
-                              </form>
-                            </Td>
-                          )}
-                        </tr>
-                        {(c.tipo_calculo === "linear" || c.tipo_calculo === "largura" || c.tipo_calculo === "altura") && (
-                          <tr>
-                            <Td colSpan={canManage ? 5 : 4}>
-                              <ComprimentosBarraComposicao
-                                composicaoId={c.id}
-                                comprimentos={comprimentosPorComposicao.get(c.id) ?? []}
-                                itens={itens}
-                                itemLabel={itemLabel}
-                                canManage={canManage}
-                              />
-                            </Td>
-                          </tr>
-                        )}
-                        </Fragment>
-                      );
-                    })}
-                    {linhas.length === 0 && (
-                      <tr>
-                        <Td colSpan={canManage ? 5 : 4} className="text-text-muted">
-                          Peça sem materiais na composição ainda.
-                        </Td>
-                      </tr>
-                    )}
-                  </tbody>
-                </Table>
-              </div>
-
-              {canManage && p.situacao === "ativo" && (
-                <form action={adicionarMaterialPecaAction} className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <input type="hidden" name="peca_id" value={p.id} />
-                  <Select name="material_item_id" required className="w-64">
-                    <option value="">Selecione o material ou subconjunto...</option>
-                    <optgroup label="Matéria-prima / insumo / material auxiliar">
-                      {itensMateriais.map((it) => (
-                        <option key={it.id} value={it.id}>
-                          {it.codigo} — {it.descricao} ({it.unidade_principal})
-                        </option>
-                      ))}
-                    </optgroup>
-                    {pecasComoSubconjunto.length > 0 && (
-                      <optgroup label="Outra peça (subconjunto)">
-                        {pecasComoSubconjunto.map((sp) => (
-                          <option key={sp.item_id} value={sp.item_id}>
-                            {itemLabel(sp.item_id)}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </Select>
-                  <Input
-                    name="quantidade_por_unidade"
-                    type="number"
-                    min="0.0001"
-                    step="0.0001"
-                    placeholder="qtd. por unidade"
-                    required
-                    className="w-28"
-                  />
-                  <Input name="observacao" placeholder="observação (opcional)" className="w-40" />
-                  <Button type="submit" variant="primary">
-                    Adicionar
-                  </Button>
-                </form>
-              )}
-
-              <CaracteristicasPeca pecaId={p.id} caracteristicas={caracteristicasPorPeca.get(p.id) ?? []} canManage={canManage && p.situacao === "ativo"} />
-
-              {canManage && p.situacao === "ativo" && (
-                <RegrasPeca
-                  pecaId={p.id}
-                  caracteristicas={caracteristicasPorPeca.get(p.id) ?? []}
-                  regras={regrasPorPeca.get(p.id) ?? []}
-                  materiais={[
-                    ...itensMateriais.map((it) => ({ id: it.id, label: itemLabel(it.id) })),
-                    ...pecasComoSubconjunto.map((sp) => ({ id: sp.item_id, label: itemLabel(sp.item_id) })),
-                  ]}
-                />
-              )}
-
-              <HistoricoRevisoes revisoes={revisoesPorPeca.get(p.id) ?? []} />
-            </Card>
-          );
-        })}
-        {pecas.length === 0 && <p className="text-xs text-text-muted">Nenhuma peça cadastrada ainda.</p>}
+      <div className="mt-4 overflow-x-auto">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Peça</Th>
+              <Th>Situação</Th>
+              <Th>Revisão</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {pecas.map((p) => (
+              <tr
+                key={p.id}
+                onClick={() => setViewId(p.id)}
+                className={`cursor-pointer hover:bg-page-bg ${p.situacao === "ativo" ? "" : "opacity-55"}`}
+              >
+                <Td className="font-medium text-text">{itemLabel(p.item_id)}</Td>
+                <Td>
+                  <Badge variant={p.situacao === "ativo" ? "success" : "neutral"}>
+                    {p.situacao === "ativo" ? "Ativa" : "Inativa"}
+                  </Badge>
+                </Td>
+                <Td className="text-text-muted">rev. {p.revisao_atual}</Td>
+              </tr>
+            ))}
+            {pecas.length === 0 && (
+              <tr>
+                <Td colSpan={3} className="text-text-muted">
+                  Nenhuma peça cadastrada ainda.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+        <Paginacao {...paginacao} />
       </div>
+
+      <Modal
+        open={viewing !== null}
+        onClose={() => setViewId(null)}
+        title={viewing ? itemLabel(viewing.item_id) : "Peça"}
+        size="xl"
+      >
+        {viewing && (
+          <PecaDetalhe
+            peca={viewing}
+            linhas={composicaoPorPeca.get(viewing.id) ?? []}
+            pecasComoSubconjunto={pecas.filter((sp) => sp.situacao === "ativo" && sp.id !== viewing.id)}
+            pecaItemIds={new Set(pecas.map((sp) => sp.item_id))}
+            itemLabel={itemLabel}
+            itensMateriais={itensMateriais}
+            comprimentosPorComposicao={comprimentosPorComposicao}
+            caracteristicas={caracteristicasPorPeca.get(viewing.id) ?? []}
+            regras={regrasPorPeca.get(viewing.id) ?? []}
+            revisoes={revisoesPorPeca.get(viewing.id) ?? []}
+            canManage={canManage}
+          />
+        )}
+      </Modal>
     </section>
+  );
+}
+
+function PecaDetalhe({
+  peca: p,
+  linhas,
+  pecasComoSubconjunto,
+  pecaItemIds,
+  itemLabel,
+  itensMateriais,
+  comprimentosPorComposicao,
+  caracteristicas,
+  regras,
+  revisoes,
+  canManage,
+}: {
+  peca: Peca;
+  linhas: PecaComposicao[];
+  pecasComoSubconjunto: Peca[];
+  pecaItemIds: Set<string>;
+  itemLabel: (id: string) => string;
+  itensMateriais: Item[];
+  comprimentosPorComposicao: Map<string, ComprimentoBarra[]>;
+  caracteristicas: Caracteristica[];
+  regras: Regra[];
+  revisoes: Revisao[];
+  canManage: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline gap-2 text-sm">
+        <Badge variant={p.situacao === "ativo" ? "success" : "neutral"}>
+          {p.situacao === "ativo" ? "Ativa" : "Inativa"}
+        </Badge>
+        <span className="text-xs text-text-muted">rev. {p.revisao_atual}</span>
+        {canManage && (
+          <form action={p.situacao === "ativo" ? inativarPecaAction : reativarPecaAction}>
+            <input type="hidden" name="id" value={p.id} />
+            <Button type="submit" variant={p.situacao === "ativo" ? "danger" : "primary"} size="sm">
+              {p.situacao === "ativo" ? "Inativar" : "Reativar"}
+            </Button>
+          </form>
+        )}
+      </div>
+      {p.descricao_tecnica && <p className="mt-1 text-xs text-text-muted">{p.descricao_tecnica}</p>}
+
+      <div className="mt-1.5 overflow-x-auto">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Material</Th>
+              <Th>Qtd. por unidade</Th>
+              <Th>Observação</Th>
+              <Th>Cálculo (ADR-012)</Th>
+              {canManage && <Th />}
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((c) => {
+              const ehPeca = pecaItemIds.has(c.material_item_id);
+              return (
+                <Fragment key={c.id}>
+                  <tr>
+                    <Td>
+                      {itemLabel(c.material_item_id)}
+                      {ehPeca && <span className="ml-1.5 font-mono text-[10px] text-primary">subconjunto</span>}
+                    </Td>
+                    <Td>
+                      {canManage ? (
+                        <form action={atualizarMaterialPecaAction} className="flex items-center gap-1">
+                          <input type="hidden" name="id" value={c.id} />
+                          <input type="hidden" name="observacao" value={c.observacao ?? ""} />
+                          <Input
+                            name="quantidade_por_unidade"
+                            type="number"
+                            min="0.0001"
+                            step="0.0001"
+                            defaultValue={c.quantidade_por_unidade}
+                            className="w-24"
+                          />
+                          <Button type="submit" variant="primary" size="sm">
+                            Salvar
+                          </Button>
+                        </form>
+                      ) : (
+                        c.quantidade_por_unidade
+                      )}
+                    </Td>
+                    <Td>{c.observacao ?? "—"}</Td>
+                    <Td>
+                      {canManage ? (
+                        <TipoCalculoComposicao
+                          // Remonta quando o tipo salvo muda (depois de
+                          // "Salvar" + revalidação): sem isso, o select
+                          // ficava preso no valor antigo na tela — o
+                          // salvamento já tinha funcionado no banco,
+                          // só a tela não refletia (achado ao testar
+                          // Largura/Altura em 2026-10-04).
+                          key={`${c.id}:${c.tipo_calculo}`}
+                          composicao={c}
+                        />
+                      ) : (
+                        `${TIPO_CALCULO_LABEL[c.tipo_calculo]}${c.tipo_calculo !== "fixo" ? ` (perda ${c.percentual_perda}%)` : ""}`
+                      )}
+                    </Td>
+                    {canManage && (
+                      <Td>
+                        <form action={removerMaterialPecaAction}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <Button type="submit" variant="danger" size="sm">
+                            Remover
+                          </Button>
+                        </form>
+                      </Td>
+                    )}
+                  </tr>
+                  {(c.tipo_calculo === "linear" || c.tipo_calculo === "largura" || c.tipo_calculo === "altura") && (
+                    <tr>
+                      <Td colSpan={canManage ? 5 : 4}>
+                        <ComprimentosBarraComposicao
+                          composicaoId={c.id}
+                          comprimentos={comprimentosPorComposicao.get(c.id) ?? []}
+                          itens={itensMateriais}
+                          itemLabel={itemLabel}
+                          canManage={canManage}
+                        />
+                      </Td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+            {linhas.length === 0 && (
+              <tr>
+                <Td colSpan={canManage ? 5 : 4} className="text-text-muted">
+                  Peça sem materiais na composição ainda.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </div>
+
+      {canManage && p.situacao === "ativo" && (
+        <form action={adicionarMaterialPecaAction} className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <input type="hidden" name="peca_id" value={p.id} />
+          <Select name="material_item_id" required className="w-64">
+            <option value="">Selecione o material ou subconjunto...</option>
+            <optgroup label="Matéria-prima / insumo / material auxiliar">
+              {itensMateriais.map((it) => (
+                <option key={it.id} value={it.id}>
+                  {it.codigo} — {it.descricao} ({it.unidade_principal})
+                </option>
+              ))}
+            </optgroup>
+            {pecasComoSubconjunto.length > 0 && (
+              <optgroup label="Outra peça (subconjunto)">
+                {pecasComoSubconjunto.map((sp) => (
+                  <option key={sp.item_id} value={sp.item_id}>
+                    {itemLabel(sp.item_id)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </Select>
+          <Input
+            name="quantidade_por_unidade"
+            type="number"
+            min="0.0001"
+            step="0.0001"
+            placeholder="qtd. por unidade"
+            required
+            className="w-28"
+          />
+          <Input name="observacao" placeholder="observação (opcional)" className="w-40" />
+          <Button type="submit" variant="primary">
+            Adicionar
+          </Button>
+        </form>
+      )}
+
+      <CaracteristicasPeca pecaId={p.id} caracteristicas={caracteristicas} canManage={canManage && p.situacao === "ativo"} />
+
+      {canManage && p.situacao === "ativo" && (
+        <RegrasPeca
+          pecaId={p.id}
+          caracteristicas={caracteristicas}
+          regras={regras}
+          materiais={[
+            ...itensMateriais.map((it) => ({ id: it.id, label: itemLabel(it.id) })),
+            ...pecasComoSubconjunto.map((sp) => ({ id: sp.item_id, label: itemLabel(sp.item_id) })),
+          ]}
+        />
+      )}
+
+      <HistoricoRevisoes revisoes={revisoes} />
+    </div>
   );
 }
 

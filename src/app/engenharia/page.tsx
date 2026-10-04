@@ -3,6 +3,7 @@ import EngenhariaSection from "./EngenhariaSection";
 import ItensSection from "./ItensSection";
 import PecasSection from "../pecas/PecasSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 type TabSlug = "fabricar" | "itens" | "pre-engenharia";
 
@@ -21,12 +22,20 @@ type TabSlug = "fabricar" | "itens" | "pre-engenharia";
 // desta mesma página — "pré-engenharia" é como a empresa já identifica
 // o cadastro das peças configuráveis, e o cadastro de itens é insumo
 // direto da composição dessas peças, então faz sentido ficar junto.
+//
+// 2026-10-04 (2): mesmo tratamento de layout já aplicado em Orçamentos
+// (Comercial) — tela larga, lista paginada no servidor e detalhe/edição
+// em modal em vez de tudo empilhado na tela. Como as 3 abas carregam os
+// dados sob demanda (só a aba ativa busca algo), todas usam os mesmos
+// nomes de parâmetro de paginação (`pagina`/`por_pagina`) sem colidir —
+// trocar de aba é navegação cheia (href sem querystring), que já limpa
+// a paginação da aba anterior.
 export default async function EngenhariaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; pagina?: string; por_pagina?: string }>;
 }) {
-  const { tab } = await searchParams;
+  const { tab, pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
   const supabase = await createClient();
 
   const [
@@ -60,8 +69,13 @@ export default async function EngenhariaPage({
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : availableTabs[0].slug;
 
+  const { pagina: paginaPedida, porPagina } = lerParametrosPaginacao({
+    pagina: paginaParam,
+    por_pagina: porPaginaParam,
+  });
+
   return (
-    <div className="mx-auto max-w-4xl p-6">
+    <div className="mx-auto max-w-7xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 5 — Engenharia</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Engenharia</h1>
       <p className="mt-1 text-sm text-text">
@@ -72,13 +86,13 @@ export default async function EngenhariaPage({
 
       <div className="mt-6">
         {activeTab === "fabricar" && canViewFabricar && (
-          <FabricarTab supabase={supabase} canManage={!!canManageFabricar} />
+          <FabricarTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManageFabricar} />
         )}
         {activeTab === "itens" && canViewItens && (
-          <ItensTab supabase={supabase} canManage={!!canManageItens} />
+          <ItensTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManageItens} />
         )}
         {activeTab === "pre-engenharia" && canViewPecas && (
-          <PreEngenhariaTab supabase={supabase} canManage={!!canManagePecas} />
+          <PreEngenhariaTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManagePecas} />
         )}
       </div>
     </div>
@@ -86,33 +100,47 @@ export default async function EngenhariaPage({
 }
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
+type TabProps = { supabase: Supabase; pagina: number; porPagina: number; canManage: boolean };
 
-async function FabricarTab({ supabase, canManage }: { supabase: Supabase; canManage: boolean }) {
-  const [
-    { data: pedidos },
-    { data: pedidoItens },
-    { data: itensProducao },
-    { data: pessoas },
-    { data: obras },
-    { data: itens },
-    { data: pecas },
-  ] = await Promise.all([
-    supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }),
-    supabase.from("pedido_itens").select("*"),
-    supabase.from("itens_producao").select("*"),
-    supabase.from("pessoas").select("id, nome"),
-    supabase.from("obras").select("id, nome"),
-    supabase.from("itens").select("id, codigo, descricao, tipo"),
-    supabase.from("pecas").select("id, item_id"),
-  ]);
+async function FabricarTab({ supabase, pagina, porPagina, canManage }: TabProps) {
+  const { count: totalPedidos } = await supabase
+    .from("pedidos")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "liberado");
+  const { paginacao, from, to } = calcularPaginacao(pagina, porPagina, totalPedidos ?? 0);
 
-  const pedidoItensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
+  const { data: pedidos } = await supabase
+    .from("pedidos")
+    .select("*")
+    .eq("status", "liberado")
+    .order("created_at", { ascending: false })
+    .order("id")
+    .range(from, to);
+  const pedidoIds = (pedidos ?? []).map((p) => p.id);
+
+  const [{ data: pedidoItens }, { data: pessoas }, { data: obras }, { data: itens }, { data: pecas }] =
+    await Promise.all([
+      pedidoIds.length > 0
+        ? supabase.from("pedido_itens").select("*").in("pedido_id", pedidoIds)
+        : Promise.resolve({ data: [] as never[] }),
+      supabase.from("pessoas").select("id, nome"),
+      supabase.from("obras").select("id, nome"),
+      supabase.from("itens").select("id, codigo, descricao, tipo"),
+      supabase.from("pecas").select("id, item_id"),
+    ]);
+
+  const pedidoItensPorPedido = new Map<string, typeof pedidoItens>();
   for (const pi of pedidoItens ?? []) {
     const list = pedidoItensPorPedido.get(pi.pedido_id) ?? [];
     list.push(pi);
     pedidoItensPorPedido.set(pi.pedido_id, list);
   }
 
+  const pedidoItemIds = (pedidoItens ?? []).map((pi) => pi.id);
+  const { data: itensProducao } =
+    pedidoItemIds.length > 0
+      ? await supabase.from("itens_producao").select("*").in("pedido_item_id", pedidoItemIds)
+      : { data: [] as never[] };
   const itemProducaoPorPedidoItem = new Map(
     (itensProducao ?? []).map((ip) => [ip.pedido_item_id, ip] as const),
   );
@@ -159,7 +187,8 @@ async function FabricarTab({ supabase, canManage }: { supabase: Supabase; canMan
   return (
     <EngenhariaSection
       pedidos={pedidos ?? []}
-      pedidoItensPorPedido={pedidoItensPorPedido}
+      paginacao={paginacao}
+      pedidoItensPorPedido={pedidoItensPorPedido as Map<string, NonNullable<typeof pedidoItens>>}
       itemProducaoPorPedidoItem={itemProducaoPorPedidoItem}
       pessoas={pessoas ?? []}
       obras={obras ?? []}
@@ -172,23 +201,42 @@ async function FabricarTab({ supabase, canManage }: { supabase: Supabase; canMan
   );
 }
 
-async function ItensTab({ supabase, canManage }: { supabase: Supabase; canManage: boolean }) {
-  const { data: itens } = await supabase.from("itens").select("*").order("codigo");
-  return <ItensSection rows={itens ?? []} canManage={canManage} />;
+async function ItensTab({ supabase, pagina, porPagina, canManage }: TabProps) {
+  const { count: totalItens } = await supabase.from("itens").select("id", { count: "exact", head: true });
+  const { paginacao, from, to } = calcularPaginacao(pagina, porPagina, totalItens ?? 0);
+  const { data: itens } = await supabase.from("itens").select("*").order("codigo").range(from, to);
+  return <ItensSection rows={itens ?? []} paginacao={paginacao} canManage={canManage} />;
 }
 
-async function PreEngenhariaTab({ supabase, canManage }: { supabase: Supabase; canManage: boolean }) {
-  const [{ data: pecas }, { data: composicao }, { data: itens }, { data: comprimentosBarra }] = await Promise.all([
-    supabase.from("pecas").select("*").order("created_at", { ascending: false }),
-    supabase.from("peca_composicao").select("*").order("created_at"),
+async function PreEngenhariaTab({ supabase, pagina, porPagina, canManage }: TabProps) {
+  const { count: totalPecas } = await supabase.from("pecas").select("id", { count: "exact", head: true });
+  const { paginacao, from, to } = calcularPaginacao(pagina, porPagina, totalPecas ?? 0);
+
+  const [{ data: pecas }, { data: itens }] = await Promise.all([
+    supabase.from("pecas").select("*").order("created_at", { ascending: false }).order("id").range(from, to),
     supabase
       .from("itens")
       .select("id, codigo, descricao, tipo, unidade_principal")
       .eq("situacao", "ativo")
       .order("codigo"),
-    // ADR-012 Fase 2 — comprimentos de barra candidatos por composição.
-    supabase.from("peca_composicao_comprimentos_barra").select("*").order("comprimento_metros"),
   ]);
+  const pecaIds = (pecas ?? []).map((p) => p.id);
+
+  const { data: composicao } =
+    pecaIds.length > 0
+      ? await supabase.from("peca_composicao").select("*").in("peca_id", pecaIds).order("created_at")
+      : { data: [] as never[] };
+  const composicaoIds = (composicao ?? []).map((c) => c.id);
+
+  // ADR-012 Fase 2 — comprimentos de barra candidatos por composição.
+  const { data: comprimentosBarra } =
+    composicaoIds.length > 0
+      ? await supabase
+          .from("peca_composicao_comprimentos_barra")
+          .select("*")
+          .in("peca_composicao_id", composicaoIds)
+          .order("comprimento_metros")
+      : { data: [] as never[] };
 
   const comprimentosPorComposicao = new Map<string, { id: string; item_id: string; comprimento_metros: number }[]>();
   for (const c of comprimentosBarra ?? []) {
@@ -241,6 +289,7 @@ async function PreEngenhariaTab({ supabase, canManage }: { supabase: Supabase; c
   return (
     <PecasSection
       pecas={pecas ?? []}
+      paginacao={paginacao}
       composicao={composicao ?? []}
       itens={itens ?? []}
       revisoesPorPeca={revisoesPorPeca}

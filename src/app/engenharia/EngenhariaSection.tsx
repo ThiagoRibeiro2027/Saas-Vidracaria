@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { criarItemProducaoAction, registrarMedicaoAction, confirmarMedicaoAction, definirValorCaracteristicaAction } from "./actions";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Modal } from "@/components/ui/Modal";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import BomPedidoItem from "./BomPedidoItem";
 
 type Caracteristica = {
@@ -53,8 +56,13 @@ type ItemProducao = {
   medida_confirmada: boolean;
 };
 
+// Mesmo padrão de Orçamentos (OrcamentosSection.tsx, 2026-10-03): lista
+// compacta e paginada no servidor; a medição, características e BOM de
+// cada pedido só aparecem no modal, ao clicar na linha — antes tudo
+// ficava sempre empilhado na tela, pedido após pedido.
 export default function EngenhariaSection({
   pedidos,
+  paginacao,
   pedidoItensPorPedido,
   itemProducaoPorPedidoItem,
   pessoas,
@@ -66,6 +74,7 @@ export default function EngenhariaSection({
   canManage,
 }: {
   pedidos: Pedido[];
+  paginacao: PaginacaoInfo;
   pedidoItensPorPedido: Map<string, PedidoItem[]>;
   itemProducaoPorPedidoItem: Map<string, ItemProducao>;
   pessoas: Pessoa[];
@@ -83,62 +92,139 @@ export default function EngenhariaSection({
     return it ? `${it.codigo} — ${it.descricao}` : "(item removido)";
   };
 
+  const [viewId, setViewId] = useState<string | null>(null);
+  const viewing = pedidos.find((p) => p.id === viewId) ?? null;
+
   return (
     <section>
-      <div className="flex flex-col gap-4">
-        {pedidos.map((ped) => {
-          const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
+      <h2 className="text-sm font-semibold text-text">Itens a fabricar</h2>
+      <p className="mb-4 mt-1 text-xs text-text-muted">
+        Medição em obra por item de pedido liberado, com confirmação antes da produção (TÓPICO 16
+        §7). Quando o item é uma peça configurável (TÓPICO 5, Fases F-H): valor das características,
+        geração da BOM sugerida pelo motor de regras, ajuste manual e aprovação da BOM definitiva.
+        Clique num pedido para abrir.
+      </p>
 
-          return (
-            <Card key={ped.id} padding="xs">
-              <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
-                <strong className="text-[13px] text-text">{ped.numero}</strong>
-                <span>{pessoaNome(ped.pessoa_id)}</span>
-                <span className="text-text-muted">{obraNome(ped.obra_id)}</span>
-              </div>
-
-              <Table className="mt-2">
-                <thead>
-                  <tr>
-                    <Th>Item</Th>
-                    <Th>Qtd</Th>
-                    <Th>Ambiente</Th>
-                    <Th>Largura (mm)</Th>
-                    <Th>Altura (mm)</Th>
-                    <Th>Medida</Th>
-                    {canManage && <Th />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {itensDoPedido.map((pi) => {
-                    const producao = itemProducaoPorPedidoItem.get(pi.id);
-                    return (
-                      <ItemProducaoRow
-                        key={pi.id}
-                        pedidoItem={pi}
-                        producao={producao}
-                        itemLabel={itemLabel(pi.item_id)}
-                        caracteristicas={caracteristicasPorPedidoItem.get(pi.id) ?? []}
-                        bomLinhas={bomPorPedidoItem.get(pi.id) ?? []}
-                        ehPecaConfiguravel={pecaIdPorItemId.has(pi.item_id)}
-                        itens={itens}
-                        canManage={canManage}
-                      />
-                    );
-                  })}
-                </tbody>
-              </Table>
-              {itensDoPedido.length === 0 && <p className="mt-2 text-xs text-text-muted">Pedido sem itens.</p>}
-            </Card>
-          );
-        })}
-        {pedidos.length === 0 && (
-          <p className="text-xs text-text-muted">
-            Nenhum pedido liberado ainda — a Engenharia só entra depois da liberação (TÓPICO 3).
-          </p>
-        )}
+      <div className="overflow-x-auto">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Pedido</Th>
+              <Th>Cliente</Th>
+              <Th>Obra</Th>
+              <Th className="text-right">Itens</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {pedidos.map((ped) => {
+              const qtdItens = (pedidoItensPorPedido.get(ped.id) ?? []).length;
+              return (
+                <tr key={ped.id} onClick={() => setViewId(ped.id)} className="cursor-pointer hover:bg-page-bg">
+                  <Td className="font-medium text-text">{ped.numero}</Td>
+                  <Td>{pessoaNome(ped.pessoa_id)}</Td>
+                  <Td className="text-text-muted">{obraNome(ped.obra_id)}</Td>
+                  <Td className="text-right">{qtdItens}</Td>
+                </tr>
+              );
+            })}
+            {pedidos.length === 0 && (
+              <tr>
+                <Td colSpan={4} className="text-text-muted">
+                  Nenhum pedido liberado ainda — a Engenharia só entra depois da liberação (TÓPICO 3).
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+        <Paginacao {...paginacao} />
       </div>
+
+      <Modal open={viewing !== null} onClose={() => setViewId(null)} title={viewing?.numero ?? "Pedido"} size="xl">
+        {viewing && (
+          <PedidoDetalhe
+            pedido={viewing}
+            itensDoPedido={pedidoItensPorPedido.get(viewing.id) ?? []}
+            itemProducaoPorPedidoItem={itemProducaoPorPedidoItem}
+            caracteristicasPorPedidoItem={caracteristicasPorPedidoItem}
+            bomPorPedidoItem={bomPorPedidoItem}
+            pecaIdPorItemId={pecaIdPorItemId}
+            itens={itens}
+            itemLabel={itemLabel}
+            pessoaNome={pessoaNome}
+            obraNome={obraNome}
+            canManage={canManage}
+          />
+        )}
+      </Modal>
     </section>
+  );
+}
+
+function PedidoDetalhe({
+  pedido,
+  itensDoPedido,
+  itemProducaoPorPedidoItem,
+  caracteristicasPorPedidoItem,
+  bomPorPedidoItem,
+  pecaIdPorItemId,
+  itens,
+  itemLabel,
+  pessoaNome,
+  obraNome,
+  canManage,
+}: {
+  pedido: Pedido;
+  itensDoPedido: PedidoItem[];
+  itemProducaoPorPedidoItem: Map<string, ItemProducao>;
+  caracteristicasPorPedidoItem: Map<string, Caracteristica[]>;
+  bomPorPedidoItem: Map<string, BomLinha[]>;
+  pecaIdPorItemId: Map<string, string>;
+  itens: Item[];
+  itemLabel: (id: string) => string;
+  pessoaNome: (id: string) => string;
+  obraNome: (id: string | null) => string;
+  canManage: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline gap-2.5 text-xs text-text-muted">
+        <span>{pessoaNome(pedido.pessoa_id)}</span>
+        <span>{obraNome(pedido.obra_id)}</span>
+      </div>
+
+      <Table className="mt-2">
+        <thead>
+          <tr>
+            <Th>Item</Th>
+            <Th>Qtd</Th>
+            <Th>Ambiente</Th>
+            <Th>Largura (mm)</Th>
+            <Th>Altura (mm)</Th>
+            <Th>Medida</Th>
+            {canManage && <Th />}
+          </tr>
+        </thead>
+        <tbody>
+          {itensDoPedido.map((pi) => {
+            const producao = itemProducaoPorPedidoItem.get(pi.id);
+            return (
+              <ItemProducaoRow
+                key={pi.id}
+                pedidoItem={pi}
+                producao={producao}
+                itemLabel={itemLabel(pi.item_id)}
+                caracteristicas={caracteristicasPorPedidoItem.get(pi.id) ?? []}
+                bomLinhas={bomPorPedidoItem.get(pi.id) ?? []}
+                ehPecaConfiguravel={pecaIdPorItemId.has(pi.item_id)}
+                itens={itens}
+                canManage={canManage}
+              />
+            );
+          })}
+        </tbody>
+      </Table>
+      {itensDoPedido.length === 0 && <p className="mt-2 text-xs text-text-muted">Pedido sem itens.</p>}
+    </div>
   );
 }
 

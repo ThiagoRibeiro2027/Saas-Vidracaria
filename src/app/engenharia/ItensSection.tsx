@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { upsertItemAction, definirPropriedadesDimensionaisItemAction } from "./actions";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Modal } from "@/components/ui/Modal";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
 const TIPOS = [
   ["materia_prima", "Matéria-prima"],
@@ -18,6 +22,8 @@ const TIPOS = [
   ["servico", "Serviço"],
   ["outro", "Outro"],
 ] as const;
+
+const TIPO_LABEL: Record<string, string> = Object.fromEntries(TIPOS);
 
 type Item = {
   id: string;
@@ -33,46 +39,118 @@ type Item = {
   peso_por_unidade_dimensao: number | null;
 };
 
-export default function ItensSection({ rows, canManage }: { rows: Item[]; canManage: boolean }) {
+// Mesmo padrão de Orçamentos (OrcamentosSection.tsx, 2026-10-03): lista
+// compacta e paginada no servidor; o formulário completo (e o controle
+// dimensional) só aparece no modal, ao clicar numa linha ou em "+ Novo
+// item" — reduz o espaço que a tela antiga gastava com todo item sempre
+// editável inline.
+export default function ItensSection({
+  rows,
+  paginacao,
+  canManage,
+}: {
+  rows: Item[];
+  paginacao: PaginacaoInfo;
+  canManage: boolean;
+}) {
+  const [viewId, setViewId] = useState<string | null>(null);
+  const criando = viewId === "novo";
+  const viewing = !criando ? (rows.find((r) => r.id === viewId) ?? null) : null;
+
+  function aoSalvar() {
+    setViewId(null);
+  }
+
   return (
     <section>
       <h2 className="text-sm font-semibold text-text">Cadastro de itens</h2>
       <p className="mt-1 text-xs text-text-muted">
         Produto e material são o mesmo cadastro (TÓPICO 2 §7-10), diferenciados pelo tipo.
         Classificação é texto livre — é o mesmo valor usado em Configurações → Margem de quebra e
-        Regra de medição (ex.: <code>vidro_temperado</code>).
+        Regra de medição (ex.: <code>vidro_temperado</code>). Clique numa linha para abrir, revisar
+        e editar.
       </p>
-      <div className="mt-3 overflow-x-auto">
+
+      {canManage && (
+        <div className="my-3">
+          <Button type="button" variant="primary" onClick={() => setViewId("novo")}>
+            + Novo item
+          </Button>
+        </div>
+      )}
+
+      <div className="mt-1 overflow-x-auto">
         <Table>
           <thead>
             <tr>
               <Th>Código</Th>
               <Th>Descrição</Th>
               <Th>Tipo</Th>
-              <Th>Classificação</Th>
               <Th>Unidade</Th>
               <Th>Situação</Th>
-              {canManage && <Th />}
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => (
-              <RowForm key={row.id} row={row} canManage={canManage} />
+              <tr key={row.id} onClick={() => setViewId(row.id)} className="cursor-pointer hover:bg-page-bg">
+                <Td className="font-medium text-text">{row.codigo}</Td>
+                <Td>{row.descricao}</Td>
+                <Td className="text-text-muted">{TIPO_LABEL[row.tipo] ?? row.tipo}</Td>
+                <Td className="text-text-muted">{row.unidade_principal}</Td>
+                <Td>
+                  <Badge variant={row.situacao === "ativo" ? "success" : "neutral"}>
+                    {row.situacao === "ativo" ? "Ativo" : "Inativo"}
+                  </Badge>
+                </Td>
+              </tr>
             ))}
-            {canManage && <RowForm row={null} canManage={canManage} />}
+            {rows.length === 0 && (
+              <tr>
+                <Td colSpan={5} className="text-text-muted">
+                  Nenhum item cadastrado ainda.
+                </Td>
+              </tr>
+            )}
           </tbody>
         </Table>
+        <Paginacao {...paginacao} />
       </div>
+
+      <Modal
+        open={criando || viewing !== null}
+        onClose={() => setViewId(null)}
+        title={criando ? "Novo item" : (viewing?.codigo ?? "Item")}
+        size="md"
+      >
+        {(criando || viewing) && <ItemForm row={viewing} canManage={canManage} onSaved={aoSalvar} />}
+      </Modal>
     </section>
   );
 }
 
-function RowForm({ row, canManage }: { row: Item | null; canManage: boolean }) {
+function ItemForm({ row, canManage, onSaved }: { row: Item | null; canManage: boolean; onSaved: () => void }) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enviar(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setEnviando(true);
+    setErro(null);
+    try {
+      await upsertItemAction(new FormData(e.currentTarget));
+      onSaved();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível salvar o item.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
   return (
-    <tr>
-      <Td colSpan={canManage ? 7 : 6}>
-        <form action={upsertItemAction} className="flex flex-wrap items-center gap-1.5">
-          {row && <input type="hidden" name="id" value={row.id} />}
+    <div className="flex flex-col gap-3">
+      <form onSubmit={enviar} className="flex flex-col gap-2">
+        {row && <input type="hidden" name="id" value={row.id} />}
+        <div className="flex flex-wrap items-center gap-1.5">
           <Input
             name="codigo"
             placeholder="código"
@@ -88,8 +166,10 @@ function RowForm({ row, canManage }: { row: Item | null; canManage: boolean }) {
             defaultValue={row?.descricao ?? ""}
             required
             disabled={!canManage}
-            className="w-48"
+            className="w-56"
           />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
           <Select name="tipo" defaultValue={row?.tipo ?? "materia_prima"} disabled={!canManage}>
             {TIPOS.map(([value, label]) => (
               <option key={value} value={value}>
@@ -102,7 +182,7 @@ function RowForm({ row, canManage }: { row: Item | null; canManage: boolean }) {
             placeholder="classificação (opcional)"
             defaultValue={row?.classificacao ?? ""}
             disabled={!canManage}
-            className="w-36"
+            className="w-40"
           />
           <Input
             name="unidade_principal"
@@ -116,16 +196,19 @@ function RowForm({ row, canManage }: { row: Item | null; canManage: boolean }) {
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
           </Select>
-          {canManage && (
-            <Button type="submit" variant="primary">
-              {row ? "Salvar" : "Adicionar"}
+        </div>
+        {canManage && (
+          <div className="flex items-center gap-2">
+            <Button type="submit" variant="primary" disabled={enviando}>
+              {enviando ? "Salvando..." : row ? "Salvar" : "Adicionar"}
             </Button>
-          )}
-        </form>
+            {erro && <span className="text-xs text-danger">{erro}</span>}
+          </div>
+        )}
+      </form>
 
-        {row && canManage && <ControleDimensional row={row} />}
-      </Td>
-    </tr>
+      {row && canManage && <ControleDimensional row={row} />}
+    </div>
   );
 }
 
@@ -133,14 +216,16 @@ function RowForm({ row, canManage }: { row: Item | null; canManage: boolean }) {
 // barra em metro, chapa/bobina em m². Formulário à parte porque é outra
 // função no banco, com regra própria: desligar o controle é recusado
 // quando já existe peça registrada. Só aparece em item já cadastrado,
-// já que a função exige o id.
+// já que a função exige o id. Fica como Server Action direta (sem
+// fechar o modal) — ajustar o controle dimensional não precisa voltar
+// pra lista.
 function ControleDimensional({ row }: { row: Item }) {
   const [tipo, setTipo] = useState<string>(row.dimensao_tipo ?? "");
 
   return (
     <form
       action={definirPropriedadesDimensionaisItemAction}
-      className="mt-1 flex flex-wrap items-center gap-1.5 border-t border-border pt-1.5"
+      className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2"
     >
       <input type="hidden" name="item_id" value={row.id} />
       <span className="text-xs text-text-muted">Controle dimensional:</span>
