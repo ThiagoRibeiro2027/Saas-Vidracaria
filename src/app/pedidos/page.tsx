@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import PedidosSection from "./PedidosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 3 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // outubro: "entrada do pedido", último item da sequência T2 → T10 → T3).
@@ -12,12 +13,16 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 // aqui — virou uma ação dentro do orçamento aprovado (comercial, ADR-002
 // v2.5 — fusão decidida com o usuário em 2026-10-03), que redireciona pra cá
 // com `?pedido=<id>` já selecionado.
+//
+// 2026-10-04: mesmo tratamento de layout já aplicado em Orçamentos e
+// Engenharia — tela larga, lista paginada no servidor e detalhe/ações em
+// modal em vez de empilhado abaixo da tabela.
 export default async function PedidosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ pedido?: string }>;
+  searchParams: Promise<{ pedido?: string; pagina?: string; por_pagina?: string }>;
 }) {
-  const { pedido: pedidoInicialId } = await searchParams;
+  const { pedido: pedidoInicialId, pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -33,11 +38,29 @@ export default async function PedidosPage({
     );
   }
 
-  const [{ data: pedidos }, { data: pedidoItens }, { data: pendencias }, { data: orcamentosAprovados }, { data: pessoas }, { data: obras }, { data: itens }] =
+  const { pagina: paginaPedida, porPagina } = lerParametrosPaginacao({
+    pagina: paginaParam,
+    por_pagina: porPaginaParam,
+  });
+  const { count: totalPedidos } = await supabase.from("pedidos").select("id", { count: "exact", head: true });
+  const { paginacao, from, to } = calcularPaginacao(paginaPedida, porPagina, totalPedidos ?? 0);
+
+  const { data: pedidos } = await supabase
+    .from("pedidos")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .order("id")
+    .range(from, to);
+  const pedidoIds = (pedidos ?? []).map((p) => p.id);
+
+  const [{ data: pedidoItens }, { data: pendencias }, { data: orcamentosAprovados }, { data: pessoas }, { data: obras }, { data: itens }] =
     await Promise.all([
-      supabase.from("pedidos").select("*").order("created_at", { ascending: false }),
-      supabase.from("pedido_itens").select("*"),
-      supabase.from("pedido_pendencias").select("*").order("aberta_em", { ascending: false }),
+      pedidoIds.length > 0
+        ? supabase.from("pedido_itens").select("*").in("pedido_id", pedidoIds)
+        : Promise.resolve({ data: [] as never[] }),
+      pedidoIds.length > 0
+        ? supabase.from("pedido_pendencias").select("*").in("pedido_id", pedidoIds).order("aberta_em", { ascending: false })
+        : Promise.resolve({ data: [] as never[] }),
       // Só pra legenda "Origem" na lista de pedidos (número do orçamento que
       // originou cada um) — a conversão em si não mora mais aqui.
       supabase.from("orcamentos").select("id, numero").eq("status", "aprovado"),
@@ -50,21 +73,27 @@ export default async function PedidosPage({
   // definitiva da Engenharia diverge do custo que formou o preço no
   // orçamento. Só pendentes: aplicada/ignorada já foi decidida e não
   // precisa mais aparecer aqui.
-  const { data: divergencias } = canManage
-    ? await supabase.from("pedido_item_divergencia_preco").select("*").eq("status", "pendente")
-    : { data: null };
+  const pedidoItemIds = (pedidoItens ?? []).map((pi) => pi.id);
+  const { data: divergencias } =
+    canManage && pedidoItemIds.length > 0
+      ? await supabase
+          .from("pedido_item_divergencia_preco")
+          .select("*")
+          .eq("status", "pendente")
+          .in("pedido_item_id", pedidoItemIds)
+      : { data: null };
   const divergenciasPorPedidoItem = new Map((divergencias ?? []).map((d) => [d.pedido_item_id, d]));
 
   const numeroOrcamentoPorId = new Map((orcamentosAprovados ?? []).map((o) => [o.id, o.numero]));
 
-  const itensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
+  const itensPorPedido = new Map<string, typeof pedidoItens>();
   for (const pi of pedidoItens ?? []) {
     const list = itensPorPedido.get(pi.pedido_id) ?? [];
     list.push(pi);
     itensPorPedido.set(pi.pedido_id, list);
   }
 
-  const pendenciasPorPedido = new Map<string, NonNullable<typeof pendencias>>();
+  const pendenciasPorPedido = new Map<string, typeof pendencias>();
   for (const pd of pendencias ?? []) {
     const list = pendenciasPorPedido.get(pd.pedido_id) ?? [];
     list.push(pd);
@@ -72,7 +101,7 @@ export default async function PedidosPage({
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-7xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 3 — Pedidos</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Pedidos</h1>
       <p className="mt-1 text-sm text-text">
@@ -84,8 +113,9 @@ export default async function PedidosPage({
       <div className="mt-6">
         <PedidosSection
           pedidos={pedidos ?? []}
-          itensPorPedido={itensPorPedido}
-          pendenciasPorPedido={pendenciasPorPedido}
+          paginacao={paginacao}
+          itensPorPedido={itensPorPedido as Map<string, NonNullable<typeof pedidoItens>>}
+          pendenciasPorPedido={pendenciasPorPedido as Map<string, NonNullable<typeof pendencias>>}
           numeroOrcamentoPorId={numeroOrcamentoPorId}
           pessoas={pessoas ?? []}
           obras={obras ?? []}

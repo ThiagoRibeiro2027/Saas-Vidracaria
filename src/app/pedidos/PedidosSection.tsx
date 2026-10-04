@@ -10,11 +10,13 @@ import {
   aplicarAtualizacaoPrecoBomAction,
   ignorarDivergenciaPrecoBomAction,
 } from "./actions";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Modal } from "@/components/ui/Modal";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -70,8 +72,13 @@ const STATUS_TONE: Record<Pedido["status"], "neutral" | "success" | "warning" | 
   cancelado: "danger",
 };
 
+// Mesmo padrão de Orçamentos e Engenharia (2026-10-03/04): lista
+// compacta e paginada no servidor; ações de status, itens, divergências
+// e pendências de cada pedido só aparecem no modal, ao clicar na linha
+// — antes o detalhe ficava sempre empilhado abaixo da tabela.
 export default function PedidosSection({
   pedidos,
+  paginacao,
   itensPorPedido,
   pendenciasPorPedido,
   numeroOrcamentoPorId,
@@ -83,6 +90,7 @@ export default function PedidosSection({
   pedidoInicialId,
 }: {
   pedidos: Pedido[];
+  paginacao: PaginacaoInfo;
   itensPorPedido: Map<string, PedidoItem[]>;
   pendenciasPorPedido: Map<string, Pendencia[]>;
   numeroOrcamentoPorId: Map<string, string>;
@@ -93,7 +101,8 @@ export default function PedidosSection({
   canManage: boolean;
   // Conversão de orçamentos virou ação dentro do próprio orçamento
   // (comercial/OrcamentosSection.tsx), que linka pra cá com `?pedido=<id>`
-  // — pré-seleciona o pedido gerado em vez do usuário ter que procurá-lo.
+  // — pré-seleciona (e já abre o modal d)o pedido gerado em vez do
+  // usuário ter que procurá-lo.
   pedidoInicialId: string | null;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
@@ -103,103 +112,69 @@ export default function PedidosSection({
     return it ? `${it.codigo} — ${it.descricao}` : "(item removido)";
   };
 
-  const [selectedId, setSelectedId] = useState<string | null>(pedidoInicialId);
-  const selected = pedidos.find((p) => p.id === selectedId) ?? null;
+  const [viewId, setViewId] = useState<string | null>(pedidoInicialId);
+  const viewing = pedidos.find((p) => p.id === viewId) ?? null;
 
   return (
-    <>
-      <section>
-          <h2 className="text-sm font-semibold text-text">Pedidos</h2>
+    <section>
+      <h2 className="text-sm font-semibold text-text">Pedidos</h2>
+      <p className="mb-4 mt-1 text-xs text-text-muted">Clique num pedido para abrir, conferir e liberar.</p>
 
-          {canManage && (
-            <div className="mb-3 mt-2 flex flex-wrap items-center gap-1.5">
-              <form action={iniciarConferenciaAction}>
-                <input type="hidden" name="id" value={selected?.id ?? ""} />
-                <Button type="submit" variant="primary" disabled={selected?.status !== "recebido"}>
-                  Iniciar conferência
-                </Button>
-              </form>
-              <form action={liberarPedidoAction}>
-                <input type="hidden" name="id" value={selected?.id ?? ""} />
-                <Button type="submit" variant="primary" disabled={selected?.status !== "em_conferencia"}>
-                  Liberar
-                </Button>
-              </form>
-              <form action={cancelarPedidoAction}>
-                <input type="hidden" name="id" value={selected?.id ?? ""} />
-                <Button
-                  type="submit"
-                  variant="danger"
-                  disabled={
-                    !selected || !(selected.status === "recebido" || selected.status === "em_conferencia" || selected.status === "pendente")
-                  }
-                >
-                  Cancelar
-                </Button>
-              </form>
-              <span className="ml-auto text-xs text-text-muted">
-                {selected ? `${selected.numero} selecionado` : "nenhum pedido selecionado"}
-              </span>
-            </div>
-          )}
-
-          <div className="overflow-x-auto">
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Número</Th>
-                  <Th>Cliente</Th>
-                  <Th>Obra</Th>
-                  <Th>Data</Th>
-                  <Th>Origem</Th>
-                  <Th>Status</Th>
-                  <Th>Pendências</Th>
+      <div className="overflow-x-auto">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Número</Th>
+              <Th>Cliente</Th>
+              <Th>Obra</Th>
+              <Th>Data</Th>
+              <Th>Origem</Th>
+              <Th>Status</Th>
+              <Th>Pendências</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {pedidos.map((ped) => {
+              const pendenciasAbertas = (pendenciasPorPedido.get(ped.id) ?? []).filter((p) => !p.resolvida);
+              return (
+                <tr key={ped.id} onClick={() => setViewId(ped.id)} className="cursor-pointer hover:bg-page-bg">
+                  <Td className="font-medium text-text">{ped.numero}</Td>
+                  <Td>{pessoaNome(ped.pessoa_id)}</Td>
+                  <Td className="text-text-muted">{obraNome(ped.obra_id)}</Td>
+                  <Td className="text-text-muted">{ped.data_pedido}</Td>
+                  <Td className="text-text-muted">{numeroOrcamentoPorId.get(ped.orcamento_id) ?? "(orçamento removido)"}</Td>
+                  <Td>
+                    <Badge variant={STATUS_TONE[ped.status]}>{STATUS_LABEL[ped.status]}</Badge>
+                  </Td>
+                  <Td>{pendenciasAbertas.length > 0 ? <span className="text-warning">{pendenciasAbertas.length} aberta(s)</span> : "—"}</Td>
                 </tr>
-              </thead>
-              <tbody>
-                {pedidos.map((ped) => {
-                  const pendenciasAbertas = (pendenciasPorPedido.get(ped.id) ?? []).filter((p) => !p.resolvida);
-                  return (
-                    <tr
-                      key={ped.id}
-                      onClick={() => setSelectedId((prev) => (prev === ped.id ? null : ped.id))}
-                      className={`cursor-pointer ${selectedId === ped.id ? "bg-primary-soft" : "hover:bg-page-bg"}`}
-                    >
-                      <Td className="font-medium text-text">{ped.numero}</Td>
-                      <Td>{pessoaNome(ped.pessoa_id)}</Td>
-                      <Td className="text-text-muted">{obraNome(ped.obra_id)}</Td>
-                      <Td className="text-text-muted">{ped.data_pedido}</Td>
-                      <Td className="text-text-muted">{numeroOrcamentoPorId.get(ped.orcamento_id) ?? "(orçamento removido)"}</Td>
-                      <Td>
-                        <Badge variant={STATUS_TONE[ped.status]}>{STATUS_LABEL[ped.status]}</Badge>
-                      </Td>
-                      <Td>{pendenciasAbertas.length > 0 ? <span className="text-warning">{pendenciasAbertas.length} aberta(s)</span> : "—"}</Td>
-                    </tr>
-                  );
-                })}
-                {pedidos.length === 0 && (
-                  <tr>
-                    <Td colSpan={7} className="text-text-muted">
-                      Nenhum pedido ainda.
-                    </Td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
-          </div>
+              );
+            })}
+            {pedidos.length === 0 && (
+              <tr>
+                <Td colSpan={7} className="text-text-muted">
+                  Nenhum pedido ainda.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+        <Paginacao {...paginacao} />
+      </div>
 
-          {selected && (
-            <PedidoDetalhe
-              pedido={selected}
-              pedItens={itensPorPedido.get(selected.id) ?? []}
-              pendencias={pendenciasPorPedido.get(selected.id) ?? []}
-              divergenciasPorPedidoItem={divergenciasPorPedidoItem}
-              itemLabel={itemLabel}
-              canManage={canManage}
-            />
-          )}
-      </section>
-    </>
+      <Modal open={viewing !== null} onClose={() => setViewId(null)} title={viewing?.numero ?? "Pedido"} size="xl">
+        {viewing && (
+          <PedidoDetalhe
+            pedido={viewing}
+            pedItens={itensPorPedido.get(viewing.id) ?? []}
+            pendencias={pendenciasPorPedido.get(viewing.id) ?? []}
+            divergenciasPorPedidoItem={divergenciasPorPedidoItem}
+            itemLabel={itemLabel}
+            canManage={canManage}
+          />
+        )}
+      </Modal>
+    </section>
   );
 }
 
@@ -221,10 +196,35 @@ function PedidoDetalhe({
   const podeAbrirPendencia = canManage && (pedido.status === "em_conferencia" || pedido.status === "pendente");
 
   return (
-    <Card padding="xs" className="mt-3">
-      <strong className="text-sm text-text">Itens do pedido {pedido.numero}</strong>
+    <div>
+      {canManage && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <form action={iniciarConferenciaAction}>
+            <input type="hidden" name="id" value={pedido.id} />
+            <Button type="submit" variant="primary" disabled={pedido.status !== "recebido"}>
+              Iniciar conferência
+            </Button>
+          </form>
+          <form action={liberarPedidoAction}>
+            <input type="hidden" name="id" value={pedido.id} />
+            <Button type="submit" variant="primary" disabled={pedido.status !== "em_conferencia"}>
+              Liberar
+            </Button>
+          </form>
+          <form action={cancelarPedidoAction}>
+            <input type="hidden" name="id" value={pedido.id} />
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={!(pedido.status === "recebido" || pedido.status === "em_conferencia" || pedido.status === "pendente")}
+            >
+              Cancelar
+            </Button>
+          </form>
+        </div>
+      )}
 
-      <Table className="mt-2">
+      <Table>
         <thead>
           <tr>
             <Th>Item</Th>
@@ -323,6 +323,6 @@ function PedidoDetalhe({
           )}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
