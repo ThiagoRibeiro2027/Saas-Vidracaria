@@ -3,7 +3,6 @@ import {
   ShoppingCart,
   ClipboardList,
   ListOrdered,
-  Puzzle,
   Ruler,
   Factory,
   BadgeCheck,
@@ -97,7 +96,16 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/pedidos",
         icon: ClipboardList,
       },
-      { label: "Engenharia", href: "/engenharia", icon: Ruler },
+      {
+        label: "Engenharia",
+        href: "/engenharia",
+        icon: Ruler,
+        children: [
+          { label: "Itens a fabricar", href: "/engenharia", tab: "fabricar" },
+          { label: "Cadastro de itens", href: "/engenharia?tab=itens", tab: "itens" },
+          { label: "Pré-engenharia", href: "/engenharia?tab=pre-engenharia", tab: "pre-engenharia" },
+        ],
+      },
     ],
   },
   {
@@ -120,7 +128,6 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
       },
       { label: "Fila de Produção", href: "/fila-producao", icon: ListOrdered },
-      { label: "Peças Fabricadas", href: "/pecas", icon: Puzzle },
       { label: "Qualidade", href: "/qualidade", icon: BadgeCheck },
       { label: "Expedição", href: "/expedicao", icon: Truck },
       {
@@ -204,7 +211,6 @@ export const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Pessoas", href: "/cadastros", tab: "pessoas" },
           { label: "Obras", href: "/cadastros?tab=obras", tab: "obras" },
-          { label: "Itens", href: "/cadastros?tab=itens", tab: "itens" },
           { label: "Importação", href: "/cadastros?tab=importacao", tab: "importacao" },
         ],
       },

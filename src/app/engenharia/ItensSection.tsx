@@ -36,7 +36,7 @@ type Item = {
 export default function ItensSection({ rows, canManage }: { rows: Item[]; canManage: boolean }) {
   return (
     <section>
-      <h2 className="text-sm font-semibold text-text">Itens</h2>
+      <h2 className="text-sm font-semibold text-text">Cadastro de itens</h2>
       <p className="mt-1 text-xs text-text-muted">
         Produto e material são o mesmo cadastro (TÓPICO 2 §7-10), diferenciados pelo tipo.
         Classificação é texto livre — é o mesmo valor usado em Configurações → Margem de quebra e

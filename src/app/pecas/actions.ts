@@ -12,7 +12,7 @@ export async function criarPecaAction(formData: FormData) {
   const { error } = await supabase.rpc("criar_peca", { p_item_id: itemId, p_descricao_tecnica: descricaoTecnica });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function inativarPecaAction(formData: FormData) {
@@ -23,7 +23,7 @@ export async function inativarPecaAction(formData: FormData) {
   const { error } = await supabase.rpc("inativar_peca", { p_id: id });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function reativarPecaAction(formData: FormData) {
@@ -34,7 +34,7 @@ export async function reativarPecaAction(formData: FormData) {
   const { error } = await supabase.rpc("reativar_peca", { p_id: id });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function adicionarMaterialPecaAction(formData: FormData) {
@@ -57,7 +57,7 @@ export async function adicionarMaterialPecaAction(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function atualizarMaterialPecaAction(formData: FormData) {
@@ -77,7 +77,7 @@ export async function atualizarMaterialPecaAction(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function removerMaterialPecaAction(formData: FormData) {
@@ -88,7 +88,7 @@ export async function removerMaterialPecaAction(formData: FormData) {
   const { error } = await supabase.rpc("remover_material_peca", { p_id: id });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function definirCaracteristicaPecaAction(formData: FormData) {
@@ -118,7 +118,7 @@ export async function definirCaracteristicaPecaAction(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 // A função do banco só deixa mexer em unidade, opções e obrigatoriedade —
@@ -147,7 +147,7 @@ export async function atualizarCaracteristicaPecaAction(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function removerCaracteristicaPecaAction(formData: FormData) {
@@ -158,7 +158,7 @@ export async function removerCaracteristicaPecaAction(formData: FormData) {
   const { error } = await supabase.rpc("remover_caracteristica_peca", { p_id: id });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function criarRegraPecaAction(formData: FormData) {
@@ -199,7 +199,6 @@ export async function criarRegraPecaAction(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
   revalidatePath("/engenharia");
 }
 
@@ -211,7 +210,6 @@ export async function desativarRegraPecaAction(formData: FormData) {
   const { error } = await supabase.rpc("desativar_regra_peca", { p_id: id });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
   revalidatePath("/engenharia");
 }
 
@@ -230,7 +228,7 @@ export async function definirPapelDimensionalAction(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 // ADR-012 §2.2 — tipo de cálculo (fixo/linear/área) e percentual de
@@ -251,7 +249,7 @@ export async function definirTipoCalculoComposicaoAction(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 // ADR-012 Fase 2 — comprimentos de barra candidatos de uma linha de
@@ -272,7 +270,7 @@ export async function definirComprimentoBarraAction(formData: FormData) {
   });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }
 
 export async function removerComprimentoBarraAction(formData: FormData) {
@@ -283,5 +281,5 @@ export async function removerComprimentoBarraAction(formData: FormData) {
   const { error } = await supabase.rpc("remover_comprimento_barra_composicao", { p_id: id });
   if (error) throw new Error(error.message);
 
-  revalidatePath("/pecas");
+  revalidatePath("/engenharia");
 }

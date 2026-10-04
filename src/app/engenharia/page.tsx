@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import EngenhariaSection from "./EngenhariaSection";
+import ItensSection from "./ItensSection";
+import PecasSection from "../pecas/PecasSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+
+type TabSlug = "fabricar" | "itens" | "pre-engenharia";
 
 // TÓPICO 5 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // novembro: "o que a fábrica faz"): vínculo pedido_item → medida de obra
@@ -11,22 +15,79 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 // consumir. Sem Produto/Projeto, biblioteca técnica ou Solicitação de
 // Engenharia — isso segue fora do MVP. Só pedidos liberados entram aqui
 // (ADR-002 §6: Liberação → Engenharia).
-export default async function EngenhariaPage() {
+//
+// 2026-10-04: três rotinas que viviam em telas separadas (Engenharia,
+// Peças Fabricadas e o botão Itens dentro de Cadastros) viraram abas
+// desta mesma página — "pré-engenharia" é como a empresa já identifica
+// o cadastro das peças configuráveis, e o cadastro de itens é insumo
+// direto da composição dessas peças, então faz sentido ficar junto.
+export default async function EngenhariaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: canView }, { data: canManage }] = await Promise.all([
+  const [
+    { data: canViewFabricar },
+    { data: canManageFabricar },
+    { data: canViewItens },
+    { data: canManageItens },
+    { data: canViewPecas },
+    { data: canManagePecas },
+  ] = await Promise.all([
     supabase.rpc("has_permission", { p_resource: "engenharia", p_action: "view" }),
     supabase.rpc("has_permission", { p_resource: "engenharia", p_action: "manage" }),
+    supabase.rpc("has_permission", { p_resource: "itens", p_action: "view" }),
+    supabase.rpc("has_permission", { p_resource: "itens", p_action: "manage" }),
+    supabase.rpc("has_permission", { p_resource: "pecas", p_action: "view" }),
+    supabase.rpc("has_permission", { p_resource: "pecas", p_action: "manage" }),
   ]);
 
-  if (!canView) {
+  if (!canViewFabricar && !canViewItens && !canViewPecas) {
     return (
-      <div className="mx-auto max-w-3xl p-6">
+      <div className="mx-auto max-w-4xl p-6">
         <PermissionDenied message="Você não tem permissão para visualizar o módulo Engenharia desta empresa." />
       </div>
     );
   }
 
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    ...(canViewFabricar ? [{ slug: "fabricar" as const, label: "Itens a fabricar" }] : []),
+    ...(canViewItens ? [{ slug: "itens" as const, label: "Cadastro de itens" }] : []),
+    ...(canViewPecas ? [{ slug: "pre-engenharia" as const, label: "Pré-engenharia" }] : []),
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : availableTabs[0].slug;
+
+  return (
+    <div className="mx-auto max-w-4xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 5 — Engenharia</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Engenharia</h1>
+      <p className="mt-1 text-sm text-text">
+        Itens a fabricar (medição em obra e BOM do pedido liberado), cadastro de itens (produtos e
+        materiais) e pré-engenharia (peças configuráveis: composição, características e regras do
+        configurador).
+      </p>
+
+      <div className="mt-6">
+        {activeTab === "fabricar" && canViewFabricar && (
+          <FabricarTab supabase={supabase} canManage={!!canManageFabricar} />
+        )}
+        {activeTab === "itens" && canViewItens && (
+          <ItensTab supabase={supabase} canManage={!!canManageItens} />
+        )}
+        {activeTab === "pre-engenharia" && canViewPecas && (
+          <PreEngenhariaTab supabase={supabase} canManage={!!canManagePecas} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+async function FabricarTab({ supabase, canManage }: { supabase: Supabase; canManage: boolean }) {
   const [
     { data: pedidos },
     { data: pedidoItens },
@@ -96,29 +157,97 @@ export default async function EngenhariaPage() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 5 — Engenharia</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Itens a produzir</h1>
-      <p className="mt-1 text-sm text-text">
-        Medição em obra por item de pedido liberado, com confirmação antes da produção (TÓPICO 16
-        §7). Quando o item é uma peça configurável (TÓPICO 5, Fases F-H): valor das características,
-        geração da BOM sugerida pelo motor de regras, ajuste manual e aprovação da BOM definitiva.
-      </p>
+    <EngenhariaSection
+      pedidos={pedidos ?? []}
+      pedidoItensPorPedido={pedidoItensPorPedido}
+      itemProducaoPorPedidoItem={itemProducaoPorPedidoItem}
+      pessoas={pessoas ?? []}
+      obras={obras ?? []}
+      itens={itens ?? []}
+      caracteristicasPorPedidoItem={caracteristicasPorPedidoItem}
+      bomPorPedidoItem={bomPorPedidoItem}
+      pecaIdPorItemId={pecaIdPorItemId}
+      canManage={canManage}
+    />
+  );
+}
 
-      <div className="mt-6">
-        <EngenhariaSection
-          pedidos={pedidos ?? []}
-          pedidoItensPorPedido={pedidoItensPorPedido}
-          itemProducaoPorPedidoItem={itemProducaoPorPedidoItem}
-          pessoas={pessoas ?? []}
-          obras={obras ?? []}
-          itens={itens ?? []}
-          caracteristicasPorPedidoItem={caracteristicasPorPedidoItem}
-          bomPorPedidoItem={bomPorPedidoItem}
-          pecaIdPorItemId={pecaIdPorItemId}
-          canManage={!!canManage}
-        />
-      </div>
-    </div>
+async function ItensTab({ supabase, canManage }: { supabase: Supabase; canManage: boolean }) {
+  const { data: itens } = await supabase.from("itens").select("*").order("codigo");
+  return <ItensSection rows={itens ?? []} canManage={canManage} />;
+}
+
+async function PreEngenhariaTab({ supabase, canManage }: { supabase: Supabase; canManage: boolean }) {
+  const [{ data: pecas }, { data: composicao }, { data: itens }, { data: comprimentosBarra }] = await Promise.all([
+    supabase.from("pecas").select("*").order("created_at", { ascending: false }),
+    supabase.from("peca_composicao").select("*").order("created_at"),
+    supabase
+      .from("itens")
+      .select("id, codigo, descricao, tipo, unidade_principal")
+      .eq("situacao", "ativo")
+      .order("codigo"),
+    // ADR-012 Fase 2 — comprimentos de barra candidatos por composição.
+    supabase.from("peca_composicao_comprimentos_barra").select("*").order("comprimento_metros"),
+  ]);
+
+  const comprimentosPorComposicao = new Map<string, { id: string; item_id: string; comprimento_metros: number }[]>();
+  for (const c of comprimentosBarra ?? []) {
+    const list = comprimentosPorComposicao.get(c.peca_composicao_id) ?? [];
+    list.push(c);
+    comprimentosPorComposicao.set(c.peca_composicao_id, list);
+  }
+
+  // TÓPICO 5 Fase E — histórico de revisões por peça (leitura, N chamadas
+  // sobre `pecas` já buscadas, mesmo padrão de Promise.all já usado em
+  // producao/page.tsx para recursos/capacidade).
+  const revisoesPorPeca = new Map<string, { revisao: number; motivo: string | null; created_at: string }[]>();
+  await Promise.all(
+    (pecas ?? []).map(async (p) => {
+      const { data } = await supabase.rpc("listar_revisoes_peca", { p_peca_id: p.id });
+      revisoesPorPeca.set(p.id, data ?? []);
+    }),
+  );
+
+  // TÓPICO 5 Fase F — características configuráveis por peça.
+  const caracteristicasPorPeca = new Map<
+    string,
+    { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null }[]
+  >();
+  await Promise.all(
+    (pecas ?? []).map(async (p) => {
+      const { data } = await supabase.rpc("listar_caracteristicas_peca", { p_peca_id: p.id });
+      caracteristicasPorPeca.set(p.id, data ?? []);
+    }),
+  );
+
+  // TÓPICO 5 Fase G — regras (condição→ação) do motor básico por peça.
+  const regrasPorPeca = new Map<
+    string,
+    {
+      id: string; versao: number; substitui_regra_id: string | null;
+      caracteristica_id: string; caracteristica_nome: string; operador: string;
+      valor_comparacao_numero: number | null; valor_comparacao_texto: string | null;
+      acao: string; acao_material_item_id: string; acao_material_codigo: string; acao_quantidade: number | null;
+      ativo: boolean; motivo: string | null; created_at: string;
+    }[]
+  >();
+  await Promise.all(
+    (pecas ?? []).map(async (p) => {
+      const { data } = await supabase.rpc("listar_regras_peca", { p_peca_id: p.id, p_somente_ativas: false });
+      regrasPorPeca.set(p.id, data ?? []);
+    }),
+  );
+
+  return (
+    <PecasSection
+      pecas={pecas ?? []}
+      composicao={composicao ?? []}
+      itens={itens ?? []}
+      revisoesPorPeca={revisoesPorPeca}
+      caracteristicasPorPeca={caracteristicasPorPeca}
+      regrasPorPeca={regrasPorPeca}
+      comprimentosPorComposicao={comprimentosPorComposicao}
+      canManage={canManage}
+    />
   );
 }
