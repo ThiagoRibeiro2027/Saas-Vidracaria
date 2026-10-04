@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useActionState,
   useEffect,
   useRef,
@@ -196,21 +197,22 @@ export default function OrcamentosSection({
   const obrasAtivas = obras.filter((o) => o.situacao === "ativo");
   const itensAtivos = itens.filter((i) => i.situacao === "ativo");
 
-  // viewId também aceita o sentinela "novo": abre a mesma janela, só que
-  // ainda sem orçamento — mostra só o cabeçalho. Assim que salva, vira o id
-  // real (ver aoCriar) e a MESMA janela passa a mostrar os itens também,
-  // sem precisar fechar e reabrir.
-  const [viewId, setViewId] = useState<string | null>(null);
+  // 2026-10-04: três níveis, aprovados em desenho — lista paginada de
+  // orçamentos; clicar expande, na própria tabela, o cabeçalho/decisão/
+  // proposta-pedido e a lista numerada dos itens; clicar num item só
+  // então abre o modal com o configurador daquele item. "+ Incluir"
+  // continua abrindo um modal à parte, já que ainda não existe linha
+  // pra expandir (mesmo fluxo contínuo de criação já em uso).
+  const [criandoOpen, setCriandoOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Orçamento novo entra no topo da lista (mais recente primeiro): quem
   // está numa página mais adiante volta pra primeira, senão não o veria
-  // assim que a janela trocar para mostrar os itens.
+  // assim que a linha expandir mostrando os itens.
   function aoCriar(novoId?: string) {
-    if (!novoId) {
-      setViewId(null);
-      return;
-    }
-    setViewId(novoId);
+    setCriandoOpen(false);
+    if (!novoId) return;
+    setExpandedId(novoId);
     if (paginacao.pagina > 1) {
       const p = new URLSearchParams(searchParams.toString());
       p.delete("pagina");
@@ -218,14 +220,6 @@ export default function OrcamentosSection({
       router.push(qs ? `${pathname}?${qs}` : pathname);
     }
   }
-
-  const criando = viewId === "novo";
-  const viewing = !criando ? (orcamentos.find((o) => o.id === viewId) ?? null) : null;
-  const viewingEditavel = canManage && viewing?.status === "rascunho";
-  const viewingPodeCancelar =
-    canManage &&
-    !!viewing &&
-    (viewing.status === "rascunho" || viewing.status === "aprovado");
 
   return (
     <section>
@@ -236,7 +230,7 @@ export default function OrcamentosSection({
         formal. Orçamento aprovado fica pronto para o módulo de Pedidos (TÓPICO
         3) converter — ainda não implementado. Um orçamento em rascunho pode ser
         editado livremente; depois de decidido, é terminal (corrigir = cancelar
-        e criar outro). Clique numa linha para abrir, revisar e editar.
+        e criar outro). Clique numa linha para ver itens e decisão.
       </p>
 
       {canManage && (
@@ -244,7 +238,7 @@ export default function OrcamentosSection({
           <Button
             type="button"
             variant="primary"
-            onClick={() => setViewId("novo")}
+            onClick={() => setCriandoOpen(true)}
           >
             + Incluir
           </Button>
@@ -261,32 +255,78 @@ export default function OrcamentosSection({
               <Th>Data</Th>
               <Th>Status</Th>
               <Th className="text-right">Total</Th>
+              <Th className="w-6" />
             </tr>
           </thead>
           <tbody>
-            {orcamentos.map((orc) => (
-              <tr
-                key={orc.id}
-                onClick={() => setViewId(orc.id)}
-                className="cursor-pointer hover:bg-page-bg"
-              >
-                <Td className="font-medium text-text">{orc.numero}</Td>
-                <Td>{pessoaNome(orc.pessoa_id)}</Td>
-                <Td className="text-text-muted">{obraNome(orc.obra_id)}</Td>
-                <Td className="text-text-muted">{orc.data_orcamento}</Td>
-                <Td>
-                  <Badge variant={STATUS_TONE[orc.status]}>
-                    {STATUS_LABEL[orc.status]}
-                  </Badge>
-                </Td>
-                <Td className="text-right font-semibold text-text">
-                  {currency(totais.get(orc.id) ?? 0)}
-                </Td>
-              </tr>
-            ))}
+            {orcamentos.map((orc) => {
+              const expandido = expandedId === orc.id;
+              const editavel = canManage && orc.status === "rascunho";
+              const podeCancelar =
+                canManage &&
+                (orc.status === "rascunho" || orc.status === "aprovado");
+              return (
+                <Fragment key={orc.id}>
+                  <tr
+                    onClick={() =>
+                      setExpandedId((prev) => (prev === orc.id ? null : orc.id))
+                    }
+                    className="cursor-pointer hover:bg-page-bg"
+                  >
+                    <Td className="font-medium text-text">{orc.numero}</Td>
+                    <Td>{pessoaNome(orc.pessoa_id)}</Td>
+                    <Td className="text-text-muted">{obraNome(orc.obra_id)}</Td>
+                    <Td className="text-text-muted">{orc.data_orcamento}</Td>
+                    <Td>
+                      <Badge variant={STATUS_TONE[orc.status]}>
+                        {STATUS_LABEL[orc.status]}
+                      </Badge>
+                    </Td>
+                    <Td className="text-right font-semibold text-text">
+                      {currency(totais.get(orc.id) ?? 0)}
+                    </Td>
+                    <Td className="text-text-muted">
+                      {expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </Td>
+                  </tr>
+                  {expandido && (
+                    <tr>
+                      <Td colSpan={7} className="bg-page-bg">
+                        <OrcamentoReview
+                          orcamento={orc}
+                          total={totais.get(orc.id) ?? 0}
+                          editavel={editavel}
+                          podeCancelar={podeCancelar}
+                          canManage={canManage}
+                          orcItens={itensPorOrcamento.get(orc.id) ?? []}
+                          itensAtivos={itensAtivos}
+                          itens={itens}
+                          caracteristicasPorItemId={caracteristicasPorItemId}
+                          caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
+                          oportunidadesAbertas={oportunidadesAbertas.filter(
+                            (o) => o.pessoa_id === orc.pessoa_id,
+                          )}
+                          clientesElegiveis={clientesElegiveis}
+                          obrasAtivas={obrasAtivas}
+                          todasPessoas={todasPessoas}
+                          obras={obras}
+                          pessoaNome={pessoaNome}
+                          obraNome={obraNome}
+                          propostas={propostasPorOrcamentoId.get(orc.id) ?? []}
+                          canViewPropostas={canViewPropostas}
+                          canManagePropostas={canManagePropostas}
+                          pedido={pedidoPorOrcamentoId.get(orc.id) ?? null}
+                          canManagePedidos={canManagePedidos}
+                        />
+                      </Td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
             {orcamentos.length === 0 && (
               <tr>
-                <Td colSpan={6} className="text-text-muted">
+                <Td colSpan={7} className="text-text-muted">
                   Nenhum orçamento ainda.
                 </Td>
               </tr>
@@ -297,52 +337,19 @@ export default function OrcamentosSection({
       </div>
 
       <Modal
-        open={criando || viewing !== null}
-        onClose={() => setViewId(null)}
-        // Sem prefixo fixo "Orçamento " aqui: a numeração é configurável por
-        // empresa (Configurações → Numeração) e pode já incluir essa palavra
-        // no próprio número — prefixar de novo duplicava o texto no título.
-        title={criando ? "Novo orçamento" : (viewing?.numero ?? "Orçamento")}
+        open={criandoOpen}
+        onClose={() => setCriandoOpen(false)}
+        title="Novo orçamento"
         size="xl"
       >
-        {criando && (
-          <OrcamentoForm
-            clientesElegiveis={clientesElegiveis}
-            obrasAtivas={obrasAtivas}
-            todasPessoas={todasPessoas}
-            obras={obras}
-            onSuccess={aoCriar}
-            largo
-          />
-        )}
-        {!criando && viewing && (
-          <OrcamentoReview
-            orcamento={viewing}
-            total={totais.get(viewing.id) ?? 0}
-            editavel={!!viewingEditavel}
-            podeCancelar={!!viewingPodeCancelar}
-            canManage={canManage}
-            orcItens={itensPorOrcamento.get(viewing.id) ?? []}
-            itensAtivos={itensAtivos}
-            itens={itens}
-            caracteristicasPorItemId={caracteristicasPorItemId}
-            caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
-            oportunidadesAbertas={oportunidadesAbertas.filter(
-              (o) => o.pessoa_id === viewing.pessoa_id,
-            )}
-            clientesElegiveis={clientesElegiveis}
-            obrasAtivas={obrasAtivas}
-            todasPessoas={todasPessoas}
-            obras={obras}
-            pessoaNome={pessoaNome}
-            obraNome={obraNome}
-            propostas={propostasPorOrcamentoId.get(viewing.id) ?? []}
-            canViewPropostas={canViewPropostas}
-            canManagePropostas={canManagePropostas}
-            pedido={pedidoPorOrcamentoId.get(viewing.id) ?? null}
-            canManagePedidos={canManagePedidos}
-          />
-        )}
+        <OrcamentoForm
+          clientesElegiveis={clientesElegiveis}
+          obrasAtivas={obrasAtivas}
+          todasPessoas={todasPessoas}
+          obras={obras}
+          onSuccess={aoCriar}
+          largo
+        />
       </Modal>
     </section>
   );
@@ -983,8 +990,6 @@ function resumoCaracteristicas(caracteristicas: Caracteristica[]): string {
     .join(" · ");
 }
 
-const COLUNAS_LISTA_ITENS = 7;
-
 // Itens do orçamento aparecem como lista compacta (posição, item, resumo,
 // qtd, preço, subtotal) — abrir um item (clique na linha) troca a linha
 // pelo formulário completo (configurador ou campos simples) no lugar só
@@ -1010,38 +1015,42 @@ function OrcamentoItensLista({
   caracteristicasPorItemId: Map<string, DefCaracteristica[]>;
   caracteristicasPorOrcamentoItem: Map<string, Caracteristica[]>;
 }) {
-  const [expandido, setExpandido] = useState<string | null>(null);
-  const [expandidoAlterado, setExpandidoAlterado] = useState(false);
+  // 2026-10-04: nível 3 do desenho aprovado — a linha do item não
+  // expande mais inline; clicar abre o modal com o configurador (ou o
+  // detalhe, se não editável). "Alterações não salvas" agora só precisa
+  // guardar contra o fechamento do modal, não mais contra trocar de
+  // item (só um fica aberto por vez de qualquer forma).
+  const [viewItemId, setViewItemId] = useState<string | null>(null);
+  const [itemAlterado, setItemAlterado] = useState(false);
 
-  function selecionar(chave: string) {
-    if (expandido === chave) {
-      if (
-        expandidoAlterado &&
-        !window.confirm(
-          "Há alterações não salvas neste item. Fechar mesmo assim?",
-        )
-      )
-        return;
-      setExpandido(null);
-      setExpandidoAlterado(false);
+  function abrir(chave: string) {
+    setViewItemId(chave);
+    setItemAlterado(false);
+  }
+
+  function fechar() {
+    if (
+      itemAlterado &&
+      !window.confirm("Há alterações não salvas neste item. Fechar mesmo assim?")
+    )
       return;
-    }
-    if (expandido !== null && expandidoAlterado) {
-      if (
-        !window.confirm(
-          "Há alterações não salvas no item em edição. Abrir outro item mesmo assim?",
-        )
-      )
-        return;
-    }
-    setExpandido(chave);
-    setExpandidoAlterado(false);
+    setViewItemId(null);
+    setItemAlterado(false);
   }
 
   function aoSalvarOuRemover() {
-    setExpandido(null);
-    setExpandidoAlterado(false);
+    setViewItemId(null);
+    setItemAlterado(false);
   }
+
+  const criandoItem = viewItemId === "novo";
+  const itemViewing = !criandoItem
+    ? (orcItens.find((oi) => oi.id === viewItemId) ?? null)
+    : null;
+  const custoTotalViewing =
+    itemViewing && itemViewing.custo_unitario !== null
+      ? itemViewing.custo_unitario + (itemViewing.custo_mao_obra ?? 0)
+      : null;
 
   return (
     <div className="overflow-x-auto">
@@ -1054,195 +1063,89 @@ function OrcamentoItensLista({
             <Th>Qtd</Th>
             <Th>Preço unit.</Th>
             <Th>Subtotal</Th>
-            <Th className="w-6" />
           </tr>
         </thead>
         <tbody>
-          {orcItens.map((oi, idx) => (
-            <OrcamentoItemLinha
-              key={oi.id}
-              posicao={idx + 1}
-              item={oi}
-              itensAtivos={itensAtivos}
-              itemAtualFallback={itens.find((i) => i.id === oi.item_id)}
-              itens={itens}
-              editavel={editavel}
-              canManage={canManage}
-              caracteristicasPorItemId={caracteristicasPorItemId}
-              caracteristicas={caracteristicasPorOrcamentoItem.get(oi.id) ?? []}
-              expandido={expandido === oi.id}
-              onToggle={() => selecionar(oi.id)}
-              onDirtyChange={setExpandidoAlterado}
-              onSaved={aoSalvarOuRemover}
-            />
-          ))}
+          {orcItens.map((oi, idx) => {
+            const caracteristicas = caracteristicasPorOrcamentoItem.get(oi.id) ?? [];
+            return (
+              <tr
+                key={oi.id}
+                onClick={() => abrir(oi.id)}
+                className="cursor-pointer hover:bg-page-bg"
+              >
+                <Td className="text-text-muted">{idx + 1}</Td>
+                <Td className="font-medium text-text">{itemLabel(itens, oi.item_id)}</Td>
+                <Td
+                  className="max-w-[260px] truncate text-text-muted"
+                  title={resumoCaracteristicas(caracteristicas)}
+                >
+                  {resumoCaracteristicas(caracteristicas)}
+                </Td>
+                <Td>{oi.quantidade}</Td>
+                <Td>{currency(oi.preco_unitario)}</Td>
+                <Td>{currency(oi.quantidade * oi.preco_unitario)}</Td>
+              </tr>
+            );
+          })}
           {editavel && (
-            <NovoItemLinha
-              posicao={orcItens.length + 1}
-              orcamentoId={orcamentoId}
-              itensAtivos={itensAtivos}
-              canManage={canManage}
-              caracteristicasPorItemId={caracteristicasPorItemId}
-              expandido={expandido === "novo"}
-              onToggle={() => selecionar("novo")}
-              onDirtyChange={setExpandidoAlterado}
-              onSaved={aoSalvarOuRemover}
-            />
+            <tr onClick={() => abrir("novo")} className="cursor-pointer text-primary hover:bg-page-bg">
+              <Td colSpan={6}>+ Adicionar item (posição {orcItens.length + 1})</Td>
+            </tr>
           )}
           {!editavel && orcItens.length === 0 && (
             <tr>
-              <Td colSpan={COLUNAS_LISTA_ITENS} className="text-text-muted">
+              <Td colSpan={6} className="text-text-muted">
                 Nenhum item.
               </Td>
             </tr>
           )}
         </tbody>
       </Table>
-    </div>
-  );
-}
 
-function OrcamentoItemLinha({
-  posicao,
-  item,
-  itensAtivos,
-  itemAtualFallback,
-  itens,
-  editavel,
-  canManage,
-  caracteristicas,
-  caracteristicasPorItemId,
-  expandido,
-  onToggle,
-  onDirtyChange,
-  onSaved,
-}: {
-  posicao: number;
-  item: OrcamentoItem;
-  itensAtivos: Item[];
-  itemAtualFallback?: Item;
-  itens: Item[];
-  editavel: boolean;
-  canManage: boolean;
-  caracteristicas: Caracteristica[];
-  caracteristicasPorItemId: Map<string, DefCaracteristica[]>;
-  expandido: boolean;
-  onToggle: () => void;
-  onDirtyChange: (dirty: boolean) => void;
-  onSaved: () => void;
-}) {
-  const subtotal = item.quantidade * item.preco_unitario;
-  // Margem sobre o custo total (material + mão de obra), o mesmo que o
-  // cálculo automático usa pra sugerir o preço.
-  const custoTotal =
-    item.custo_unitario !== null
-      ? item.custo_unitario + (item.custo_mao_obra ?? 0)
-      : null;
-  const margem = margemPercentual(item.preco_unitario, custoTotal);
-
-  const linhaCompacta = (
-    <tr onClick={onToggle} className="cursor-pointer hover:bg-page-bg">
-      <Td className="text-text-muted">{posicao}</Td>
-      <Td className="font-medium text-text">
-        {itemLabel(itens, item.item_id)}
-      </Td>
-      <Td
-        className="max-w-[260px] truncate text-text-muted"
-        title={resumoCaracteristicas(caracteristicas)}
+      <Modal
+        open={criandoItem || itemViewing !== null}
+        onClose={fechar}
+        title={
+          criandoItem
+            ? "Novo item"
+            : itemViewing
+              ? itemLabel(itens, itemViewing.item_id)
+              : "Item"
+        }
+        size="lg"
       >
-        {resumoCaracteristicas(caracteristicas)}
-      </Td>
-      <Td>{item.quantidade}</Td>
-      <Td>{currency(item.preco_unitario)}</Td>
-      <Td>{currency(subtotal)}</Td>
-      <Td className="text-text-muted">
-        {expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </Td>
-    </tr>
-  );
-
-  if (!expandido) return linhaCompacta;
-
-  return (
-    <>
-      {linhaCompacta}
-      <tr>
-        <Td colSpan={COLUNAS_LISTA_ITENS} className="bg-page-bg">
-          {editavel ? (
+        {editavel ? (
+          (criandoItem || itemViewing) && (
             <ItemEditavelExpandido
-              item={item}
-              orcamentoId={item.orcamento_id}
+              item={itemViewing}
+              orcamentoId={orcamentoId}
               itensAtivos={itensAtivos}
-              itemAtualFallback={itemAtualFallback}
+              itemAtualFallback={
+                itemViewing ? itens.find((i) => i.id === itemViewing.item_id) : undefined
+              }
               canManage={canManage}
               caracteristicasPorItemId={caracteristicasPorItemId}
-              caracteristicas={caracteristicas}
-              onSaved={onSaved}
-              onDirtyChange={onDirtyChange}
+              caracteristicas={
+                itemViewing ? caracteristicasPorOrcamentoItem.get(itemViewing.id) ?? [] : []
+              }
+              onSaved={aoSalvarOuRemover}
+              onDirtyChange={setItemAlterado}
             />
-          ) : (
+          )
+        ) : (
+          itemViewing && (
             <ItemDetalhesSomenteLeitura
-              item={item}
+              item={itemViewing}
               canManage={canManage}
-              caracteristicas={caracteristicas}
-              custoTotal={custoTotal}
-              margem={margem}
+              caracteristicas={caracteristicasPorOrcamentoItem.get(itemViewing.id) ?? []}
+              custoTotal={custoTotalViewing}
+              margem={margemPercentual(itemViewing.preco_unitario, custoTotalViewing)}
             />
-          )}
-        </Td>
-      </tr>
-    </>
-  );
-}
-
-function NovoItemLinha({
-  posicao,
-  orcamentoId,
-  itensAtivos,
-  canManage,
-  caracteristicasPorItemId,
-  expandido,
-  onToggle,
-  onDirtyChange,
-  onSaved,
-}: {
-  posicao: number;
-  orcamentoId: string;
-  itensAtivos: Item[];
-  canManage: boolean;
-  caracteristicasPorItemId: Map<string, DefCaracteristica[]>;
-  expandido: boolean;
-  onToggle: () => void;
-  onDirtyChange: (dirty: boolean) => void;
-  onSaved: () => void;
-}) {
-  if (!expandido) {
-    return (
-      <tr
-        onClick={onToggle}
-        className="cursor-pointer text-primary hover:bg-page-bg"
-      >
-        <Td colSpan={COLUNAS_LISTA_ITENS}>
-          + Adicionar item (posição {posicao})
-        </Td>
-      </tr>
-    );
-  }
-  return (
-    <tr>
-      <Td colSpan={COLUNAS_LISTA_ITENS} className="bg-page-bg">
-        <ItemEditavelExpandido
-          item={null}
-          orcamentoId={orcamentoId}
-          itensAtivos={itensAtivos}
-          canManage={canManage}
-          caracteristicasPorItemId={caracteristicasPorItemId}
-          caracteristicas={[]}
-          onSaved={onSaved}
-          onDirtyChange={onDirtyChange}
-        />
-      </Td>
-    </tr>
+          )
+        )}
+      </Modal>
+    </div>
   );
 }
 
