@@ -259,7 +259,10 @@ async function PreEngenhariaTab({ supabase, pagina, porPagina, canManage }: TabP
   // TÓPICO 5 Fase F — características configuráveis por peça.
   const caracteristicasPorPeca = new Map<
     string,
-    { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null }[]
+    {
+      id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null;
+      obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null; template_id: string | null;
+    }[]
   >();
   await Promise.all(
     (pecas ?? []).map(async (p) => {
@@ -286,6 +289,24 @@ async function PreEngenhariaTab({ supabase, pagina, porPagina, canManage }: TabP
     }),
   );
 
+  // Catálogo de variáveis configuráveis (2026-10-04) — categorias/templates
+  // são da empresa inteira (não paginados junto com as peças); só o vínculo
+  // peça↔categoria é escopado às peças desta página.
+  const [{ data: variavelCategorias }, { data: variavelTemplates }] = await Promise.all([
+    supabase.from("variavel_categorias").select("id, nome").order("nome"),
+    supabase.from("variavel_templates").select("*").eq("ativo", true).order("nome"),
+  ]);
+  const { data: pecaCategoriasData } =
+    pecaIds.length > 0
+      ? await supabase.from("peca_categorias").select("peca_id, categoria_id").in("peca_id", pecaIds)
+      : { data: [] as never[] };
+  const categoriasPorPeca = new Map<string, string[]>();
+  for (const pc of pecaCategoriasData ?? []) {
+    const list = categoriasPorPeca.get(pc.peca_id) ?? [];
+    list.push(pc.categoria_id);
+    categoriasPorPeca.set(pc.peca_id, list);
+  }
+
   return (
     <PecasSection
       pecas={pecas ?? []}
@@ -296,6 +317,9 @@ async function PreEngenhariaTab({ supabase, pagina, porPagina, canManage }: TabP
       caracteristicasPorPeca={caracteristicasPorPeca}
       regrasPorPeca={regrasPorPeca}
       comprimentosPorComposicao={comprimentosPorComposicao}
+      variavelCategorias={variavelCategorias ?? []}
+      variavelTemplates={variavelTemplates ?? []}
+      categoriasPorPeca={categoriasPorPeca}
       canManage={canManage}
     />
   );

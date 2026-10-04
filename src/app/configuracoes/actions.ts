@@ -75,6 +75,84 @@ export async function upsertMargemPrecoAction(formData: FormData) {
   revalidatePath("/configuracoes");
 }
 
+// Catálogo de variáveis configuráveis (Pré-engenharia, 2026-10-04) —
+// cadastrado aqui (empresa) e consumido em Engenharia → Pré-engenharia,
+// por isso revalida as duas rotas.
+export async function criarVariavelCategoriaAction(formData: FormData) {
+  const nome = String(formData.get("nome") ?? "").trim();
+  if (!nome) throw new Error("Nome da categoria é obrigatório.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_variavel_categoria", { p_nome: nome });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/engenharia");
+}
+
+export async function criarVariavelTemplateAction(formData: FormData) {
+  const categoriaId = String(formData.get("categoria_id") ?? "");
+  const nome = String(formData.get("nome") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "");
+  const unidade = String(formData.get("unidade") ?? "").trim() || null;
+  const opcoesRaw = String(formData.get("opcoes") ?? "").trim();
+  const obrigatoriaPadrao = formData.get("obrigatoria_padrao") === "on";
+  if (!categoriaId) throw new Error("Categoria é obrigatória.");
+  if (!nome) throw new Error("Nome da variável é obrigatório.");
+  if (!["numero", "texto", "opcao"].includes(tipo)) throw new Error("Tipo de variável inválido.");
+
+  const opcoes = tipo === "opcao" ? opcoesRaw.split(",").map((v) => v.trim()).filter(Boolean) : null;
+  if (tipo === "opcao" && (!opcoes || opcoes.length === 0)) {
+    throw new Error("Variável do tipo opção precisa de pelo menos um valor permitido.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("criar_variavel_template", {
+    p_categoria_id: categoriaId,
+    p_nome: nome,
+    p_tipo: tipo,
+    p_unidade: unidade,
+    p_opcoes: opcoes,
+    p_obrigatoria_padrao: obrigatoriaPadrao,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/engenharia");
+}
+
+// Nome e tipo não aparecem aqui — são imutáveis depois de criados (mesma
+// regra de atualizar_caracteristica_peca: valor já pode estar gravado em
+// orçamento/pedido sob aquele tipo). Atualizar opções/unidade propaga pra
+// toda peça que já anexou esta variável (RPC já faz isso).
+export async function atualizarVariavelTemplateAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const tipo = String(formData.get("tipo") ?? "");
+  const unidade = String(formData.get("unidade") ?? "").trim() || null;
+  const opcoesRaw = String(formData.get("opcoes") ?? "").trim();
+  const obrigatoriaPadrao = formData.get("obrigatoria_padrao") === "on";
+  const ativo = formData.get("ativo") === "on";
+  if (!id) throw new Error("Variável inválida.");
+
+  const opcoes = tipo === "opcao" ? opcoesRaw.split(",").map((v) => v.trim()).filter(Boolean) : null;
+  if (tipo === "opcao" && (!opcoes || opcoes.length === 0)) {
+    throw new Error("Variável do tipo opção precisa de pelo menos um valor permitido.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("atualizar_variavel_template", {
+    p_id: id,
+    p_unidade: unidade,
+    p_opcoes: opcoes,
+    p_obrigatoria_padrao: obrigatoriaPadrao,
+    p_ativo: ativo,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/engenharia");
+}
+
 export async function upsertMeasurementRuleAction(formData: FormData) {
   const tipoItem = String(formData.get("tipo_item") ?? "").trim();
   const exigeMedicao = formData.get("exige_medicao_confirmada") === "on";

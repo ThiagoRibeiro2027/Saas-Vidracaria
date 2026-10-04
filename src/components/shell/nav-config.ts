@@ -226,6 +226,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Regra de medição", href: "/configuracoes?tab=medicao", tab: "medicao" },
           { label: "Alçada de aprovação", href: "/configuracoes?tab=alcada", tab: "alcada" },
           { label: "Margem de preço", href: "/configuracoes?tab=preco", tab: "preco" },
+          { label: "Variáveis do configurador", href: "/configuracoes?tab=variaveis", tab: "variaveis" },
         ],
       },
     ],

@@ -4,9 +4,10 @@ import CuttingMarginsSection from "./CuttingMarginsSection";
 import MeasurementRulesSection from "./MeasurementRulesSection";
 import ApprovalThresholdsSection from "./ApprovalThresholdsSection";
 import MargemPrecoSection from "./MargemPrecoSection";
+import VariaveisConfiguradorSection from "./VariaveisConfiguradorSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
-type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada" | "preco";
+type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada" | "preco" | "variaveis";
 
 // TÓPICO 15 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // seção 4): numeração, margem de quebra, regra de medição e alçadas de
@@ -46,6 +47,8 @@ export default async function ConfiguracoesPage({
     { data: approvalThresholds },
     { data: documentTypes },
     { data: pricingSettings },
+    { data: variavelCategorias },
+    { data: variavelTemplates },
   ] = await Promise.all([
     supabase.from("numbering_sequences").select("*").order("document_type"),
     supabase
@@ -63,6 +66,10 @@ export default async function ConfiguracoesPage({
     supabase.from("numbering_document_types").select("document_type"),
     // ADR-012 v1.1 — no máximo uma linha por empresa (unique em company_id).
     supabase.from("pricing_settings").select("id, margem_percentual").maybeSingle(),
+    // Catálogo de variáveis configuráveis (2026-10-04) — consumido em
+    // Pré-engenharia (ver PecasSection.tsx).
+    supabase.from("variavel_categorias").select("id, nome").order("nome"),
+    supabase.from("variavel_templates").select("*").order("nome"),
   ]);
 
   const documentTypeKeys = Array.from(new Set((documentTypes ?? []).map((d) => d.document_type))).sort();
@@ -73,6 +80,7 @@ export default async function ConfiguracoesPage({
     { slug: "medicao", label: "Regra de medição" },
     { slug: "alcada", label: "Alçada de aprovação" },
     { slug: "preco", label: "Margem de preço" },
+    { slug: "variaveis", label: "Variáveis do configurador" },
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "numeracao";
 
@@ -105,6 +113,13 @@ export default async function ConfiguracoesPage({
           />
         )}
         {activeTab === "preco" && <MargemPrecoSection row={pricingSettings ?? null} canManage={!!canManage} />}
+        {activeTab === "variaveis" && (
+          <VariaveisConfiguradorSection
+            categorias={variavelCategorias ?? []}
+            templates={variavelTemplates ?? []}
+            canManage={!!canManage}
+          />
+        )}
       </div>
     </div>
   );

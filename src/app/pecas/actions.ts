@@ -283,3 +283,42 @@ export async function removerComprimentoBarraAction(formData: FormData) {
 
   revalidatePath("/engenharia");
 }
+
+// Catálogo de variáveis configuráveis (2026-10-04) — substitui o conjunto
+// inteiro de categorias da peça (editor de tags: a tela manda a lista
+// completa marcada, não um add/remove individual).
+export async function definirCategoriasPecaAction(formData: FormData) {
+  const pecaId = String(formData.get("peca_id") ?? "");
+  const categoriaIds = formData.getAll("categoria_ids").map((v) => String(v));
+  if (!pecaId) throw new Error("Peça inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_categorias_peca", {
+    p_peca_id: pecaId,
+    p_categoria_ids: categoriaIds,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/engenharia");
+}
+
+// Anexa uma variável do catálogo na peça — copia nome/tipo/unidade/opções
+// do template (ver anexar_variavel_peca no banco); obrigatória continua
+// editável por peça depois (mesma action de sempre, atualizarCaracteristicaPecaAction).
+export async function anexarVariavelPecaAction(formData: FormData) {
+  const pecaId = String(formData.get("peca_id") ?? "");
+  const templateId = String(formData.get("template_id") ?? "");
+  const obrigatoria = formData.get("obrigatoria") === "on";
+  if (!pecaId) throw new Error("Peça inválida.");
+  if (!templateId) throw new Error("Variável inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("anexar_variavel_peca", {
+    p_peca_id: pecaId,
+    p_template_id: templateId,
+    p_obrigatoria: obrigatoria,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/engenharia");
+}

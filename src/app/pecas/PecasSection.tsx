@@ -15,6 +15,8 @@ import {
   definirTipoCalculoComposicaoAction,
   definirComprimentoBarraAction,
   removerComprimentoBarraAction,
+  definirCategoriasPecaAction,
+  anexarVariavelPecaAction,
 } from "./actions";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -38,7 +40,17 @@ type PecaComposicao = {
   percentual_perda: number;
 };
 type Revisao = { revisao: number; motivo: string | null; created_at: string };
-type Caracteristica = { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null };
+type Caracteristica = {
+  id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null;
+  obrigatoria: boolean; papel_dimensional: "largura" | "altura" | null; template_id: string | null;
+};
+// Catálogo de variáveis configuráveis (2026-10-04) — cadastrado em
+// Configurações → Variáveis do configurador (VariaveisConfiguradorSection.tsx).
+type VariavelCategoria = { id: string; nome: string };
+type VariavelTemplate = {
+  id: string; categoria_id: string; nome: string; tipo: "numero" | "texto" | "opcao";
+  unidade: string | null; opcoes: string[] | null; obrigatoria_padrao: boolean; ativo: boolean;
+};
 
 const TIPO_CALCULO_LABEL: Record<PecaComposicao["tipo_calculo"], string> = {
   fixo: "Fixo",
@@ -93,6 +105,9 @@ export default function PecasSection({
   caracteristicasPorPeca,
   regrasPorPeca,
   comprimentosPorComposicao,
+  variavelCategorias,
+  variavelTemplates,
+  categoriasPorPeca,
   canManage,
 }: {
   pecas: Peca[];
@@ -103,6 +118,9 @@ export default function PecasSection({
   caracteristicasPorPeca: Map<string, Caracteristica[]>;
   regrasPorPeca: Map<string, Regra[]>;
   comprimentosPorComposicao: Map<string, ComprimentoBarra[]>;
+  variavelCategorias: VariavelCategoria[];
+  variavelTemplates: VariavelTemplate[];
+  categoriasPorPeca: Map<string, string[]>;
   canManage: boolean;
 }) {
   const itemLabel = (id: string) => {
@@ -206,6 +224,9 @@ export default function PecasSection({
             caracteristicas={caracteristicasPorPeca.get(viewing.id) ?? []}
             regras={regrasPorPeca.get(viewing.id) ?? []}
             revisoes={revisoesPorPeca.get(viewing.id) ?? []}
+            variavelCategorias={variavelCategorias}
+            variavelTemplates={variavelTemplates}
+            categoriasPeca={categoriasPorPeca.get(viewing.id) ?? []}
             canManage={canManage}
           />
         )}
@@ -225,6 +246,9 @@ function PecaDetalhe({
   caracteristicas,
   regras,
   revisoes,
+  variavelCategorias,
+  variavelTemplates,
+  categoriasPeca,
   canManage,
 }: {
   peca: Peca;
@@ -237,6 +261,9 @@ function PecaDetalhe({
   caracteristicas: Caracteristica[];
   regras: Regra[];
   revisoes: Revisao[];
+  variavelCategorias: VariavelCategoria[];
+  variavelTemplates: VariavelTemplate[];
+  categoriasPeca: string[];
   canManage: boolean;
 }) {
   return (
@@ -392,7 +419,17 @@ function PecaDetalhe({
         </form>
       )}
 
-      <CaracteristicasPeca pecaId={p.id} caracteristicas={caracteristicas} canManage={canManage && p.situacao === "ativo"} />
+      {canManage && p.situacao === "ativo" && (
+        <CategoriasPeca pecaId={p.id} todasCategorias={variavelCategorias} categoriasMarcadas={categoriasPeca} />
+      )}
+
+      <CaracteristicasPeca
+        pecaId={p.id}
+        caracteristicas={caracteristicas}
+        variavelTemplates={variavelTemplates}
+        categoriasPeca={categoriasPeca}
+        canManage={canManage && p.situacao === "ativo"}
+      />
 
       {canManage && p.situacao === "ativo" && (
         <RegrasPeca
@@ -503,16 +540,66 @@ function TipoCalculoComposicao({ composicao }: { composicao: PecaComposicao }) {
   );
 }
 
+// Catálogo de variáveis configuráveis (2026-10-04) — a peça marca quais
+// categorias usa (ex.: um box de vidro usa "Vidro" e "Perfil" ao mesmo
+// tempo); isso decide o que aparece pra anexar em "+ Variáveis do
+// catálogo", abaixo. Editor de tags: a cada mudança, manda o conjunto
+// inteiro marcado (definirCategoriasPecaAction substitui, não soma).
+function CategoriasPeca({
+  pecaId,
+  todasCategorias,
+  categoriasMarcadas,
+}: {
+  pecaId: string;
+  todasCategorias: VariavelCategoria[];
+  categoriasMarcadas: string[];
+}) {
+  if (todasCategorias.length === 0) return null;
+
+  return (
+    <form
+      action={definirCategoriasPecaAction}
+      onChange={(e) => e.currentTarget.requestSubmit()}
+      className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-border-subtle pt-2 text-xs"
+    >
+      <input type="hidden" name="peca_id" value={pecaId} />
+      <span className="font-semibold text-text">Categorias desta peça:</span>
+      {todasCategorias.map((cat) => (
+        <label key={cat.id} className="flex items-center gap-1 text-text">
+          <input
+            type="checkbox"
+            name="categoria_ids"
+            value={cat.id}
+            defaultChecked={categoriasMarcadas.includes(cat.id)}
+            className="accent-primary"
+          />
+          {cat.nome}
+        </label>
+      ))}
+    </form>
+  );
+}
+
 function CaracteristicasPeca({
   pecaId,
   caracteristicas,
+  variavelTemplates,
+  categoriasPeca,
   canManage,
 }: {
   pecaId: string;
   caracteristicas: Caracteristica[];
+  variavelTemplates: VariavelTemplate[];
+  categoriasPeca: string[];
   canManage: boolean;
 }) {
   const [tipoNovo, setTipoNovo] = useState<string>("numero");
+  const [mostrarCatalogo, setMostrarCatalogo] = useState(false);
+
+  const nomesJaUsados = new Set(caracteristicas.map((c) => c.nome));
+  const templatesDisponiveis = variavelTemplates.filter(
+    (t) => categoriasPeca.includes(t.categoria_id) && !nomesJaUsados.has(t.nome),
+  );
 
   return (
     <div className="mt-2.5 border-t border-border-subtle pt-2">
@@ -525,6 +612,47 @@ function CaracteristicasPeca({
             <CaracteristicaItem key={c.id} c={c} canManage={canManage} />
           ))}
         </ul>
+      )}
+
+      {canManage && (
+        <div className="mb-1.5">
+          <Button type="button" variant="secondary" size="sm" onClick={() => setMostrarCatalogo((v) => !v)}>
+            {mostrarCatalogo ? "Ocultar variáveis do catálogo" : "+ Variáveis do catálogo"}
+          </Button>
+          {mostrarCatalogo && (
+            <div className="mt-1.5 flex flex-col gap-1 rounded border border-border-subtle p-2">
+              {categoriasPeca.length === 0 && (
+                <p className="text-xs text-text-muted">
+                  Marque ao menos uma categoria acima pra ver as variáveis disponíveis.
+                </p>
+              )}
+              {categoriasPeca.length > 0 && templatesDisponiveis.length === 0 && (
+                <p className="text-xs text-text-muted">
+                  Nenhuma variável disponível nas categorias marcadas (cadastre em Configurações →
+                  Variáveis do configurador, ou já estão todas anexadas).
+                </p>
+              )}
+              {templatesDisponiveis.map((t) => (
+                <form
+                  key={t.id}
+                  action={anexarVariavelPecaAction}
+                  className="flex items-center justify-between gap-2 text-xs"
+                >
+                  <input type="hidden" name="peca_id" value={pecaId} />
+                  <input type="hidden" name="template_id" value={t.id} />
+                  <input type="hidden" name="obrigatoria" value={t.obrigatoria_padrao ? "on" : ""} />
+                  <span className="text-text">
+                    {t.nome}
+                    {t.opcoes && <span className="text-text-muted"> ({t.opcoes.join(", ")})</span>}
+                  </span>
+                  <Button type="submit" variant="primary" size="sm">
+                    Adicionar
+                  </Button>
+                </form>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {canManage && (
@@ -564,6 +692,7 @@ function CaracteristicasPeca({
 function CaracteristicaItem({ c, canManage }: { c: Caracteristica; canManage: boolean }) {
   const [editando, setEditando] = useState(false);
   const tipoLabel = CARACTERISTICA_TIPOS.find(([v]) => v === c.tipo)?.[1] ?? c.tipo;
+  const doCatalogo = c.template_id !== null;
 
   if (editando) {
     return (
@@ -577,9 +706,23 @@ function CaracteristicaItem({ c, canManage }: { c: Caracteristica; canManage: bo
           <input type="hidden" name="tipo" value={c.tipo} />
           <span className="font-semibold text-text">{c.nome}</span>
           <span className="text-[10px] text-text-muted">({tipoLabel} — nome e tipo não mudam)</span>
-          <Input name="unidade" defaultValue={c.unidade ?? ""} placeholder="unidade (opcional)" className="w-24" />
-          {c.tipo === "opcao" && (
-            <Input name="opcoes" defaultValue={c.opcoes?.join(", ") ?? ""} placeholder="opções, separadas por vírgula" required className="w-44" />
+          {doCatalogo ? (
+            <>
+              {/* Unidade/opções vêm do catálogo — editar aqui divergiria da
+                  fonte única; manda os valores atuais sem campo pra mexer. */}
+              <input type="hidden" name="unidade" value={c.unidade ?? ""} />
+              <input type="hidden" name="opcoes" value={c.opcoes?.join(", ") ?? ""} />
+              <span className="text-[10px] text-text-muted">
+                unidade/opções: editar em Configurações → Variáveis do configurador
+              </span>
+            </>
+          ) : (
+            <>
+              <Input name="unidade" defaultValue={c.unidade ?? ""} placeholder="unidade (opcional)" className="w-24" />
+              {c.tipo === "opcao" && (
+                <Input name="opcoes" defaultValue={c.opcoes?.join(", ") ?? ""} placeholder="opções, separadas por vírgula" required className="w-44" />
+              )}
+            </>
           )}
           <label className="flex items-center gap-1 text-xs text-text">
             <input type="checkbox" name="obrigatoria" defaultChecked={c.obrigatoria} className="accent-primary" />
@@ -604,6 +747,7 @@ function CaracteristicaItem({ c, canManage }: { c: Caracteristica; canManage: bo
         {c.opcoes ? `: ${c.opcoes.join(", ")}` : ""}
         {c.obrigatoria ? ", obrigatória" : ""})
       </span>
+      {doCatalogo && <span className="font-mono text-[10px] text-primary">catálogo</span>}
       {c.tipo === "numero" && (canManage ? (
         <form action={definirPapelDimensionalAction} className="flex items-center">
           <input type="hidden" name="caracteristica_id" value={c.id} />
