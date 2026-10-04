@@ -61,6 +61,10 @@ type Titulo = {
   motivo_cancelamento: string | null;
 };
 
+type TituloAberto = { id: string; numero: string; saldo_pendente: number; vencimento: string };
+type TituloPagarAberto = { id: string; numero: string; saldo_pendente: number };
+type CobrancaGerada = { id: string; numero: string };
+
 type PedidoResumo = { id: string; numero: string; pessoa_id: string };
 
 const TITULO_PAGAR_STATUS_LABEL: Record<string, string> = { aberto: "Aberto", parcial: "Parcial", pago: "Pago", cancelado: "Cancelado" };
@@ -115,13 +119,19 @@ type Movimentacao = {
 
 type RoleOption = { id: string; name: string };
 
-// 2026-10-04: mesmo tratamento de layout já aplicado nos demais módulos
-// — as 4 listas que crescem (títulos a receber/pagar, cobranças,
-// movimentações) paginadas no servidor, cada linha compacta e clicável
-// pra ver detalhes/ações, em vez de todas as ações sempre visíveis na
-// linha. Também migra as seções que ainda usavam estilo antigo (inline
-// style) pros mesmos componentes do resto do app (Table/Button/Input).
+type TabSlug = "geral" | "receber" | "contas" | "alcada" | "confirm" | "pagar" | "cobranca" | "mov";
+
+// 2026-10-04: as 7 seções que ficavam sempre empilhadas viram abas — só
+// a ativa é renderizada (a navegação entre elas mora na barra lateral,
+// mesmo padrão de Comercial/Configurações/Cadastros). "Visão geral" é
+// nova: cartões somados a partir das listas "em aberto" e da contagem
+// de não conciliado, todas já buscadas em page.tsx sem paginação.
 export default function FinanceiroSection({
+  activeTab,
+  titulosAbertos,
+  titulosPagarAbertos,
+  cobrancasGeradas,
+  naoConciliadoCount,
   titulos,
   trPaginacao,
   pedidosSemTitulo,
@@ -144,6 +154,11 @@ export default function FinanceiroSection({
   canPagar,
   canAprovar,
 }: {
+  activeTab: TabSlug;
+  titulosAbertos: TituloAberto[];
+  titulosPagarAbertos: TituloPagarAberto[];
+  cobrancasGeradas: CobrancaGerada[];
+  naoConciliadoCount: number;
   titulos: Titulo[];
   trPaginacao: PaginacaoInfo;
   pedidosSemTitulo: PedidoResumo[];
@@ -167,9 +182,6 @@ export default function FinanceiroSection({
   canAprovar: boolean;
 }) {
   const contasAtivas = contasBancarias.filter((c) => c.ativa);
-  const titulosReceberAbertos = titulos.filter((t) => t.status === "aberto" || t.status === "parcial");
-  const titulosPagarAbertos = titulosPagar.filter((t) => t.status === "aberto" || t.status === "parcial");
-  const cobrancasGeradas = cobrancas.filter((c) => c.status === "gerada");
 
   const [expTitulo, setExpTitulo] = useState<string | null>(null);
   const [expTituloPagar, setExpTituloPagar] = useState<string | null>(null);
@@ -178,212 +190,229 @@ export default function FinanceiroSection({
 
   return (
     <>
-      <section>
-        <h2 className="text-sm font-semibold text-text">Títulos financeiros</h2>
-        <p className="mt-1 text-xs text-text-muted">
-          Recorte mínimo do MVP (ADR-002 §4.14): título a receber vinculado a pedido, gerado
-          manualmente com as parcelas planejadas — a soma precisa fechar o valor do pedido. Sem
-          plano de contas, contas a pagar, conciliação ou DRE. Clique num título para ver ações.
-        </p>
+      {activeTab === "geral" && (
+        <VisaoGeral
+          titulosAbertos={titulosAbertos}
+          titulosPagarAbertos={titulosPagarAbertos}
+          contasAtivasCount={contasAtivas.length}
+          aprovacoesPendentesCount={canAprovar ? aprovacoesPendentes.length : null}
+          cobrancasGeradasCount={cobrancasGeradas.length}
+          naoConciliadoCount={naoConciliadoCount}
+        />
+      )}
 
-        {canManage && pedidosSemTitulo.length > 0 && (
-          <div className="mt-3">
-            <GerarTitulosForm pedidos={pedidosSemTitulo} />
-          </div>
-        )}
+      {activeTab === "receber" && (
+        <section>
+          <h2 className="text-sm font-semibold text-text">Títulos financeiros</h2>
+          <p className="mt-1 text-xs text-text-muted">
+            Recorte mínimo do MVP (ADR-002 §4.14): título a receber vinculado a pedido, gerado
+            manualmente com as parcelas planejadas — a soma precisa fechar o valor do pedido. Sem
+            plano de contas, contas a pagar, conciliação ou DRE. Clique num título para ver ações.
+          </p>
 
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Número</Th>
-                <Th>Pedido</Th>
-                <Th>Cliente</Th>
-                <Th>Parcela</Th>
-                <Th>Saldo</Th>
-                <Th>Vencimento</Th>
-                <Th>Status</Th>
-                <Th className="w-6" />
-              </tr>
-            </thead>
-            <tbody>
-              {titulos.map((t) => {
-                const pedido = nomePorPedido.get(t.pedido_id);
-                // parseDataLocal (e não new Date(t.vencimento) bare) pelo
-                // mesmo motivo da exibição: lido como UTC, um vencimento de
-                // hoje fica atrás da meia-noite local o dia inteiro e o
-                // título aparece como vencido antes da hora.
-                const vencido = t.status !== "pago" && t.status !== "cancelado" && parseDataLocal(t.vencimento) < new Date(new Date().toDateString());
-                const expandido = expTitulo === t.id;
-                return (
-                  <Fragment key={t.id}>
-                    <tr onClick={() => setExpTitulo((atual) => (atual === t.id ? null : t.id))} className="cursor-pointer hover:bg-page-bg">
-                      <Td>{t.numero}</Td>
-                      <Td>{pedido?.numero ?? t.pedido_id}</Td>
-                      <Td>{pedido ? nomePorPessoa.get(pedido.pessoa_id) ?? "—" : "—"}</Td>
-                      <Td>{t.parcela_numero}/{t.parcela_total}</Td>
-                      <Td>{currency(t.saldo_pendente)}</Td>
-                      <Td>
-                        {formatarData(t.vencimento)}
-                        {vencido && <span className="text-danger"> (vencido)</span>}
-                      </Td>
-                      <Td>
-                        <Badge variant={STATUS_TONE[t.status]}>
-                          {t.status === "cancelado" ? `${STATUS_LABEL[t.status]} — ${t.motivo_cancelamento ?? ""}` : STATUS_LABEL[t.status]}
-                        </Badge>
-                      </Td>
-                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
-                    </tr>
-                    {expandido && (
-                      <tr>
-                        <Td colSpan={8} className="bg-page-bg">
-                          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
-                            <div>
-                              <dt className="text-text-muted">Valor</dt>
-                              <dd className="text-text">{currency(t.valor)}</dd>
-                            </div>
-                            <div>
-                              <dt className="text-text-muted">Recebido</dt>
-                              <dd className="text-text">{currency(t.valor_recebido)}</dd>
-                            </div>
-                            {t.condicao_pagamento && (
+          {canManage && pedidosSemTitulo.length > 0 && (
+            <div className="mt-3">
+              <GerarTitulosForm pedidos={pedidosSemTitulo} />
+            </div>
+          )}
+
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Número</Th>
+                  <Th>Pedido</Th>
+                  <Th>Cliente</Th>
+                  <Th>Parcela</Th>
+                  <Th>Saldo</Th>
+                  <Th>Vencimento</Th>
+                  <Th>Status</Th>
+                  <Th className="w-6" />
+                </tr>
+              </thead>
+              <tbody>
+                {titulos.map((t) => {
+                  const pedido = nomePorPedido.get(t.pedido_id);
+                  // parseDataLocal (e não new Date(t.vencimento) bare) pelo
+                  // mesmo motivo da exibição: lido como UTC, um vencimento de
+                  // hoje fica atrás da meia-noite local o dia inteiro e o
+                  // título aparece como vencido antes da hora.
+                  const vencido = t.status !== "pago" && t.status !== "cancelado" && parseDataLocal(t.vencimento) < new Date(new Date().toDateString());
+                  const expandido = expTitulo === t.id;
+                  return (
+                    <Fragment key={t.id}>
+                      <tr onClick={() => setExpTitulo((atual) => (atual === t.id ? null : t.id))} className="cursor-pointer hover:bg-page-bg">
+                        <Td>{t.numero}</Td>
+                        <Td>{pedido?.numero ?? t.pedido_id}</Td>
+                        <Td>{pedido ? nomePorPessoa.get(pedido.pessoa_id) ?? "—" : "—"}</Td>
+                        <Td>{t.parcela_numero}/{t.parcela_total}</Td>
+                        <Td>{currency(t.saldo_pendente)}</Td>
+                        <Td>
+                          {formatarData(t.vencimento)}
+                          {vencido && <span className="text-danger"> (vencido)</span>}
+                        </Td>
+                        <Td>
+                          <Badge variant={STATUS_TONE[t.status]}>
+                            {t.status === "cancelado" ? `${STATUS_LABEL[t.status]} — ${t.motivo_cancelamento ?? ""}` : STATUS_LABEL[t.status]}
+                          </Badge>
+                        </Td>
+                        <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                      </tr>
+                      {expandido && (
+                        <tr>
+                          <Td colSpan={8} className="bg-page-bg">
+                            <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
                               <div>
-                                <dt className="text-text-muted">Condição</dt>
-                                <dd className="text-text">{t.condicao_pagamento}</dd>
+                                <dt className="text-text-muted">Valor</dt>
+                                <dd className="text-text">{currency(t.valor)}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-text-muted">Recebido</dt>
+                                <dd className="text-text">{currency(t.valor_recebido)}</dd>
+                              </div>
+                              {t.condicao_pagamento && (
+                                <div>
+                                  <dt className="text-text-muted">Condição</dt>
+                                  <dd className="text-text">{t.condicao_pagamento}</dd>
+                                </div>
+                              )}
+                            </dl>
+                            {(canManage || canReceber) && (t.status === "aberto" || t.status === "parcial") && (
+                              <div className="mt-2">
+                                <AcoesTitulo id={t.id} status={t.status} canManage={canManage} canReceber={canReceber} />
                               </div>
                             )}
-                          </dl>
-                          {(canManage || canReceber) && (t.status === "aberto" || t.status === "parcial") && (
-                            <div className="mt-2">
-                              <AcoesTitulo id={t.id} status={t.status} canManage={canManage} canReceber={canReceber} />
-                            </div>
-                          )}
-                        </Td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-              {titulos.length === 0 && (
-                <tr>
-                  <Td colSpan={8} className="text-text-muted">
-                    Nenhum título a receber ainda.
-                  </Td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-          <Paginacao {...trPaginacao} paramPagina="tr_pagina" paramPorPagina="tr_por_pagina" />
-        </div>
-      </section>
-
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold text-text">Contas bancárias</h2>
-        <p className="mt-1 text-xs text-text-muted">Cadastro de conta bancária da empresa. Nenhum provedor real conectado.</p>
-        {canManage && <ContaBancariaForm />}
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Banco</Th>
-                <Th>Agência</Th>
-                <Th>Conta</Th>
-                <Th>Tipo</Th>
-                <Th>Chave PIX</Th>
-                <Th>Status</Th>
-                {canManage && <Th />}
-              </tr>
-            </thead>
-            <tbody>
-              {contasBancarias.map((c) => (
-                <tr key={c.id}>
-                  <Td>{c.banco}</Td>
-                  <Td>{c.agencia}</Td>
-                  <Td>{c.conta}</Td>
-                  <Td>{c.tipo_conta === "corrente" ? "Corrente" : "Poupança"}</Td>
-                  <Td>{c.pix_chave ?? "—"}</Td>
-                  <Td>
-                    <Badge variant={c.ativa ? "success" : "neutral"}>{c.ativa ? "Ativa" : "Inativa"}</Badge>
-                  </Td>
-                  {canManage && (
-                    <Td>
-                      <form action={c.ativa ? desativarContaBancariaAction : ativarContaBancariaAction}>
-                        <input type="hidden" name="id" value={c.id} />
-                        <Button type="submit" variant={c.ativa ? "outlineDanger" : "primary"} size="sm">
-                          {c.ativa ? "Desativar" : "Ativar"}
-                        </Button>
-                      </form>
+                          </Td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {titulos.length === 0 && (
+                  <tr>
+                    <Td colSpan={8} className="text-text-muted">
+                      Nenhum título a receber ainda.
                     </Td>
-                  )}
-                </tr>
-              ))}
-              {contasBancarias.length === 0 && (
-                <tr>
-                  <Td colSpan={canManage ? 7 : 6} className="text-text-muted">
-                    Nenhuma conta bancária cadastrada ainda.
-                  </Td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-        </div>
-      </section>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+            <Paginacao {...trPaginacao} paramPagina="tr_pagina" paramPorPagina="tr_por_pagina" />
+          </div>
+        </section>
+      )}
 
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold text-text">Alçada de pagamento — título a pagar</h2>
-        <p className="mt-1 text-xs text-text-muted">
-          Sem etapa configurada, pagamento é registrado direto. Com etapa, o título precisa ser
-          submetido e aprovado antes do pagamento.
-        </p>
-        {canManage && <AlcadaForm roles={roles} />}
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Ordem</Th>
-                <Th>A partir de</Th>
-                <Th>Perfil aprovador</Th>
-                <Th>Status</Th>
-                {canManage && <Th />}
-              </tr>
-            </thead>
-            <tbody>
-              {alcadaEtapas.map((e) => (
-                <tr key={e.id}>
-                  <Td>{e.ordem}</Td>
-                  <Td>{currency(e.valor_minimo)}</Td>
-                  <Td>{e.roles?.name ?? "—"}</Td>
-                  <Td>
-                    <Badge variant={e.ativo ? "success" : "neutral"}>{e.ativo ? "Ativa" : "Inativa"}</Badge>
-                  </Td>
-                  {canManage && (
+      {activeTab === "contas" && (
+        <section>
+          <h2 className="text-sm font-semibold text-text">Contas bancárias</h2>
+          <p className="mt-1 text-xs text-text-muted">Cadastro de conta bancária da empresa. Nenhum provedor real conectado.</p>
+          {canManage && <ContaBancariaForm />}
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Banco</Th>
+                  <Th>Agência</Th>
+                  <Th>Conta</Th>
+                  <Th>Tipo</Th>
+                  <Th>Chave PIX</Th>
+                  <Th>Status</Th>
+                  {canManage && <Th />}
+                </tr>
+              </thead>
+              <tbody>
+                {contasBancarias.map((c) => (
+                  <tr key={c.id}>
+                    <Td>{c.banco}</Td>
+                    <Td>{c.agencia}</Td>
+                    <Td>{c.conta}</Td>
+                    <Td>{c.tipo_conta === "corrente" ? "Corrente" : "Poupança"}</Td>
+                    <Td>{c.pix_chave ?? "—"}</Td>
                     <Td>
-                      {e.ativo && (
-                        <form action={desativarAlcadaFinanceiroAction}>
-                          <input type="hidden" name="id" value={e.id} />
-                          <Button type="submit" variant="outlineDanger" size="sm">
-                            Desativar
+                      <Badge variant={c.ativa ? "success" : "neutral"}>{c.ativa ? "Ativa" : "Inativa"}</Badge>
+                    </Td>
+                    {canManage && (
+                      <Td>
+                        <form action={c.ativa ? desativarContaBancariaAction : ativarContaBancariaAction}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <Button type="submit" variant={c.ativa ? "outlineDanger" : "primary"} size="sm">
+                            {c.ativa ? "Desativar" : "Ativar"}
                           </Button>
                         </form>
-                      )}
+                      </Td>
+                    )}
+                  </tr>
+                ))}
+                {contasBancarias.length === 0 && (
+                  <tr>
+                    <Td colSpan={canManage ? 7 : 6} className="text-text-muted">
+                      Nenhuma conta bancária cadastrada ainda.
                     </Td>
-                  )}
-                </tr>
-              ))}
-              {alcadaEtapas.length === 0 && (
-                <tr>
-                  <Td colSpan={canManage ? 5 : 4} className="text-text-muted">
-                    Nenhuma etapa de alçada configurada — pagamento é registrado direto.
-                  </Td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-        </div>
-      </section>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </section>
+      )}
 
-      {canAprovar && (
-        <section className="mt-6">
+      {activeTab === "alcada" && (
+        <section>
+          <h2 className="text-sm font-semibold text-text">Alçada de pagamento — título a pagar</h2>
+          <p className="mt-1 text-xs text-text-muted">
+            Sem etapa configurada, pagamento é registrado direto. Com etapa, o título precisa ser
+            submetido e aprovado antes do pagamento.
+          </p>
+          {canManage && <AlcadaForm roles={roles} />}
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Ordem</Th>
+                  <Th>A partir de</Th>
+                  <Th>Perfil aprovador</Th>
+                  <Th>Status</Th>
+                  {canManage && <Th />}
+                </tr>
+              </thead>
+              <tbody>
+                {alcadaEtapas.map((e) => (
+                  <tr key={e.id}>
+                    <Td>{e.ordem}</Td>
+                    <Td>{currency(e.valor_minimo)}</Td>
+                    <Td>{e.roles?.name ?? "—"}</Td>
+                    <Td>
+                      <Badge variant={e.ativo ? "success" : "neutral"}>{e.ativo ? "Ativa" : "Inativa"}</Badge>
+                    </Td>
+                    {canManage && (
+                      <Td>
+                        {e.ativo && (
+                          <form action={desativarAlcadaFinanceiroAction}>
+                            <input type="hidden" name="id" value={e.id} />
+                            <Button type="submit" variant="outlineDanger" size="sm">
+                              Desativar
+                            </Button>
+                          </form>
+                        )}
+                      </Td>
+                    )}
+                  </tr>
+                ))}
+                {alcadaEtapas.length === 0 && (
+                  <tr>
+                    <Td colSpan={canManage ? 5 : 4} className="text-text-muted">
+                      Nenhuma etapa de alçada configurada — pagamento é registrado direto.
+                    </Td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </section>
+      )}
+
+      {activeTab === "confirm" && canAprovar && (
+        <section>
           <h2 className="text-sm font-semibold text-text">Confirmações de pagamento pendentes</h2>
           <p className="mt-1 text-xs text-text-muted">Decidida em ordem: só a etapa de menor ordem ainda pendente pode ser decidida.</p>
           <div className="mt-3 overflow-x-auto">
@@ -422,204 +451,261 @@ export default function FinanceiroSection({
         </section>
       )}
 
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold text-text">Títulos a pagar</h2>
-        <p className="mt-1 text-xs text-text-muted">
-          Vinculado a pedido de compra (Suprimentos/ADR-011). Submeter à aprovação é opcional —
-          sem alçada aplicável, o pagamento pode ser registrado direto. Clique num título para ver
-          ações.
-        </p>
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Número</Th>
-                <Th>Fornecedor</Th>
-                <Th>Saldo</Th>
-                <Th>Vencimento</Th>
-                <Th>Status</Th>
-                <Th>Aprovação</Th>
-                <Th className="w-6" />
-              </tr>
-            </thead>
-            <tbody>
-              {titulosPagar.map((t) => {
-                const statusAprovacao = statusAprovacaoPorTitulo.get(t.id);
-                const expandido = expTituloPagar === t.id;
-                return (
-                  <Fragment key={t.id}>
-                    <tr onClick={() => setExpTituloPagar((atual) => (atual === t.id ? null : t.id))} className="cursor-pointer hover:bg-page-bg">
-                      <Td>{t.numero}</Td>
-                      <Td>{t.pedidos_compra ? nomePorPessoa.get(t.pedidos_compra.pessoa_id) ?? "—" : "—"}</Td>
-                      <Td>{currency(t.saldo_pendente)}</Td>
-                      <Td>{formatarData(t.vencimento)}</Td>
-                      <Td>{TITULO_PAGAR_STATUS_LABEL[t.status]}</Td>
-                      <Td>{statusAprovacao ? APROVACAO_STATUS_LABEL[statusAprovacao] ?? statusAprovacao : "—"}</Td>
-                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
-                    </tr>
-                    {expandido && (canManage || canPagar) && (t.status === "aberto" || t.status === "parcial") && (
-                      <tr>
-                        <Td colSpan={7} className="bg-page-bg">
-                          <AcoesTituloPagar
-                            titulo={t}
-                            statusAprovacao={statusAprovacao}
-                            contasAtivas={contasAtivas}
-                            canManage={canManage}
-                            canPagar={canPagar}
-                          />
-                        </Td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-              {titulosPagar.length === 0 && (
+      {activeTab === "pagar" && (
+        <section>
+          <h2 className="text-sm font-semibold text-text">Títulos a pagar</h2>
+          <p className="mt-1 text-xs text-text-muted">
+            Vinculado a pedido de compra (Suprimentos/ADR-011). Submeter à aprovação é opcional —
+            sem alçada aplicável, o pagamento pode ser registrado direto. Clique num título para ver
+            ações.
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <thead>
                 <tr>
-                  <Td colSpan={7} className="text-text-muted">
-                    Nenhum título a pagar gerado ainda.
-                  </Td>
+                  <Th>Número</Th>
+                  <Th>Fornecedor</Th>
+                  <Th>Saldo</Th>
+                  <Th>Vencimento</Th>
+                  <Th>Status</Th>
+                  <Th>Aprovação</Th>
+                  <Th className="w-6" />
                 </tr>
-              )}
-            </tbody>
-          </Table>
-          <Paginacao {...tpPaginacao} paramPagina="tp_pagina" paramPorPagina="tp_por_pagina" />
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {titulosPagar.map((t) => {
+                  const statusAprovacao = statusAprovacaoPorTitulo.get(t.id);
+                  const expandido = expTituloPagar === t.id;
+                  return (
+                    <Fragment key={t.id}>
+                      <tr onClick={() => setExpTituloPagar((atual) => (atual === t.id ? null : t.id))} className="cursor-pointer hover:bg-page-bg">
+                        <Td>{t.numero}</Td>
+                        <Td>{t.pedidos_compra ? nomePorPessoa.get(t.pedidos_compra.pessoa_id) ?? "—" : "—"}</Td>
+                        <Td>{currency(t.saldo_pendente)}</Td>
+                        <Td>{formatarData(t.vencimento)}</Td>
+                        <Td>{TITULO_PAGAR_STATUS_LABEL[t.status]}</Td>
+                        <Td>{statusAprovacao ? APROVACAO_STATUS_LABEL[statusAprovacao] ?? statusAprovacao : "—"}</Td>
+                        <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                      </tr>
+                      {expandido && (canManage || canPagar) && (t.status === "aberto" || t.status === "parcial") && (
+                        <tr>
+                          <Td colSpan={7} className="bg-page-bg">
+                            <AcoesTituloPagar
+                              titulo={t}
+                              statusAprovacao={statusAprovacao}
+                              contasAtivas={contasAtivas}
+                              canManage={canManage}
+                              canPagar={canPagar}
+                            />
+                          </Td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {titulosPagar.length === 0 && (
+                  <tr>
+                    <Td colSpan={7} className="text-text-muted">
+                      Nenhum título a pagar gerado ainda.
+                    </Td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+            <Paginacao {...tpPaginacao} paramPagina="tp_pagina" paramPorPagina="tp_por_pagina" />
+          </div>
+        </section>
+      )}
 
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold text-text">Cobranças (boleto/PIX)</h2>
-        <p className="mt-1 text-xs text-text-muted">
-          Sobre título a receber. Nenhum provedor bancário real conectado — sem linha digitável/QR
-          Code de verdade. Clique numa cobrança para ver ações.
-        </p>
-        {canManage && <GerarCobrancaForm titulosReceberAbertos={titulosReceberAbertos} contasAtivas={contasAtivas} />}
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Número</Th>
-                <Th>Título</Th>
-                <Th>Tipo</Th>
-                <Th>Valor</Th>
-                <Th>Vencimento</Th>
-                <Th>Status</Th>
-                <Th className="w-6" />
-              </tr>
-            </thead>
-            <tbody>
-              {cobrancas.map((c) => {
-                const expandido = expCobranca === c.id;
-                return (
-                  <Fragment key={c.id}>
-                    <tr onClick={() => setExpCobranca((atual) => (atual === c.id ? null : c.id))} className="cursor-pointer hover:bg-page-bg">
-                      <Td>{c.numero}</Td>
-                      <Td>{c.titulos_financeiros?.numero ?? "—"}</Td>
-                      <Td>{c.tipo === "boleto" ? "Boleto" : "PIX"}</Td>
-                      <Td>{currency(c.valor)}</Td>
-                      <Td>{formatarData(c.vencimento)}</Td>
-                      <Td>{COBRANCA_STATUS_LABEL[c.status]}</Td>
-                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
-                    </tr>
-                    {expandido && (canManage || canReceber) && c.status === "gerada" && (
-                      <tr>
-                        <Td colSpan={7} className="bg-page-bg">
-                          <div className="flex gap-1.5">
-                            {canReceber && (
-                              <form action={marcarCobrancaPagaAction}>
-                                <input type="hidden" name="id" value={c.id} />
-                                <Button type="submit" variant="primary" size="sm">
-                                  Marcar paga
-                                </Button>
-                              </form>
-                            )}
-                            {canManage && (
-                              <form action={cancelarCobrancaAction}>
-                                <input type="hidden" name="id" value={c.id} />
-                                <Button type="submit" variant="outlineDanger" size="sm">
-                                  Cancelar
-                                </Button>
-                              </form>
-                            )}
-                          </div>
-                        </Td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-              {cobrancas.length === 0 && (
+      {activeTab === "cobranca" && (
+        <section>
+          <h2 className="text-sm font-semibold text-text">Cobranças (boleto/PIX)</h2>
+          <p className="mt-1 text-xs text-text-muted">
+            Sobre título a receber. Nenhum provedor bancário real conectado — sem linha digitável/QR
+            Code de verdade. Clique numa cobrança para ver ações.
+          </p>
+          {canManage && <GerarCobrancaForm titulosAbertos={titulosAbertos} contasAtivas={contasAtivas} />}
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <thead>
                 <tr>
-                  <Td colSpan={7} className="text-text-muted">
-                    Nenhuma cobrança gerada ainda.
-                  </Td>
+                  <Th>Número</Th>
+                  <Th>Título</Th>
+                  <Th>Tipo</Th>
+                  <Th>Valor</Th>
+                  <Th>Vencimento</Th>
+                  <Th>Status</Th>
+                  <Th className="w-6" />
                 </tr>
-              )}
-            </tbody>
-          </Table>
-          <Paginacao {...cbPaginacao} paramPagina="cb_pagina" paramPorPagina="cb_por_pagina" />
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {cobrancas.map((c) => {
+                  const expandido = expCobranca === c.id;
+                  return (
+                    <Fragment key={c.id}>
+                      <tr onClick={() => setExpCobranca((atual) => (atual === c.id ? null : c.id))} className="cursor-pointer hover:bg-page-bg">
+                        <Td>{c.numero}</Td>
+                        <Td>{c.titulos_financeiros?.numero ?? "—"}</Td>
+                        <Td>{c.tipo === "boleto" ? "Boleto" : "PIX"}</Td>
+                        <Td>{currency(c.valor)}</Td>
+                        <Td>{formatarData(c.vencimento)}</Td>
+                        <Td>{COBRANCA_STATUS_LABEL[c.status]}</Td>
+                        <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                      </tr>
+                      {expandido && (canManage || canReceber) && c.status === "gerada" && (
+                        <tr>
+                          <Td colSpan={7} className="bg-page-bg">
+                            <div className="flex gap-1.5">
+                              {canReceber && (
+                                <form action={marcarCobrancaPagaAction}>
+                                  <input type="hidden" name="id" value={c.id} />
+                                  <Button type="submit" variant="primary" size="sm">
+                                    Marcar paga
+                                  </Button>
+                                </form>
+                              )}
+                              {canManage && (
+                                <form action={cancelarCobrancaAction}>
+                                  <input type="hidden" name="id" value={c.id} />
+                                  <Button type="submit" variant="outlineDanger" size="sm">
+                                    Cancelar
+                                  </Button>
+                                </form>
+                              )}
+                            </div>
+                          </Td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {cobrancas.length === 0 && (
+                  <tr>
+                    <Td colSpan={7} className="text-text-muted">
+                      Nenhuma cobrança gerada ainda.
+                    </Td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+            <Paginacao {...cbPaginacao} paramPagina="cb_pagina" paramPorPagina="cb_por_pagina" />
+          </div>
+        </section>
+      )}
 
-      <section className="mt-6">
-        <h2 className="text-sm font-semibold text-text">Movimentação bancária e conciliação</h2>
-        <p className="mt-1 text-xs text-text-muted">
-          Lançamento manual — sem extrato real importado. Conciliação manual: vincule à mão a um
-          título ou cobrança. Clique numa movimentação para conciliar.
-        </p>
-        {canManage && <MovimentacaoForm contasAtivas={contasAtivas} />}
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Data</Th>
-                <Th>Tipo</Th>
-                <Th>Valor</Th>
-                <Th>Descrição</Th>
-                <Th>Conciliação</Th>
-                <Th className="w-6" />
-              </tr>
-            </thead>
-            <tbody>
-              {movimentacoes.map((m) => {
-                const expandido = expMovimentacao === m.id;
-                return (
-                  <Fragment key={m.id}>
-                    <tr onClick={() => setExpMovimentacao((atual) => (atual === m.id ? null : m.id))} className="cursor-pointer hover:bg-page-bg">
-                      <Td>{formatarData(m.data_movimento)}</Td>
-                      <Td>{m.tipo === "credito" ? "Crédito" : "Débito"}</Td>
-                      <Td>{currency(m.valor)}</Td>
-                      <Td>{m.descricao ?? "—"}</Td>
-                      <Td>{m.conciliado ? `Conciliada (${m.conciliado_com_tipo})` : "Pendente"}</Td>
-                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
-                    </tr>
-                    {expandido && canManage && (
-                      <tr>
-                        <Td colSpan={6} className="bg-page-bg">
-                          <AcoesMovimentacao
-                            movimentacao={m}
-                            titulosReceberAbertos={titulosReceberAbertos}
-                            titulosPagarAbertos={titulosPagarAbertos}
-                            cobrancasGeradas={cobrancasGeradas}
-                          />
-                        </Td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-              {movimentacoes.length === 0 && (
+      {activeTab === "mov" && (
+        <section>
+          <h2 className="text-sm font-semibold text-text">Movimentação bancária e conciliação</h2>
+          <p className="mt-1 text-xs text-text-muted">
+            Lançamento manual — sem extrato real importado. Conciliação manual: vincule à mão a um
+            título ou cobrança. Clique numa movimentação para conciliar.
+          </p>
+          {canManage && <MovimentacaoForm contasAtivas={contasAtivas} />}
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <thead>
                 <tr>
-                  <Td colSpan={6} className="text-text-muted">
-                    Nenhuma movimentação registrada ainda.
-                  </Td>
+                  <Th>Data</Th>
+                  <Th>Tipo</Th>
+                  <Th>Valor</Th>
+                  <Th>Descrição</Th>
+                  <Th>Conciliação</Th>
+                  <Th className="w-6" />
                 </tr>
-              )}
-            </tbody>
-          </Table>
-          <Paginacao {...mvPaginacao} paramPagina="mv_pagina" paramPorPagina="mv_por_pagina" />
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {movimentacoes.map((m) => {
+                  const expandido = expMovimentacao === m.id;
+                  return (
+                    <Fragment key={m.id}>
+                      <tr onClick={() => setExpMovimentacao((atual) => (atual === m.id ? null : m.id))} className="cursor-pointer hover:bg-page-bg">
+                        <Td>{formatarData(m.data_movimento)}</Td>
+                        <Td>{m.tipo === "credito" ? "Crédito" : "Débito"}</Td>
+                        <Td>{currency(m.valor)}</Td>
+                        <Td>{m.descricao ?? "—"}</Td>
+                        <Td>{m.conciliado ? `Conciliada (${m.conciliado_com_tipo})` : "Pendente"}</Td>
+                        <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                      </tr>
+                      {expandido && canManage && (
+                        <tr>
+                          <Td colSpan={6} className="bg-page-bg">
+                            <AcoesMovimentacao
+                              movimentacao={m}
+                              titulosAbertos={titulosAbertos}
+                              titulosPagarAbertos={titulosPagarAbertos}
+                              cobrancasGeradas={cobrancasGeradas}
+                            />
+                          </Td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {movimentacoes.length === 0 && (
+                  <tr>
+                    <Td colSpan={6} className="text-text-muted">
+                      Nenhuma movimentação registrada ainda.
+                    </Td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+            <Paginacao {...mvPaginacao} paramPagina="mv_pagina" paramPorPagina="mv_por_pagina" />
+          </div>
+        </section>
+      )}
     </>
+  );
+}
+
+function VisaoGeral({
+  titulosAbertos,
+  titulosPagarAbertos,
+  contasAtivasCount,
+  aprovacoesPendentesCount,
+  cobrancasGeradasCount,
+  naoConciliadoCount,
+}: {
+  titulosAbertos: TituloAberto[];
+  titulosPagarAbertos: TituloPagarAberto[];
+  contasAtivasCount: number;
+  aprovacoesPendentesCount: number | null;
+  cobrancasGeradasCount: number;
+  naoConciliadoCount: number;
+}) {
+  const totalReceber = titulosAbertos.reduce((soma, t) => soma + t.saldo_pendente, 0);
+  const hoje = new Date(new Date().toDateString());
+  const vencidos = titulosAbertos.filter((t) => parseDataLocal(t.vencimento) < hoje).length;
+  const totalPagar = titulosPagarAbertos.reduce((soma, t) => soma + t.saldo_pendente, 0);
+
+  const cards: { label: string; valor: string | number; alerta?: boolean }[] = [
+    { label: "A receber em aberto", valor: currency(totalReceber) },
+    { label: "Vencido (a receber)", valor: vencidos, alerta: vencidos > 0 },
+    { label: "A pagar em aberto", valor: currency(totalPagar) },
+    { label: "Contas bancárias ativas", valor: contasAtivasCount },
+    ...(aprovacoesPendentesCount !== null
+      ? [{ label: "Aguardando aprovação", valor: aprovacoesPendentesCount, alerta: aprovacoesPendentesCount > 0 }]
+      : []),
+    { label: "Cobranças geradas", valor: cobrancasGeradasCount },
+    { label: "Movimentação não conciliada", valor: naoConciliadoCount, alerta: naoConciliadoCount > 0 },
+  ];
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-text">Visão geral</h2>
+      <p className="mt-1 text-xs text-text-muted">
+        Indicadores somados a partir dos títulos em aberto, contas, aprovações e conciliação —
+        mesmos dados das abas ao lado.
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {cards.map((c) => (
+          <div key={c.label} className="rounded-md bg-page-bg p-4">
+            <p className="text-xs text-text-muted">{c.label}</p>
+            <p className={`mt-1 text-xl font-semibold ${c.alerta ? "text-warning" : "text-text"}`}>{c.valor}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -846,8 +932,8 @@ function AcoesTituloPagar({
   );
 }
 
-function GerarCobrancaForm({ titulosReceberAbertos, contasAtivas }: { titulosReceberAbertos: Titulo[]; contasAtivas: ContaBancaria[] }) {
-  if (titulosReceberAbertos.length === 0 || contasAtivas.length === 0) {
+function GerarCobrancaForm({ titulosAbertos, contasAtivas }: { titulosAbertos: TituloAberto[]; contasAtivas: ContaBancaria[] }) {
+  if (titulosAbertos.length === 0 || contasAtivas.length === 0) {
     return (
       <p className="mt-1 text-xs text-text-muted">
         Precisa de ao menos um título a receber aberto e uma conta bancária ativa pra gerar cobrança.
@@ -858,7 +944,7 @@ function GerarCobrancaForm({ titulosReceberAbertos, contasAtivas }: { titulosRec
     <form action={gerarCobrancaAction} className="mt-3 flex flex-wrap items-center gap-1.5 rounded-md bg-page-bg p-3">
       <Select name="titulo_id" required>
         <option value="">título a receber…</option>
-        {titulosReceberAbertos.map((t) => (
+        {titulosAbertos.map((t) => (
           <option key={t.id} value={t.id}>{t.numero} — {currency(t.saldo_pendente)}</option>
         ))}
       </Select>
@@ -906,12 +992,12 @@ function MovimentacaoForm({ contasAtivas }: { contasAtivas: ContaBancaria[] }) {
 }
 
 function AcoesMovimentacao({
-  movimentacao, titulosReceberAbertos, titulosPagarAbertos, cobrancasGeradas,
+  movimentacao, titulosAbertos, titulosPagarAbertos, cobrancasGeradas,
 }: {
   movimentacao: Movimentacao;
-  titulosReceberAbertos: Titulo[];
-  titulosPagarAbertos: TituloPagar[];
-  cobrancasGeradas: Cobranca[];
+  titulosAbertos: TituloAberto[];
+  titulosPagarAbertos: TituloPagarAberto[];
+  cobrancasGeradas: CobrancaGerada[];
 }) {
   const [tipoAlvo, setTipoAlvo] = useState<"titulo_receber" | "titulo_pagar" | "cobranca">("titulo_receber");
 
@@ -926,7 +1012,8 @@ function AcoesMovimentacao({
     );
   }
 
-  const opcoes = tipoAlvo === "titulo_receber" ? titulosReceberAbertos : tipoAlvo === "titulo_pagar" ? titulosPagarAbertos : cobrancasGeradas;
+  const opcoes: { id: string; numero: string }[] =
+    tipoAlvo === "titulo_receber" ? titulosAbertos : tipoAlvo === "titulo_pagar" ? titulosPagarAbertos : cobrancasGeradas;
 
   return (
     <form action={conciliarMovimentacaoAction} className="flex flex-wrap items-center gap-1.5">

@@ -185,7 +185,21 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Gestão",
     items: [
-      { label: "Financeiro", href: "/financeiro", icon: Wallet },
+      {
+        label: "Financeiro",
+        href: "/financeiro",
+        icon: Wallet,
+        children: [
+          { label: "Visão geral", href: "/financeiro", tab: "geral" },
+          { label: "Títulos a receber", href: "/financeiro?tab=receber", tab: "receber" },
+          { label: "Contas bancárias", href: "/financeiro?tab=contas", tab: "contas" },
+          { label: "Alçada", href: "/financeiro?tab=alcada", tab: "alcada" },
+          { label: "Confirmações", href: "/financeiro?tab=confirm", tab: "confirm" },
+          { label: "Títulos a pagar", href: "/financeiro?tab=pagar", tab: "pagar" },
+          { label: "Cobranças", href: "/financeiro?tab=cobranca", tab: "cobranca" },
+          { label: "Movimentação", href: "/financeiro?tab=mov", tab: "mov" },
+        ],
+      },
       { label: "Fiscal", href: "/fiscal", icon: Receipt },
       { label: "RH", href: "/rh", icon: Users },
       { label: "Contratos", href: "/contratos", icon: FileSignature },

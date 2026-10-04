@@ -3,6 +3,8 @@ import FinanceiroSection from "./FinanceiroSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
+type TabSlug = "geral" | "receber" | "contas" | "alcada" | "confirm" | "pagar" | "cobranca" | "mov";
+
 // TÓPICO 11 — Financeiro, recorte mínimo do MVP (ADR-002 §4.14, que
 // prevalece sobre a seção 34 do prompt completo do tópico — ver cabeçalho
 // da migration 20260916030000): só título a receber vinculado a pedido,
@@ -15,17 +17,18 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // movimentação bancária. Nenhum provedor bancário real conectado; sem
 // plano de contas, DRE, empréstimos ou comissões.
 //
-// 2026-10-04: mesmo tratamento de layout já aplicado nos demais módulos
-// — tela larga e as 4 listas que crescem sem limite (títulos a receber/
-// pagar, cobranças, movimentações) paginadas no servidor, cada uma com
-// seu próprio par de parâmetros (a mesma rota tem as 4, sem abas).
-// Contas bancárias, alçada e confirmações pendentes continuam sem
-// paginação — são configuração/fila operacional, não histórico que
-// cresce (poucas linhas, usadas também como opção nos formulários).
+// 2026-10-04: as 7 seções (antes sempre empilhadas na mesma tela) viram
+// abas — "Visão geral" é nova, com indicadores somados a partir dos
+// dados já lidos (sem nenhuma consulta pesada extra). Só a aba ativa
+// busca sua lista paginada; as listas "em aberto" (usadas como opção em
+// formulários de outras abas — gerar cobrança, conciliar) são buscadas
+// à parte, inteiras e sem paginação — um título em aberto não some do
+// formulário só porque caiu numa página diferente da lista principal.
 export default async function FinanceiroPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    tab?: string;
     tr_pagina?: string;
     tr_por_pagina?: string;
     tp_pagina?: string;
@@ -55,54 +58,73 @@ export default async function FinanceiroPage({
     );
   }
 
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "geral", label: "Visão geral" },
+    { slug: "receber", label: "Títulos a receber" },
+    { slug: "contas", label: "Contas bancárias" },
+    { slug: "alcada", label: "Alçada" },
+    ...(canAprovar ? [{ slug: "confirm" as const, label: "Confirmações" }] : []),
+    { slug: "pagar", label: "Títulos a pagar" },
+    { slug: "cobranca", label: "Cobranças" },
+    { slug: "mov", label: "Movimentação" },
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === params.tab) ? (params.tab as TabSlug) : "geral";
+
   const { pagina: trPaginaPedida, porPagina: trPorPagina } = lerParametrosPaginacao({ pagina: params.tr_pagina, por_pagina: params.tr_por_pagina });
   const { pagina: tpPaginaPedida, porPagina: tpPorPagina } = lerParametrosPaginacao({ pagina: params.tp_pagina, por_pagina: params.tp_por_pagina });
   const { pagina: cbPaginaPedida, porPagina: cbPorPagina } = lerParametrosPaginacao({ pagina: params.cb_pagina, por_pagina: params.cb_por_pagina });
   const { pagina: mvPaginaPedida, porPagina: mvPorPagina } = lerParametrosPaginacao({ pagina: params.mv_pagina, por_pagina: params.mv_por_pagina });
 
-  const [{ count: totalTitulos }, { count: totalTitulosPagar }, { count: totalCobrancas }, { count: totalMovimentacoes }] = await Promise.all([
-    supabase.from("titulos_financeiros").select("id", { count: "exact", head: true }),
-    supabase.from("titulos_pagar").select("id", { count: "exact", head: true }),
-    supabase.from("cobrancas").select("id", { count: "exact", head: true }),
-    supabase.from("movimentacoes_bancarias").select("id", { count: "exact", head: true }),
-  ]);
-  const { paginacao: trPaginacao, from: trFrom, to: trTo } = calcularPaginacao(trPaginaPedida, trPorPagina, totalTitulos ?? 0);
-  const { paginacao: tpPaginacao, from: tpFrom, to: tpTo } = calcularPaginacao(tpPaginaPedida, tpPorPagina, totalTitulosPagar ?? 0);
-  const { paginacao: cbPaginacao, from: cbFrom, to: cbTo } = calcularPaginacao(cbPaginaPedida, cbPorPagina, totalCobrancas ?? 0);
-  const { paginacao: mvPaginacao, from: mvFrom, to: mvTo } = calcularPaginacao(mvPaginaPedida, mvPorPagina, totalMovimentacoes ?? 0);
-
-  const [{ data: titulos }, { data: pedidosLiberados }, { data: pessoas }] = await Promise.all([
-    supabase.from("titulos_financeiros").select("*").order("vencimento").range(trFrom, trTo),
-    supabase.from("pedidos").select("id, numero, pessoa_id").eq("status", "liberado"),
-    supabase.from("pessoas").select("id, nome"),
-  ]);
-
-  const pedidosComTitulo = new Set((titulos ?? []).map((t) => t.pedido_id));
-  const pedidosSemTitulo = (pedidosLiberados ?? []).filter((p) => !pedidosComTitulo.has(p.id));
-  const nomePorPedido = new Map((pedidosLiberados ?? []).map((p) => [p.id, p]));
-  const nomePorPessoa = new Map((pessoas ?? []).map((p) => [p.id, p.nome]));
-
+  // Listas "em aberto" — pequenas por natureza (fecham com o tempo, ao
+  // contrário do histórico completo) e usadas como opção em formulários
+  // de várias abas (gerar cobrança, conciliar movimentação) e nos
+  // cartões da Visão geral. Buscadas inteiras, nunca paginadas.
   const [
+    { data: pedidosLiberados },
+    { data: pedidoIdsComTituloData },
+    { data: pessoas },
     { data: contasBancarias },
-    { data: titulosPagar },
     { data: alcadaEtapas },
     { data: aprovacoesPendentes },
-    { data: cobrancas },
-    { data: movimentacoes },
+    { data: titulosAbertos },
+    { data: titulosPagarAbertos },
+    { data: cobrancasGeradas },
     { data: roles },
+    { count: naoConciliadoCount },
   ] = await Promise.all([
+    supabase.from("pedidos").select("id, numero, pessoa_id").eq("status", "liberado"),
+    supabase.from("titulos_financeiros").select("pedido_id"),
+    supabase.from("pessoas").select("id, nome"),
     supabase.from("contas_bancarias").select("*").order("banco"),
-    supabase.from("titulos_pagar").select("*, pedidos_compra(numero, pessoa_id)").order("vencimento").range(tpFrom, tpTo),
     supabase.from("financeiro_alcada_etapas").select("*, roles(name)").eq("processo", "titulo_pagar").order("ordem"),
     supabase
       .from("financeiro_aprovacao_etapas")
       .select("*, roles(name), financeiro_aprovacoes(entidade_id, valor, processo)")
       .eq("status", "pendente")
       .order("ordem"),
-    supabase.from("cobrancas").select("*, titulos_financeiros(numero)").order("created_at", { ascending: false }).range(cbFrom, cbTo),
-    supabase.from("movimentacoes_bancarias").select("*").order("data_movimento", { ascending: false }).range(mvFrom, mvTo),
+    supabase
+      .from("titulos_financeiros")
+      .select("id, numero, saldo_pendente, vencimento")
+      .in("status", ["aberto", "parcial"])
+      .order("vencimento"),
+    supabase
+      .from("titulos_pagar")
+      .select("id, numero, saldo_pendente")
+      .in("status", ["aberto", "parcial"])
+      .order("vencimento"),
+    supabase.from("cobrancas").select("id, numero").eq("status", "gerada"),
     supabase.from("roles").select("id, name").is("company_id", null),
+    supabase.from("movimentacoes_bancarias").select("id", { count: "exact", head: true }).eq("conciliado", false),
   ]);
+
+  const pedidosComTitulo = new Set((pedidoIdsComTituloData ?? []).map((t) => t.pedido_id));
+  const pedidosSemTitulo = (pedidosLiberados ?? []).filter((p) => !pedidosComTitulo.has(p.id));
+  const nomePorPedido = new Map((pedidosLiberados ?? []).map((p) => [p.id, p]));
+  const nomePorPessoa = new Map((pessoas ?? []).map((p) => [p.id, p.nome]));
+  // Aprovação pendente só existe pra título ainda aberto/parcial — o
+  // conjunto "em aberto" já cobre todo entidade_id que uma aprovação
+  // pendente possa referenciar.
+  const numeroPorTituloPagar = new Map((titulosPagarAbertos ?? []).map((t) => [t.id, t.numero]));
 
   const { data: aprovacoesTituloPagar } = await supabase
     .from("financeiro_aprovacoes")
@@ -114,11 +136,38 @@ export default async function FinanceiroPage({
   // manualmente pro número do título a pagar aparecer na tela. A primeira
   // ocorrência por título (mais recente, por causa do order acima) é a
   // situação de aprovação vigente.
-  const numeroPorTituloPagar = new Map((titulosPagar ?? []).map((t) => [t.id, t.numero]));
   const statusAprovacaoPorTitulo = new Map<string, string>();
   for (const a of aprovacoesTituloPagar ?? []) {
     if (!statusAprovacaoPorTitulo.has(a.entidade_id)) statusAprovacaoPorTitulo.set(a.entidade_id, a.status);
   }
+
+  // Só a aba ativa busca a lista paginada — as outras 3 ficam de fora
+  // (mesmo padrão já usado em Engenharia/Pré-engenharia).
+  const { count: totalTitulos } = activeTab === "receber" ? await supabase.from("titulos_financeiros").select("id", { count: "exact", head: true }) : { count: 0 };
+  const { paginacao: trPaginacao, from: trFrom, to: trTo } = calcularPaginacao(trPaginaPedida, trPorPagina, totalTitulos ?? 0);
+  const { data: titulos } =
+    activeTab === "receber" ? await supabase.from("titulos_financeiros").select("*").order("vencimento").range(trFrom, trTo) : { data: [] as never[] };
+
+  const { count: totalTitulosPagar } = activeTab === "pagar" ? await supabase.from("titulos_pagar").select("id", { count: "exact", head: true }) : { count: 0 };
+  const { paginacao: tpPaginacao, from: tpFrom, to: tpTo } = calcularPaginacao(tpPaginaPedida, tpPorPagina, totalTitulosPagar ?? 0);
+  const { data: titulosPagar } =
+    activeTab === "pagar"
+      ? await supabase.from("titulos_pagar").select("*, pedidos_compra(numero, pessoa_id)").order("vencimento").range(tpFrom, tpTo)
+      : { data: [] as never[] };
+
+  const { count: totalCobrancas } = activeTab === "cobranca" ? await supabase.from("cobrancas").select("id", { count: "exact", head: true }) : { count: 0 };
+  const { paginacao: cbPaginacao, from: cbFrom, to: cbTo } = calcularPaginacao(cbPaginaPedida, cbPorPagina, totalCobrancas ?? 0);
+  const { data: cobrancas } =
+    activeTab === "cobranca"
+      ? await supabase.from("cobrancas").select("*, titulos_financeiros(numero)").order("created_at", { ascending: false }).range(cbFrom, cbTo)
+      : { data: [] as never[] };
+
+  const { count: totalMovimentacoes } = activeTab === "mov" ? await supabase.from("movimentacoes_bancarias").select("id", { count: "exact", head: true }) : { count: 0 };
+  const { paginacao: mvPaginacao, from: mvFrom, to: mvTo } = calcularPaginacao(mvPaginaPedida, mvPorPagina, totalMovimentacoes ?? 0);
+  const { data: movimentacoes } =
+    activeTab === "mov"
+      ? await supabase.from("movimentacoes_bancarias").select("*").order("data_movimento", { ascending: false }).range(mvFrom, mvTo)
+      : { data: [] as never[] };
 
   return (
     <div className="mx-auto max-w-7xl p-6">
@@ -132,6 +181,11 @@ export default async function FinanceiroPage({
 
       <div className="mt-6">
         <FinanceiroSection
+          activeTab={activeTab}
+          titulosAbertos={titulosAbertos ?? []}
+          titulosPagarAbertos={titulosPagarAbertos ?? []}
+          cobrancasGeradas={cobrancasGeradas ?? []}
+          naoConciliadoCount={naoConciliadoCount ?? 0}
           titulos={titulos ?? []}
           trPaginacao={trPaginacao}
           pedidosSemTitulo={pedidosSemTitulo}
