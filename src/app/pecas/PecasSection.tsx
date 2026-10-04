@@ -32,7 +32,7 @@ type PecaComposicao = {
   material_item_id: string;
   quantidade_por_unidade: number;
   observacao: string | null;
-  tipo_calculo: "fixo" | "linear" | "area";
+  tipo_calculo: "fixo" | "linear" | "area" | "largura" | "altura";
   percentual_perda: number;
 };
 type Revisao = { revisao: number; motivo: string | null; created_at: string };
@@ -42,6 +42,11 @@ const TIPO_CALCULO_LABEL: Record<PecaComposicao["tipo_calculo"], string> = {
   fixo: "Fixo",
   linear: "Linear (perímetro)",
   area: "Área",
+  // ADR-012 v1.2 — material que consome só uma dimensão da peça (ex.:
+  // trilho superior de um box, que corre só na largura de cima), em vez
+  // do perímetro inteiro.
+  largura: "Linear (só largura)",
+  altura: "Linear (só altura)",
 };
 type ComprimentoBarra = { id: string; item_id: string; comprimento_metros: number };
 type Regra = {
@@ -205,7 +210,16 @@ export default function PecasSection({
                           <Td>{c.observacao ?? "—"}</Td>
                           <Td>
                             {canManage ? (
-                              <TipoCalculoComposicao composicao={c} />
+                              <TipoCalculoComposicao
+                                // Remonta quando o tipo salvo muda (depois de
+                                // "Salvar" + revalidação): sem isso, o select
+                                // ficava preso no valor antigo na tela — o
+                                // salvamento já tinha funcionado no banco,
+                                // só a tela não refletia (achado ao testar
+                                // Largura/Altura em 2026-10-04).
+                                key={`${c.id}:${c.tipo_calculo}`}
+                                composicao={c}
+                              />
                             ) : (
                               `${TIPO_CALCULO_LABEL[c.tipo_calculo]}${c.tipo_calculo !== "fixo" ? ` (perda ${c.percentual_perda}%)` : ""}`
                             )}
@@ -221,7 +235,7 @@ export default function PecasSection({
                             </Td>
                           )}
                         </tr>
-                        {c.tipo_calculo === "linear" && (
+                        {(c.tipo_calculo === "linear" || c.tipo_calculo === "largura" || c.tipo_calculo === "altura") && (
                           <tr>
                             <Td colSpan={canManage ? 5 : 4}>
                               <ComprimentosBarraComposicao

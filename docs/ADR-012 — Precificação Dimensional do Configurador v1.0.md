@@ -1,10 +1,11 @@
 **ADR-012 — Precificação Dimensional do Configurador**
 
 **Status:** APROVADO\
-**Versão:** 1.1\
+**Versão:** 1.2\
 **Tipo:** Architecture Decision Record (ADR)\
 **Data:** 2026-09-27 (emenda v1.1 em 2026-10-03 — cálculo automático de custo e
-preço no orçamento, ver §8)\
+preço no orçamento, ver §8; emenda v1.2 em 2026-10-04 — tipo_calculo
+"largura"/"altura", ver fim do documento)\
 **Decisão:** Escopo funcional do motor de precificação dimensional para
 peças configuráveis — liga o Orçamento (Comercial) diretamente à
 composição técnica que hoje só existia do lado da Engenharia — e ordem
@@ -366,3 +367,22 @@ checkpoint por fase já descrito no §7.
 **Emenda v1.1:** aprovação explícita do responsável do produto em
 03/10/2026, via chat, depois de revisão do plano completo (§8), com
 checkpoint por etapa (banco, configurações, tela, documentação).
+
+**Emenda v1.2 (04/10/2026) — tipo_calculo "largura" e "altura":** até aqui,
+um material de composição em metro corrido só podia ser "Fixo", "Linear"
+(perímetro inteiro, 2×(largura+altura)) ou "Área". Um material que
+consome só UMA dimensão (ex.: trilho superior de um box, que corre só na
+largura de cima, não no perímetro inteiro) não tinha como ser
+representado — cadastrar como "Linear" superestimava o consumo. Pedido
+feito em chat pelo responsável do produto ao configurar o perfil de
+alumínio do BOX-COR-VID na base de homologação (JR Box) e notar esse
+mesmo problema num material vizinho (TRI-SUP-BOX). `tipo_calculo` passa a
+aceitar também `'largura'` e `'altura'`: consomem exatamente a dimensão
+daquele papel, com os mesmos % de perda e combinação de comprimento de
+barra que já valiam para "Linear". Migração aditiva, sem mudar o tipo de
+nenhuma composição já cadastrada.
+
+Implementação: migration
+`20261213000000_adr012_tipo_calculo_largura_altura.sql` (recria
+`_calcular_custo_peca` e `definir_tipo_calculo_composicao`, amplia a
+constraint de `tipo_calculo`).
