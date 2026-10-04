@@ -119,6 +119,7 @@ export default function ItemConfiguravelForm({
   definicoes,
   valoresSalvos,
   onSaved,
+  onDirtyChange,
 }: {
   orcamentoId: string;
   item: ItemExistente | null;
@@ -127,6 +128,11 @@ export default function ItemConfiguravelForm({
   definicoes: DefCaracteristica[];
   valoresSalvos: ValorSalvo[];
   onSaved?: () => void;
+  // Lista compacta de itens (OrcamentosSection) usa isso pra avisar antes de
+  // trocar de item com edição em andamento — dispara junto de todo lugar que
+  // já zera `salvo` (mesmos pontos: é exatamente "algo mudou desde o último
+  // salvo").
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [quantidade, setQuantidade] = useState(item ? String(item.quantidade) : "1");
   const [digitado, setDigitado] = useState<Record<string, string>>(() => {
@@ -198,6 +204,7 @@ export default function ItemConfiguravelForm({
   function alterarValor(id: string, valor: string) {
     setDigitado((atual) => ({ ...atual, [id]: valor }));
     setSalvo(false);
+    onDirtyChange?.(true);
   }
 
   async function salvar(e: FormEvent) {
@@ -220,11 +227,13 @@ export default function ItemConfiguravelForm({
       return;
     }
     setSalvo(true);
+    onDirtyChange?.(false);
     onSaved?.();
   }
 
   return (
-    <form onSubmit={salvar} className="flex flex-col gap-2">
+    <form onSubmit={salvar} className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start lg:gap-4">
+      <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1.5">
         {itemSelect}
         <label className="flex items-center gap-1 text-xs text-text">
@@ -237,6 +246,7 @@ export default function ItemConfiguravelForm({
             onChange={(e) => {
               setQuantidade(e.target.value);
               setSalvo(false);
+              onDirtyChange?.(true);
             }}
             required
             className="w-[70px]"
@@ -276,8 +286,6 @@ export default function ItemConfiguravelForm({
         </div>
       )}
 
-      <PainelCalculo calculo={calculo} calculando={calculando} />
-
       <div className="flex flex-wrap items-center gap-1.5">
         <label className="flex items-center gap-1 text-xs text-text">
           Preço unit.
@@ -290,6 +298,7 @@ export default function ItemConfiguravelForm({
               setPrecoManual(e.target.value);
               setSeguirSugestao(false);
               setSalvo(false);
+              onDirtyChange?.(true);
             }}
             placeholder={sugerido === null ? "digite o preço" : ""}
             required
@@ -315,6 +324,9 @@ export default function ItemConfiguravelForm({
         <p className="text-xs text-text-muted">Falta informar: {faltando.map((d) => d.nome).join(", ")}.</p>
       )}
       {erro && <p className="text-xs text-danger">{erro}</p>}
+      </div>
+
+      <PainelCalculo calculo={calculo} calculando={calculando} />
     </form>
   );
 }

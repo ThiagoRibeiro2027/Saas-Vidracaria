@@ -11,7 +11,11 @@ export async function converterOrcamentoAction(formData: FormData) {
   const { error } = await supabase.rpc("converter_orcamento_em_pedido", { p_orcamento_id: orcamentoId });
   if (error) throw new Error(error.message);
 
+  // Chamada também a partir do orçamento aprovado em /comercial (fusão das
+  // telas "Conversão de orçamentos" e "Propostas" no próprio orçamento) —
+  // revalida os dois, não só quem originou a chamada.
   revalidatePath("/pedidos");
+  revalidatePath("/comercial");
 }
 
 export async function iniciarConferenciaAction(formData: FormData) {

@@ -1,11 +1,15 @@
 "use client";
 
+import { useState, type FormEvent } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { upsertOportunidadeAction, mudarEstagioOportunidadeAction } from "./actions";
-import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
 type Pessoa = { id: string; nome: string };
 
@@ -77,97 +81,187 @@ const MOTIVOS_PERDA = [
   { value: "outros", label: "Outros" },
 ];
 
+const motivoPerdaLabel = (value: string | null) =>
+  value ? (MOTIVOS_PERDA.find((m) => m.value === value)?.label ?? value) : null;
+
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const COLUNAS = 7;
+
+// Mesmo padrão da lista de itens do orçamento (OrcamentosSection.tsx):
+// cada oportunidade vira uma linha compacta; clicar abre o detalhe
+// (mudança de estágio, se editável, ou só o que não coube na linha) no
+// lugar da própria linha. Só uma fica aberta por vez.
 export default function OportunidadesSection({
   oportunidades,
+  paginacao,
   todasPessoas,
   canManage,
 }: {
   oportunidades: Oportunidade[];
+  paginacao: PaginacaoInfo;
   todasPessoas: Pessoa[];
   canManage: boolean;
 }) {
   const pessoaNome = (id: string) => todasPessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
+  const [expandido, setExpandido] = useState<string | null>(null);
+
+  function aoSalvar() {
+    setExpandido(null);
+  }
 
   return (
-    <section className="mt-8">
+    <section>
       <h2 className="text-sm font-semibold text-text">Oportunidades e funil comercial</h2>
       <p className="mb-4 mt-1 text-xs text-text-muted">
         Ampliação de escopo do TÓPICO 10 (ADR-002 v2.4, 19/09/2026): funil fixo, não configurável
         por empresa nesta fase. &quot;Cliente/prospect&quot; reaproveita o cadastro de Pessoas — uma
         oportunidade pode apontar para uma pessoa que ainda não tem papel Cliente; convertê-la em
-        cliente é feito em Cadastros.
+        cliente é feito em Cadastros. Clique numa linha para abrir, revisar e mudar o estágio.
       </p>
 
-      {canManage && (
-        <div className="mb-4">
-          <h3 className="mb-1.5 text-[13px] font-medium text-text">Nova oportunidade</h3>
-          {todasPessoas.length === 0 ? (
-            <p className="text-xs text-text-muted">Nenhuma pessoa cadastrada — cadastre uma em Cadastros antes.</p>
-          ) : (
-            <form action={upsertOportunidadeAction} className="flex flex-wrap items-center gap-1.5">
-              <Select name="pessoa_id" defaultValue="" required className="min-w-40">
-                <option value="" disabled>
-                  Cliente/prospect
-                </option>
-                {todasPessoas.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nome}
-                  </option>
-                ))}
-              </Select>
-              <Input name="descricao" placeholder="descrição" className="w-44" />
-              <Input name="origem" placeholder="origem" className="w-28" />
-              <Input name="valor_potencial" type="number" step="0.01" min="0" placeholder="valor potencial" className="w-32" />
-              <Input name="probabilidade" type="number" step="1" min="0" max="100" placeholder="prob. %" className="w-20" />
-              <label className="flex items-center gap-1 text-xs text-text">
-                Previsão
-                <Input name="previsao_fechamento" type="date" />
-              </label>
-              <Input name="observacoes" placeholder="observações" className="w-40" />
-              <Button type="submit" variant="primary">
-                Criar oportunidade
-              </Button>
-            </form>
-          )}
-        </div>
-      )}
-
-      <div className="flex flex-col gap-3">
-        {oportunidades.map((op) => {
-          const editavel = canManage && op.estagio !== "ganha" && op.estagio !== "perdida";
-          return (
-            <Card key={op.id} padding="xs">
-              <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
-                <strong className="text-[13px] text-text">{pessoaNome(op.pessoa_id)}</strong>
-                <span className="text-text-muted">{op.descricao ?? "—"}</span>
-                {op.origem && <span className="text-text-muted">origem: {op.origem}</span>}
-                <Badge variant={ESTAGIO_TONE[op.estagio]}>{ESTAGIO_LABEL[op.estagio]}</Badge>
-                {op.motivo_perda && (
-                  <span className="text-text-muted">
-                    motivo: {MOTIVOS_PERDA.find((m) => m.value === op.motivo_perda)?.label ?? op.motivo_perda}
-                  </span>
-                )}
-                {op.valor_potencial != null && (
-                  <span className="ml-auto font-semibold text-text">{currency(op.valor_potencial)}</span>
-                )}
-                {op.probabilidade != null && <span className="text-text-muted">{op.probabilidade}%</span>}
-              </div>
-
-              {editavel && <MudarEstagioForm oportunidadeId={op.id} estagioAtual={op.estagio} />}
-            </Card>
-          );
-        })}
-        {oportunidades.length === 0 && <p className="text-xs text-text-muted">Nenhuma oportunidade ainda.</p>}
+      <div className="overflow-x-auto">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Cliente/prospect</Th>
+              <Th>Descrição</Th>
+              <Th>Origem</Th>
+              <Th>Estágio</Th>
+              <Th className="text-right">Valor potencial</Th>
+              <Th className="text-right">Prob.</Th>
+              <Th className="w-6" />
+            </tr>
+          </thead>
+          <tbody>
+            {oportunidades.map((op) => (
+              <OportunidadeLinha
+                key={op.id}
+                oportunidade={op}
+                pessoaNome={pessoaNome(op.pessoa_id)}
+                editavel={canManage && op.estagio !== "ganha" && op.estagio !== "perdida"}
+                expandido={expandido === op.id}
+                onToggle={() => setExpandido((atual) => (atual === op.id ? null : op.id))}
+                onSaved={aoSalvar}
+              />
+            ))}
+            {canManage && (
+              <NovaOportunidadeLinha
+                todasPessoas={todasPessoas}
+                expandido={expandido === "novo"}
+                onToggle={() => setExpandido((atual) => (atual === "novo" ? null : "novo"))}
+                onSaved={aoSalvar}
+              />
+            )}
+            {oportunidades.length === 0 && !canManage && (
+              <tr>
+                <Td colSpan={COLUNAS} className="text-text-muted">
+                  Nenhuma oportunidade ainda.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+        <Paginacao {...paginacao} paramPagina="op_pagina" paramPorPagina="op_por_pagina" />
       </div>
     </section>
   );
 }
 
-function MudarEstagioForm({ oportunidadeId, estagioAtual }: { oportunidadeId: string; estagioAtual: Estagio }) {
+function OportunidadeLinha({
+  oportunidade,
+  pessoaNome,
+  editavel,
+  expandido,
+  onToggle,
+  onSaved,
+}: {
+  oportunidade: Oportunidade;
+  pessoaNome: string;
+  editavel: boolean;
+  expandido: boolean;
+  onToggle: () => void;
+  onSaved: () => void;
+}) {
+  const linhaCompacta = (
+    <tr onClick={onToggle} className="cursor-pointer hover:bg-page-bg">
+      <Td className="font-medium text-text">{pessoaNome}</Td>
+      <Td className="max-w-[220px] truncate text-text-muted">{oportunidade.descricao ?? "—"}</Td>
+      <Td className="text-text-muted">{oportunidade.origem ?? "—"}</Td>
+      <Td>
+        <Badge variant={ESTAGIO_TONE[oportunidade.estagio]}>{ESTAGIO_LABEL[oportunidade.estagio]}</Badge>
+      </Td>
+      <Td className="text-right">
+        {oportunidade.valor_potencial != null ? currency(oportunidade.valor_potencial) : "—"}
+      </Td>
+      <Td className="text-right">{oportunidade.probabilidade != null ? `${oportunidade.probabilidade}%` : "—"}</Td>
+      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+    </tr>
+  );
+
+  if (!expandido) return linhaCompacta;
+
   return (
-    <form action={mudarEstagioOportunidadeAction} className="mt-2 flex flex-wrap items-center gap-1.5">
+    <>
+      {linhaCompacta}
+      <tr>
+        <Td colSpan={COLUNAS} className="bg-page-bg">
+          {editavel ? (
+            <MudarEstagioForm oportunidadeId={oportunidade.id} estagioAtual={oportunidade.estagio} onSaved={onSaved} />
+          ) : (
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4">
+              <div>
+                <dt className="text-text-muted">Previsão de fechamento</dt>
+                <dd className="text-text">{oportunidade.previsao_fechamento ?? "—"}</dd>
+              </div>
+              {oportunidade.motivo_perda && (
+                <div>
+                  <dt className="text-text-muted">Motivo da perda</dt>
+                  <dd className="text-text">{motivoPerdaLabel(oportunidade.motivo_perda)}</dd>
+                </div>
+              )}
+              {oportunidade.observacoes && (
+                <div className="col-span-2 sm:col-span-4">
+                  <dt className="text-text-muted">Observações</dt>
+                  <dd className="text-text">{oportunidade.observacoes}</dd>
+                </div>
+              )}
+            </dl>
+          )}
+        </Td>
+      </tr>
+    </>
+  );
+}
+
+function MudarEstagioForm({
+  oportunidadeId,
+  estagioAtual,
+  onSaved,
+}: {
+  oportunidadeId: string;
+  estagioAtual: Estagio;
+  onSaved: () => void;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enviar(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setEnviando(true);
+    setErro(null);
+    try {
+      await mudarEstagioOportunidadeAction(new FormData(e.currentTarget));
+      onSaved();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível mudar o estágio.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <form onSubmit={enviar} className="flex flex-wrap items-center gap-1.5">
       <input type="hidden" name="id" value={oportunidadeId} />
       <Select name="estagio" defaultValue={estagioAtual}>
         {ESTAGIOS.map((e) => (
@@ -187,9 +281,95 @@ function MudarEstagioForm({ oportunidadeId, estagioAtual }: { oportunidadeId: st
           </option>
         ))}
       </Select>
-      <Button type="submit" variant="primary">
-        Mudar estágio
+      <Button type="submit" variant="primary" disabled={enviando}>
+        {enviando ? "Salvando..." : "Mudar estágio"}
       </Button>
+      {erro && <span className="text-xs text-danger">{erro}</span>}
+    </form>
+  );
+}
+
+function NovaOportunidadeLinha({
+  todasPessoas,
+  expandido,
+  onToggle,
+  onSaved,
+}: {
+  todasPessoas: Pessoa[];
+  expandido: boolean;
+  onToggle: () => void;
+  onSaved: () => void;
+}) {
+  if (!expandido) {
+    return (
+      <tr onClick={onToggle} className="cursor-pointer text-primary hover:bg-page-bg">
+        <Td colSpan={COLUNAS}>+ Nova oportunidade</Td>
+      </tr>
+    );
+  }
+
+  if (todasPessoas.length === 0) {
+    return (
+      <tr>
+        <Td colSpan={COLUNAS} className="bg-page-bg text-text-muted">
+          Nenhuma pessoa cadastrada — cadastre uma em Cadastros antes.
+        </Td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr>
+      <Td colSpan={COLUNAS} className="bg-page-bg">
+        <NovaOportunidadeForm todasPessoas={todasPessoas} onSaved={onSaved} />
+      </Td>
+    </tr>
+  );
+}
+
+function NovaOportunidadeForm({ todasPessoas, onSaved }: { todasPessoas: Pessoa[]; onSaved: () => void }) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enviar(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setEnviando(true);
+    setErro(null);
+    try {
+      await upsertOportunidadeAction(new FormData(e.currentTarget));
+      onSaved();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível criar a oportunidade.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <form onSubmit={enviar} className="flex flex-wrap items-center gap-1.5">
+      <Select name="pessoa_id" defaultValue="" required className="min-w-40">
+        <option value="" disabled>
+          Cliente/prospect
+        </option>
+        {todasPessoas.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.nome}
+          </option>
+        ))}
+      </Select>
+      <Input name="descricao" placeholder="descrição" className="w-44" />
+      <Input name="origem" placeholder="origem" className="w-28" />
+      <Input name="valor_potencial" type="number" step="0.01" min="0" placeholder="valor potencial" className="w-32" />
+      <Input name="probabilidade" type="number" step="1" min="0" max="100" placeholder="prob. %" className="w-20" />
+      <label className="flex items-center gap-1 text-xs text-text">
+        Previsão
+        <Input name="previsao_fechamento" type="date" />
+      </label>
+      <Input name="observacoes" placeholder="observações" className="w-40" />
+      <Button type="submit" variant="primary" disabled={enviando}>
+        {enviando ? "Salvando..." : "Criar oportunidade"}
+      </Button>
+      {erro && <span className="text-xs text-danger">{erro}</span>}
     </form>
   );
 }

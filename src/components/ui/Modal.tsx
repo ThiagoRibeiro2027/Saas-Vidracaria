@@ -5,12 +5,13 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { Card } from "./Card";
 
-type Size = "sm" | "md" | "lg";
+type Size = "sm" | "md" | "lg" | "xl";
 
 const SIZE_CLASSES: Record<Size, string> = {
   sm: "max-w-sm",
   md: "max-w-md",
   lg: "max-w-2xl",
+  xl: "max-w-5xl",
 };
 
 // Estado de aberto/fechado é de quem chama (a Section) — o Modal só cuida

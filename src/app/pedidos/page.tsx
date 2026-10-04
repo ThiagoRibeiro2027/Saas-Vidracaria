@@ -2,19 +2,22 @@ import { createClient } from "@/lib/supabase/server";
 import PedidosSection from "./PedidosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
-type TabSlug = "pedidos" | "conversao";
-
 // TÓPICO 3 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // outubro: "entrada do pedido", último item da sequência T2 → T10 → T3).
 // Único caminho de criação é converter um orçamento aprovado (TÓPICO 10) —
 // sem cadastro direto nem importação neste recorte. Status cobre só até
 // "liberado"; em andamento/concluído dependem do TÓPICO 4 (novembro).
+//
+// A conversão em si (botão "Converter em pedido") deixou de ter tela própria
+// aqui — virou uma ação dentro do orçamento aprovado (comercial, ADR-002
+// v2.5 — fusão decidida com o usuário em 2026-10-03), que redireciona pra cá
+// com `?pedido=<id>` já selecionado.
 export default async function PedidosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ pedido?: string }>;
 }) {
-  const { tab } = await searchParams;
+  const { pedido: pedidoInicialId } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -30,25 +33,18 @@ export default async function PedidosPage({
     );
   }
 
-  const [
-    { data: pedidos },
-    { data: pedidoItens },
-    { data: pendencias },
-    { data: orcamentosAprovados },
-    { data: orcamentoItens },
-    { data: pessoas },
-    { data: obras },
-    { data: itens },
-  ] = await Promise.all([
-    supabase.from("pedidos").select("*").order("created_at", { ascending: false }),
-    supabase.from("pedido_itens").select("*"),
-    supabase.from("pedido_pendencias").select("*").order("aberta_em", { ascending: false }),
-    supabase.from("orcamentos").select("*").eq("status", "aprovado"),
-    supabase.from("orcamento_itens").select("*"),
-    supabase.from("pessoas").select("id, nome"),
-    supabase.from("obras").select("id, nome"),
-    supabase.from("itens").select("id, codigo, descricao"),
-  ]);
+  const [{ data: pedidos }, { data: pedidoItens }, { data: pendencias }, { data: orcamentosAprovados }, { data: pessoas }, { data: obras }, { data: itens }] =
+    await Promise.all([
+      supabase.from("pedidos").select("*").order("created_at", { ascending: false }),
+      supabase.from("pedido_itens").select("*"),
+      supabase.from("pedido_pendencias").select("*").order("aberta_em", { ascending: false }),
+      // Só pra legenda "Origem" na lista de pedidos (número do orçamento que
+      // originou cada um) — a conversão em si não mora mais aqui.
+      supabase.from("orcamentos").select("id, numero").eq("status", "aprovado"),
+      supabase.from("pessoas").select("id, nome"),
+      supabase.from("obras").select("id, nome"),
+      supabase.from("itens").select("id, codigo, descricao"),
+    ]);
 
   // ADR-012 Fase 3 — sugestão de atualização de preço quando a BOM
   // definitiva da Engenharia diverge do custo que formou o preço no
@@ -59,19 +55,7 @@ export default async function PedidosPage({
     : { data: null };
   const divergenciasPorPedidoItem = new Map((divergencias ?? []).map((d) => [d.pedido_item_id, d]));
 
-  const orcamentosConvertidos = new Set((pedidos ?? []).map((p) => p.orcamento_id));
-  const orcamentosDisponiveis = (orcamentosAprovados ?? []).filter((o) => !orcamentosConvertidos.has(o.id));
-  // orcamentosAprovados cobre também os já convertidos (conversão não muda o
-  // status do orçamento) — reaproveitado aqui pra mostrar a origem no card
-  // do pedido, sem uma segunda consulta.
   const numeroOrcamentoPorId = new Map((orcamentosAprovados ?? []).map((o) => [o.id, o.numero]));
-
-  const itensPorOrcamento = new Map<string, NonNullable<typeof orcamentoItens>>();
-  for (const oi of orcamentoItens ?? []) {
-    const list = itensPorOrcamento.get(oi.orcamento_id) ?? [];
-    list.push(oi);
-    itensPorOrcamento.set(oi.orcamento_id, list);
-  }
 
   const itensPorPedido = new Map<string, NonNullable<typeof pedidoItens>>();
   for (const pi of pedidoItens ?? []) {
@@ -87,12 +71,6 @@ export default async function PedidosPage({
     pendenciasPorPedido.set(pd.pedido_id, list);
   }
 
-  const availableTabs: { slug: TabSlug; label: string }[] = [
-    { slug: "pedidos", label: "Pedidos" },
-    ...(canManage ? [{ slug: "conversao" as const, label: "Conversão de orçamentos" }] : []),
-  ];
-  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "pedidos";
-
   return (
     <div className="mx-auto max-w-3xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 3 — Pedidos</p>
@@ -105,18 +83,16 @@ export default async function PedidosPage({
 
       <div className="mt-6">
         <PedidosSection
-          activeTab={activeTab}
           pedidos={pedidos ?? []}
           itensPorPedido={itensPorPedido}
           pendenciasPorPedido={pendenciasPorPedido}
           numeroOrcamentoPorId={numeroOrcamentoPorId}
-          orcamentosDisponiveis={orcamentosDisponiveis}
-          itensPorOrcamento={itensPorOrcamento}
           pessoas={pessoas ?? []}
           obras={obras ?? []}
           itens={itens ?? []}
           divergenciasPorPedidoItem={divergenciasPorPedidoItem}
           canManage={!!canManage}
+          pedidoInicialId={pedidoInicialId ?? null}
         />
       </div>
     </div>

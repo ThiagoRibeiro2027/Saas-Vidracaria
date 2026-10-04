@@ -85,17 +85,17 @@ export const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Orçamentos", href: "/comercial", tab: "orcamentos" },
           { label: "Oportunidades", href: "/comercial?tab=oportunidades", tab: "oportunidades" },
-          { label: "Propostas", href: "/comercial?tab=propostas", tab: "propostas" },
         ],
       },
+      // "Propostas" (gerar/enviar/aceite) e "Conversão de orçamentos" deixaram
+      // de ser telas à parte — viraram ações dentro do próprio orçamento
+      // aprovado (ver OrcamentosSection.tsx), reduzindo 2 telas por uma única
+      // (comentário datado: fusão decidida em conversa com o usuário,
+      // 2026-10-03).
       {
         label: "Pedidos",
         href: "/pedidos",
         icon: ClipboardList,
-        children: [
-          { label: "Pedidos", href: "/pedidos", tab: "pedidos" },
-          { label: "Conversão de orçamentos", href: "/pedidos?tab=conversao", tab: "conversao" },
-        ],
       },
       { label: "Engenharia", href: "/engenharia", icon: Ruler },
     ],

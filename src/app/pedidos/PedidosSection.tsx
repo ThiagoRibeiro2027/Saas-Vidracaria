@@ -2,7 +2,6 @@
 
 import { Fragment, useState } from "react";
 import {
-  converterOrcamentoAction,
   iniciarConferenciaAction,
   abrirPendenciaAction,
   resolverPendenciaAction,
@@ -20,15 +19,6 @@ import { Table, Th, Td } from "@/components/ui/Table";
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
 type Item = { id: string; codigo: string; descricao: string };
-
-type Orcamento = {
-  id: string;
-  numero: string;
-  pessoa_id: string;
-  obra_id: string | null;
-};
-
-type OrcamentoItem = { item_id: string; quantidade: number; preco_unitario: number };
 
 type Pedido = {
   id: string;
@@ -81,31 +71,30 @@ const STATUS_TONE: Record<Pedido["status"], "neutral" | "success" | "warning" | 
 };
 
 export default function PedidosSection({
-  activeTab,
   pedidos,
   itensPorPedido,
   pendenciasPorPedido,
   numeroOrcamentoPorId,
-  orcamentosDisponiveis,
-  itensPorOrcamento,
   pessoas,
   obras,
   itens,
   divergenciasPorPedidoItem,
   canManage,
+  pedidoInicialId,
 }: {
-  activeTab: "pedidos" | "conversao";
   pedidos: Pedido[];
   itensPorPedido: Map<string, PedidoItem[]>;
   pendenciasPorPedido: Map<string, Pendencia[]>;
   numeroOrcamentoPorId: Map<string, string>;
-  orcamentosDisponiveis: Orcamento[];
-  itensPorOrcamento: Map<string, OrcamentoItem[]>;
   pessoas: Pessoa[];
   obras: Obra[];
   itens: Item[];
   divergenciasPorPedidoItem: Map<string, DivergenciaPreco>;
   canManage: boolean;
+  // Conversão de orçamentos virou ação dentro do próprio orçamento
+  // (comercial/OrcamentosSection.tsx), que linka pra cá com `?pedido=<id>`
+  // — pré-seleciona o pedido gerado em vez do usuário ter que procurá-lo.
+  pedidoInicialId: string | null;
 }) {
   const pessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome ?? "(pessoa removida)";
   const obraNome = (id: string | null) => (id ? obras.find((o) => o.id === id)?.nome ?? "(obra removida)" : "—");
@@ -114,42 +103,12 @@ export default function PedidosSection({
     return it ? `${it.codigo} — ${it.descricao}` : "(item removido)";
   };
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(pedidoInicialId);
   const selected = pedidos.find((p) => p.id === selectedId) ?? null;
 
   return (
     <>
-      {activeTab === "conversao" && canManage && (
-        <section>
-          <h2 className="text-sm font-semibold text-text">Orçamentos aprovados aguardando conversão</h2>
-          {orcamentosDisponiveis.length === 0 ? (
-            <p className="mt-1 text-xs text-text-muted">Nenhum orçamento aprovado pendente de conversão.</p>
-          ) : (
-            <div className="mt-2 flex flex-col gap-1.5">
-              {orcamentosDisponiveis.map((orc) => {
-                const orcItens = itensPorOrcamento.get(orc.id) ?? [];
-                return (
-                  <Card key={orc.id} padding="xs" className="flex flex-wrap items-center gap-2.5 text-xs">
-                    <strong>{orc.numero}</strong>
-                    <span>{pessoaNome(orc.pessoa_id)}</span>
-                    <span className="text-text-muted">{obraNome(orc.obra_id)}</span>
-                    <span className="text-text-muted">{orcItens.length} item(ns)</span>
-                    <form action={converterOrcamentoAction} className="ml-auto">
-                      <input type="hidden" name="orcamento_id" value={orc.id} />
-                      <Button type="submit" variant="primary">
-                        Converter em pedido
-                      </Button>
-                    </form>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      )}
-
-      {activeTab === "pedidos" && (
-        <section>
+      <section>
           <h2 className="text-sm font-semibold text-text">Pedidos</h2>
 
           {canManage && (
@@ -239,8 +198,7 @@ export default function PedidosSection({
               canManage={canManage}
             />
           )}
-        </section>
-      )}
+      </section>
     </>
   );
 }
