@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { Fragment, useRef, useState, type ReactNode } from "react";
 import {
   aprovarContratoAction,
   cancelarContratoAction,
@@ -16,7 +16,14 @@ import {
   uploadContratoAnexoAction,
 } from "./actions";
 import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
 const TIPO_LABEL: Record<string, string> = {
   cliente: "Cliente",
@@ -31,6 +38,15 @@ const STATUS_LABEL: Record<string, string> = {
   suspenso: "Suspenso",
   encerrado: "Encerrado",
   cancelado: "Cancelado",
+};
+
+const STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger"> = {
+  rascunho: "neutral",
+  em_aprovacao: "warning",
+  vigente: "success",
+  suspenso: "warning",
+  encerrado: "neutral",
+  cancelado: "danger",
 };
 
 type Contrato = {
@@ -72,8 +88,13 @@ type Anexo = {
   created_at: string;
 };
 
+// 2026-10-04: migrada do estilo próprio (inline style) pros componentes
+// padrão do resto do app, e pro mesmo tratamento de layout já aplicado
+// nos demais módulos — lista compacta e paginada no servidor; clicar
+// expande, na própria tabela, objeto/vigência/garantia/anexos/ações.
 export default function ContratosSection({
   rows,
+  paginacao,
   pessoas,
   clientes,
   fornecedores,
@@ -87,6 +108,7 @@ export default function ContratosSection({
   canGerarTitulos,
 }: {
   rows: Contrato[];
+  paginacao: PaginacaoInfo;
   pessoas: Pessoa[];
   clientes: Pessoa[];
   fornecedores: Pessoa[];
@@ -119,85 +141,152 @@ export default function ContratosSection({
     return null;
   }
 
+  const [expandidoId, setExpandidoId] = useState<string | null>(null);
+  const [criandoAberto, setCriandoAberto] = useState(false);
+
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Contratos</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Contratos</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Cliente, fornecedor ou funcionário/prestador — uma estrutura genérica só. Ciclo de vida
         completo: rascunho → em aprovação → vigente → suspenso → encerrado, com cancelamento
         possível antes de vigorar. Editar é possível só enquanto o contrato está em rascunho.
+        Clique num contrato para ver detalhes, anexos e ações.
       </p>
 
       {canManage && (
-        <ContratoForm row={null} clientes={clientes} fornecedores={fornecedores} obras={obras} pedidos={pedidos} funcionarios={funcionarios} />
+        <div className="mt-3">
+          {!criandoAberto ? (
+            <Button type="button" variant="primary" onClick={() => setCriandoAberto(true)}>
+              + Novo contrato
+            </Button>
+          ) : (
+            <ContratoForm
+              row={null}
+              clientes={clientes}
+              fornecedores={fornecedores}
+              obras={obras}
+              pedidos={pedidos}
+              funcionarios={funcionarios}
+              onSubmit={() => setCriandoAberto(false)}
+            />
+          )}
+        </div>
       )}
 
-      <div style={{ overflowX: "auto", marginTop: "12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <div className="mt-3 overflow-x-auto">
+        <Table>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Número</th>
-              <th style={thStyle}>Tipo</th>
-              <th style={thStyle}>Vínculo</th>
-              <th style={thStyle}>Objeto</th>
-              <th style={thStyle}>Vigência</th>
-              <th style={thStyle}>Garantia</th>
-              <th style={thStyle}>Status</th>
-              <th style={thStyle}>Anexos</th>
-              {(canManage || canAprovar) && <th style={thStyle}></th>}
+            <tr>
+              <Th>Número</Th>
+              <Th>Tipo</Th>
+              <Th>Vínculo</Th>
+              <Th>Status</Th>
+              <Th className="w-6" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                <td style={tdStyle}>{row.numero}</td>
-                <td style={tdStyle}>{TIPO_LABEL[row.tipo]}</td>
-                <td style={tdStyle}>{vinculo(row)}</td>
-                <td style={tdStyle}>{row.objeto}</td>
-                <td style={tdStyle}>
-                  {row.data_inicio ?? "—"} a {row.data_fim ?? "—"}
-                </td>
-                <td style={tdStyle}>
-                  {row.garantia_inicio || row.garantia_fim ? `${row.garantia_inicio ?? "—"} a ${row.garantia_fim ?? "—"}` : "—"}
-                </td>
-                <td style={tdStyle}>
-                  {STATUS_LABEL[row.status]}
-                  {motivoAtual(row) && ` — ${motivoAtual(row)}`}
-                </td>
-                <td style={tdStyle}>
-                  <ContratoAnexos
-                    contratoId={row.id}
-                    anexos={anexos.filter((a) => a.entity_id === row.id)}
-                    canManage={canManage}
-                  />
-                </td>
-                {(canManage || canAprovar) && (
-                  <td style={tdStyle}>
-                    <AcoesContrato
-                      row={row}
-                      clientes={clientes}
-                      fornecedores={fornecedores}
-                      obras={obras}
-                      pedidos={pedidos}
-                      funcionarios={funcionarios}
-                      canManage={canManage}
-                      canAprovar={canAprovar}
-                      canGerarTitulos={canGerarTitulos}
-                      jaTemTitulo={contratoIdsComTitulo.has(row.id)}
-                    />
-                  </td>
-                )}
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const expandido = expandidoId === row.id;
+              return (
+                <Fragment key={row.id}>
+                  <tr
+                    onClick={() => setExpandidoId((atual) => (atual === row.id ? null : row.id))}
+                    className="cursor-pointer hover:bg-page-bg"
+                  >
+                    <Td className="font-medium text-text">{row.numero}</Td>
+                    <Td>{TIPO_LABEL[row.tipo]}</Td>
+                    <Td className="text-text-muted">{vinculo(row)}</Td>
+                    <Td>
+                      <Badge variant={STATUS_TONE[row.status]}>
+                        {STATUS_LABEL[row.status]}
+                        {motivoAtual(row) && ` — ${motivoAtual(row)}`}
+                      </Badge>
+                    </Td>
+                    <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                  </tr>
+                  {expandido && (
+                    <tr>
+                      <Td colSpan={5} className="bg-page-bg">
+                        <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                          <div className="w-full">
+                            <dt className="text-text-muted">Objeto</dt>
+                            <dd className="text-text">{row.objeto}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-text-muted">Vigência</dt>
+                            <dd className="text-text">{row.data_inicio ?? "—"} a {row.data_fim ?? "—"}</dd>
+                          </div>
+                          {row.tipo === "cliente" && (row.garantia_inicio || row.garantia_fim) && (
+                            <div>
+                              <dt className="text-text-muted">Garantia</dt>
+                              <dd className="text-text">{row.garantia_inicio ?? "—"} a {row.garantia_fim ?? "—"}</dd>
+                            </div>
+                          )}
+                          {row.valor !== null && (
+                            <div>
+                              <dt className="text-text-muted">Valor</dt>
+                              <dd className="text-text">
+                                {row.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                                {row.parcelas ? ` em ${row.parcelas}x` : ""}
+                              </dd>
+                            </div>
+                          )}
+                          {row.forma_pagamento && (
+                            <div>
+                              <dt className="text-text-muted">Forma de pagamento</dt>
+                              <dd className="text-text">{row.forma_pagamento}</dd>
+                            </div>
+                          )}
+                          {row.observacoes && (
+                            <div className="w-full">
+                              <dt className="text-text-muted">Observações</dt>
+                              <dd className="text-text">{row.observacoes}</dd>
+                            </div>
+                          )}
+                        </dl>
+
+                        <div className="mt-2">
+                          <p className="mb-1 text-xs font-medium text-text">Anexos</p>
+                          <ContratoAnexos
+                            contratoId={row.id}
+                            anexos={anexos.filter((a) => a.entity_id === row.id)}
+                            canManage={canManage}
+                          />
+                        </div>
+
+                        {(canManage || canAprovar) && (
+                          <div className="mt-2">
+                            <AcoesContrato
+                              row={row}
+                              clientes={clientes}
+                              fornecedores={fornecedores}
+                              obras={obras}
+                              pedidos={pedidos}
+                              funcionarios={funcionarios}
+                              canManage={canManage}
+                              canAprovar={canAprovar}
+                              canGerarTitulos={canGerarTitulos}
+                              jaTemTitulo={contratoIdsComTitulo.has(row.id)}
+                            />
+                          </div>
+                        )}
+                      </Td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
             {rows.length === 0 && (
               <tr>
-                <td style={tdStyle} colSpan={canManage || canAprovar ? 9 : 8}>
+                <Td colSpan={5} className="text-text-muted">
                   Nenhum contrato registrado ainda.
-                </td>
+                </Td>
               </tr>
             )}
           </tbody>
-        </table>
+        </Table>
+        <Paginacao {...paginacao} />
       </div>
     </section>
   );
@@ -230,11 +319,11 @@ function ContratoForm({
     <form
       action={upsertContratoAction}
       onSubmit={onSubmit}
-      style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", background: row ? undefined : "#f5f7f5", padding: row ? undefined : "12px", borderRadius: row ? undefined : "6px" }}
+      className={`flex flex-wrap items-center gap-1.5 ${row ? "" : "rounded-md bg-page-bg p-3"}`}
     >
       {row && <input type="hidden" name="id" value={row.id} />}
 
-      <select
+      <Select
         name="tipo"
         value={tipo}
         disabled={!!row}
@@ -242,75 +331,74 @@ function ContratoForm({
           setTipo(e.target.value as Contrato["tipo"]);
           setPessoaId("");
         }}
-        style={inputStyle}
       >
         <option value="cliente">Cliente</option>
         <option value="fornecedor">Fornecedor</option>
         <option value="funcionario">Funcionário/prestador</option>
-      </select>
+      </Select>
 
       {tipo === "funcionario" ? (
-        <select name="funcionario_id" defaultValue={row?.funcionario_id ?? ""} required style={inputStyle}>
+        <Select name="funcionario_id" defaultValue={row?.funcionario_id ?? ""} required>
           <option value="">funcionário…</option>
           {funcionarios.map((f) => (
             <option key={f.id} value={f.id}>{f.nome}</option>
           ))}
-        </select>
+        </Select>
       ) : (
         <>
-          <select name="pessoa_id" value={pessoaId} onChange={(e) => setPessoaId(e.target.value)} required style={inputStyle}>
+          <Select name="pessoa_id" value={pessoaId} onChange={(e) => setPessoaId(e.target.value)} required>
             <option value="">{tipo === "cliente" ? "cliente…" : "fornecedor…"}</option>
             {(tipo === "cliente" ? clientes : fornecedores).map((p) => (
               <option key={p.id} value={p.id}>{p.nome}</option>
             ))}
-          </select>
+          </Select>
           {tipo === "cliente" && (
             <>
-              <select name="obra_id" defaultValue={row?.obra_id ?? ""} style={inputStyle}>
+              <Select name="obra_id" defaultValue={row?.obra_id ?? ""}>
                 <option value="">obra (opcional)…</option>
                 {obrasDaPessoa.map((o) => (
                   <option key={o.id} value={o.id}>{o.nome}</option>
                 ))}
-              </select>
-              <select name="pedido_id" defaultValue={row?.pedido_id ?? ""} style={inputStyle}>
+              </Select>
+              <Select name="pedido_id" defaultValue={row?.pedido_id ?? ""}>
                 <option value="">pedido (opcional)…</option>
                 {pedidosDaPessoa.map((p) => (
                   <option key={p.id} value={p.id}>{p.numero}</option>
                 ))}
-              </select>
+              </Select>
             </>
           )}
         </>
       )}
 
-      <input name="objeto" placeholder="objeto do contrato" defaultValue={row?.objeto ?? ""} required style={{ ...inputStyle, width: "180px" }} />
-      <input name="data_inicio" type="date" defaultValue={row?.data_inicio ?? ""} style={inputStyle} title="data de início" />
-      <input name="data_fim" type="date" defaultValue={row?.data_fim ?? ""} style={inputStyle} title="data de fim (vigência)" />
-      <select name="renovacao" defaultValue={row?.renovacao ?? "manual"} style={inputStyle}>
+      <Input name="objeto" placeholder="objeto do contrato" defaultValue={row?.objeto ?? ""} required className="w-44" />
+      <Input name="data_inicio" type="date" defaultValue={row?.data_inicio ?? ""} title="data de início" />
+      <Input name="data_fim" type="date" defaultValue={row?.data_fim ?? ""} title="data de fim (vigência)" />
+      <Select name="renovacao" defaultValue={row?.renovacao ?? "manual"}>
         <option value="manual">Renovação manual</option>
         <option value="automatica">Renovação automática</option>
-      </select>
-      <input name="valor" type="number" step="0.01" placeholder="valor" defaultValue={row?.valor ?? ""} style={{ ...inputStyle, width: "100px" }} />
-      <input name="forma_pagamento" placeholder="forma de pagamento" defaultValue={row?.forma_pagamento ?? ""} style={{ ...inputStyle, width: "140px" }} />
-      <input name="parcelas" type="number" min="1" placeholder="nº parcelas" defaultValue={row?.parcelas ?? ""} style={{ ...inputStyle, width: "90px" }} />
-      <input name="reajuste_previsto" placeholder="reajuste previsto (opcional)" defaultValue={row?.reajuste_previsto ?? ""} style={{ ...inputStyle, width: "150px" }} />
+      </Select>
+      <Input name="valor" type="number" step="0.01" placeholder="valor" defaultValue={row?.valor ?? ""} className="w-24" />
+      <Input name="forma_pagamento" placeholder="forma de pagamento" defaultValue={row?.forma_pagamento ?? ""} className="w-36" />
+      <Input name="parcelas" type="number" min="1" placeholder="nº parcelas" defaultValue={row?.parcelas ?? ""} className="w-24" />
+      <Input name="reajuste_previsto" placeholder="reajuste previsto (opcional)" defaultValue={row?.reajuste_previsto ?? ""} className="w-40" />
       {tipo === "cliente" && (
         <>
-          <input name="garantia_inicio" type="date" defaultValue={row?.garantia_inicio ?? ""} style={inputStyle} title="início da garantia" />
-          <input name="garantia_fim" type="date" defaultValue={row?.garantia_fim ?? ""} style={inputStyle} title="fim da garantia" />
+          <Input name="garantia_inicio" type="date" defaultValue={row?.garantia_inicio ?? ""} title="início da garantia" />
+          <Input name="garantia_fim" type="date" defaultValue={row?.garantia_fim ?? ""} title="fim da garantia" />
         </>
       )}
-      <input name="observacoes" placeholder="observações (opcional)" defaultValue={row?.observacoes ?? ""} style={{ ...inputStyle, width: "160px" }} />
-      <input
+      <Input name="observacoes" placeholder="observações (opcional)" defaultValue={row?.observacoes ?? ""} className="w-40" />
+      <Input
         name="assinatura_referencia_externa"
         placeholder="referência de assinatura eletrônica (opcional)"
         defaultValue={row?.assinatura_referencia_externa ?? ""}
         title="Gancho pra assinatura eletrônica futura (§10) — ex.: id de envelope do DocuSign/Clicksign. Nenhum provedor é integrado nesta fase."
-        style={{ ...inputStyle, width: "200px" }}
+        className="w-56"
       />
-      <button type="submit" style={buttonStyle}>
+      <Button type="submit" variant="primary">
         {row ? "Salvar" : "Criar rascunho"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -342,11 +430,11 @@ function AcoesContrato({
 
   if (modo === "editar") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+      <div className="flex flex-col gap-1">
         <ContratoForm row={row} clientes={clientes} fornecedores={fornecedores} obras={obras} pedidos={pedidos} funcionarios={funcionarios} onSubmit={() => setModo("nenhum")} />
-        <button onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de", width: "fit-content" }}>
+        <Button type="button" variant="secondary" className="w-fit" onClick={() => setModo("nenhum")}>
           Fechar
-        </button>
+        </Button>
       </div>
     );
   }
@@ -354,26 +442,26 @@ function AcoesContrato({
   if (modo === "encerrar" || modo === "suspender" || modo === "reprovar" || modo === "cancelar") {
     const action = { encerrar: encerrarContratoAction, suspender: suspenderContratoAction, reprovar: reprovarContratoAction, cancelar: cancelarContratoAction }[modo];
     return (
-      <form action={action} style={{ display: "flex", gap: "4px" }} onSubmit={() => setModo("nenhum")}>
+      <form action={action} className="flex items-center gap-1" onSubmit={() => setModo("nenhum")}>
         <input type="hidden" name="id" value={row.id} />
-        <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "120px" }} />
-        <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>
+        <Input name="motivo" placeholder="motivo (opcional)" className="w-32" />
+        <Button type="submit" variant="danger">
           Confirmar
-        </button>
-        <button type="button" onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setModo("nenhum")}>
           Voltar
-        </button>
+        </Button>
       </form>
     );
   }
 
   if (modo === "gerar_titulos") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+      <div className="flex flex-col gap-1">
         <GerarTitulosContratoForm contratoId={row.id} onSubmit={() => setModo("nenhum")} />
-        <button onClick={() => setModo("nenhum")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de", width: "fit-content" }}>
+        <Button type="button" variant="secondary" className="w-fit" onClick={() => setModo("nenhum")}>
           Fechar
-        </button>
+        </Button>
       </div>
     );
   }
@@ -382,89 +470,89 @@ function AcoesContrato({
 
   if (row.status === "rascunho" && canManage) {
     botoes.push(
-      <button key="editar" onClick={() => setModo("editar")} style={buttonStyle}>
+      <Button key="editar" type="button" variant="primary" onClick={() => setModo("editar")}>
         Editar
-      </button>,
+      </Button>,
     );
     botoes.push(
-      <form key="enviar" action={enviarContratoParaAprovacaoAction} style={{ display: "inline" }}>
+      <form key="enviar" action={enviarContratoParaAprovacaoAction}>
         <input type="hidden" name="id" value={row.id} />
-        <button type="submit" style={buttonStyle}>
+        <Button type="submit" variant="secondary">
           Enviar p/ aprovação
-        </button>
+        </Button>
       </form>,
     );
     botoes.push(
-      <button key="cancelar" onClick={() => setModo("cancelar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+      <Button key="cancelar" type="button" variant="outlineDanger" onClick={() => setModo("cancelar")}>
         Cancelar
-      </button>,
+      </Button>,
     );
   }
 
   if (row.status === "em_aprovacao") {
     if (canAprovar) {
       botoes.push(
-        <form key="aprovar" action={aprovarContratoAction} style={{ display: "inline" }}>
+        <form key="aprovar" action={aprovarContratoAction}>
           <input type="hidden" name="id" value={row.id} />
-          <button type="submit" style={buttonStyle}>
+          <Button type="submit" variant="primary">
             Aprovar
-          </button>
+          </Button>
         </form>,
       );
       botoes.push(
-        <button key="reprovar" onClick={() => setModo("reprovar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+        <Button key="reprovar" type="button" variant="outlineDanger" onClick={() => setModo("reprovar")}>
           Reprovar
-        </button>,
+        </Button>,
       );
     }
     if (canManage) {
       botoes.push(
-        <button key="cancelar" onClick={() => setModo("cancelar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+        <Button key="cancelar" type="button" variant="outlineDanger" onClick={() => setModo("cancelar")}>
           Cancelar
-        </button>,
+        </Button>,
       );
     }
   }
 
   if (row.status === "vigente" && canManage) {
     botoes.push(
-      <button key="suspender" onClick={() => setModo("suspender")} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+      <Button key="suspender" type="button" variant="secondary" onClick={() => setModo("suspender")}>
         Suspender
-      </button>,
+      </Button>,
     );
     botoes.push(
-      <button key="encerrar" onClick={() => setModo("encerrar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+      <Button key="encerrar" type="button" variant="outlineDanger" onClick={() => setModo("encerrar")}>
         Encerrar
-      </button>,
+      </Button>,
     );
     if (row.tipo === "cliente" && canGerarTitulos && !jaTemTitulo) {
       botoes.push(
-        <button key="gerar_titulos" onClick={() => setModo("gerar_titulos")} style={buttonStyle}>
+        <Button key="gerar_titulos" type="button" variant="primary" onClick={() => setModo("gerar_titulos")}>
           Gerar título(s)
-        </button>,
+        </Button>,
       );
     }
   }
 
   if (row.status === "suspenso" && canManage) {
     botoes.push(
-      <form key="retomar" action={retomarContratoAction} style={{ display: "inline" }}>
+      <form key="retomar" action={retomarContratoAction}>
         <input type="hidden" name="id" value={row.id} />
-        <button type="submit" style={buttonStyle}>
+        <Button type="submit" variant="primary">
           Retomar
-        </button>
+        </Button>
       </form>,
     );
     botoes.push(
-      <button key="encerrar" onClick={() => setModo("encerrar")} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+      <Button key="encerrar" type="button" variant="outlineDanger" onClick={() => setModo("encerrar")}>
         Encerrar
-      </button>,
+      </Button>,
     );
   }
 
   if (botoes.length === 0) return null;
 
-  return <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>{botoes}</div>;
+  return <div className="flex flex-wrap items-center gap-1.5">{botoes}</div>;
 }
 
 function GerarTitulosContratoForm({ contratoId, onSubmit }: { contratoId: string; onSubmit?: () => void }) {
@@ -472,28 +560,28 @@ function GerarTitulosContratoForm({ contratoId, onSubmit }: { contratoId: string
   const nextKeyRef = useRef(1);
 
   return (
-    <form action={gerarTitulosContratoAction} onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: "8px", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
+    <form action={gerarTitulosContratoAction} onSubmit={onSubmit} className="flex flex-col gap-2 rounded-md bg-page-bg p-3">
       <input type="hidden" name="contrato_id" value={contratoId} />
-      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-        <button type="button" onClick={() => setParcelas((rows) => [...rows, { key: nextKeyRef.current++ }])} style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #1f5d57" }}>
+      <div className="flex items-center gap-1.5">
+        <Button type="button" variant="outline" onClick={() => setParcelas((rows) => [...rows, { key: nextKeyRef.current++ }])}>
           + parcela
-        </button>
+        </Button>
       </div>
       {parcelas.map((row, i) => (
-        <div key={row.key} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          <input name="parcela_valor" type="number" min="0" step="0.01" placeholder="valor" required style={{ ...inputStyle, width: "100px" }} />
-          <input name="parcela_vencimento" type="date" required style={inputStyle} />
-          <input name="parcela_condicao" placeholder="condição (opcional)" style={{ ...inputStyle, width: "120px" }} />
+        <div key={row.key} className="flex items-center gap-1.5">
+          <Input name="parcela_valor" type="number" min="0" step="0.01" placeholder="valor" required className="w-24" />
+          <Input name="parcela_vencimento" type="date" required />
+          <Input name="parcela_condicao" placeholder="condição (opcional)" className="w-28" />
           {parcelas.length > 1 && (
-            <button type="button" onClick={() => setParcelas((rows) => rows.filter((_, idx) => idx !== i))} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+            <Button type="button" variant="outlineDanger" onClick={() => setParcelas((rows) => rows.filter((_, idx) => idx !== i))}>
               remover
-            </button>
+            </Button>
           )}
         </div>
       ))}
-      <button type="submit" style={{ ...buttonStyle, width: "fit-content" }}>
+      <Button type="submit" variant="primary" className="w-fit">
         Gerar título(s)
-      </button>
+      </Button>
     </form>
   );
 }
@@ -571,16 +659,16 @@ function ContratoAnexos({ contratoId, anexos, canManage }: { contratoId: string;
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "3px", minWidth: "150px" }}>
-      {anexos.length === 0 && <span style={{ fontSize: "11px", color: "#7c8f89" }}>Sem anexos.</span>}
+    <div className="flex flex-col gap-1">
+      {anexos.length === 0 && <span className="text-xs text-text-muted">Sem anexos.</span>}
       {anexos.map((a) => (
-        <div key={a.id} style={{ display: "flex", gap: "4px", alignItems: "center", fontSize: "11px" }}>
+        <div key={a.id} className="flex items-center gap-2 text-xs">
           <button
             type="button"
             onClick={() => handleDownload(a.id)}
             disabled={busyId === a.id}
             title={formatSize(a.size_bytes)}
-            style={{ background: "none", border: "none", padding: 0, color: "#1f5d57", cursor: "pointer", textDecoration: "underline" }}
+            className="cursor-pointer text-primary underline disabled:opacity-50"
           >
             {a.original_name}
           </button>
@@ -589,7 +677,7 @@ function ContratoAnexos({ contratoId, anexos, canManage }: { contratoId: string;
               type="button"
               onClick={() => handleDelete(a.id)}
               disabled={busyId === a.id}
-              style={{ background: "none", border: "none", padding: 0, color: "#9b2c2c", cursor: "pointer", fontSize: "11px" }}
+              className="cursor-pointer text-danger disabled:opacity-50"
             >
               remover
             </button>
@@ -597,20 +685,20 @@ function ContratoAnexos({ contratoId, anexos, canManage }: { contratoId: string;
         </div>
       ))}
       {canManage && (
-        <form onSubmit={handleUpload} style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "2px" }}>
+        <form onSubmit={handleUpload} className="mt-1 flex flex-col gap-1">
           <input
             ref={inputRef}
             type="file"
             multiple
             accept="image/jpeg,image/png,image/webp,application/pdf"
-            style={{ fontSize: "10px", maxWidth: "150px" }}
+            className="max-w-[220px] text-xs text-text"
           />
-          <button type="submit" disabled={uploading} style={{ ...buttonStyle, fontSize: "10px", padding: "2px 6px", width: "fit-content" }}>
+          <Button type="submit" size="sm" disabled={uploading} className="w-fit">
             {uploading ? "Enviando..." : "Anexar"}
-          </button>
+          </Button>
         </form>
       )}
-      {error && <span style={{ fontSize: "10px", color: "#9b2c2c" }}>{error}</span>}
+      {error && <span className="text-xs text-danger">{error}</span>}
     </div>
   );
 }

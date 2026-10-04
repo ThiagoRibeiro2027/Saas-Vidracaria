@@ -11,11 +11,14 @@ import {
   reprocessarDocumentoFiscalAction,
   vincularDocumentoFiscalAction,
 } from "./actions";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
 const TIPOS = [
   ["nfe", "NF-e"],
@@ -87,12 +90,18 @@ type Tentativa = {
   created_at: string;
 };
 
+// 2026-10-04: mesmo padrão já aplicado em Pedidos/Engenharia/Orçamentos
+// — lista compacta e paginada no servidor; clicar expande, na própria
+// tabela, o detalhe (chave de acesso, ações e histórico de tentativas),
+// em vez de cada linha já vir com todas as ações e sem paginação.
 export default function FiscalSection({
   rows,
+  paginacao,
   tentativas,
   canManage,
 }: {
   rows: Documento[];
+  paginacao: PaginacaoInfo;
   tentativas: Tentativa[];
   canManage: boolean;
 }) {
@@ -103,6 +112,8 @@ export default function FiscalSection({
     tentativasPorDocumento.set(t.documento_fiscal_id, list);
   }
 
+  const [expandidoId, setExpandidoId] = useState<string | null>(null);
+
   return (
     <section>
       <h2 className="text-sm font-semibold text-text">Documentos fiscais</h2>
@@ -111,7 +122,7 @@ export default function FiscalSection({
         §6) e histórico de tentativas de processamento (§7-8) de documentos fiscais recebidos, com
         vínculo operacional opcional (independente de Pedido de Compra). Sem emissão, cancelamento
         fiscal real, inutilização ou transmissão — durante o piloto, o faturamento permanece no
-        sistema atual da empresa (§9.1).
+        sistema atual da empresa (§9.1). Clique num documento para ver detalhes e ações.
       </p>
 
       {canManage && (
@@ -126,11 +137,10 @@ export default function FiscalSection({
             <tr>
               <Th>Tipo</Th>
               <Th>Número</Th>
-              <Th>Chave de acesso</Th>
               <Th>Vínculo</Th>
               <Th>Status</Th>
               <Th>Processamento</Th>
-              {canManage && <Th />}
+              <Th className="w-6" />
             </tr>
           </thead>
           <tbody>
@@ -140,70 +150,108 @@ export default function FiscalSection({
                 row={row}
                 tentativas={tentativasPorDocumento.get(row.id) ?? []}
                 canManage={canManage}
+                expandido={expandidoId === row.id}
+                onToggle={() => setExpandidoId((atual) => (atual === row.id ? null : row.id))}
               />
             ))}
+            {rows.length === 0 && (
+              <tr>
+                <Td colSpan={6} className="text-text-muted">
+                  Nenhum documento fiscal ainda.
+                </Td>
+              </tr>
+            )}
           </tbody>
         </Table>
+        <Paginacao {...paginacao} />
       </div>
     </section>
   );
 }
 
-function LinhaDocumento({ row, tentativas, canManage }: { row: Documento; tentativas: Tentativa[]; canManage: boolean }) {
-  const [verHistorico, setVerHistorico] = useState(false);
+function LinhaDocumento({
+  row,
+  tentativas,
+  canManage,
+  expandido,
+  onToggle,
+}: {
+  row: Documento;
+  tentativas: Tentativa[];
+  canManage: boolean;
+  expandido: boolean;
+  onToggle: () => void;
+}) {
+  const linhaCompacta = (
+    <tr onClick={onToggle} className="cursor-pointer hover:bg-page-bg">
+      <Td>{TIPOS.find(([v]) => v === row.tipo)?.[1] ?? row.tipo}</Td>
+      <Td>{row.numero ?? "—"}</Td>
+      <Td>{row.entity_type ? `${row.entity_type} (${row.entity_id?.slice(0, 8)}…)` : "sem vínculo"}</Td>
+      <Td>
+        <Badge variant={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
+      </Td>
+      <Td>
+        <Badge variant={STATUS_PROCESSAMENTO_TONE[row.status_processamento]}>
+          {STATUS_PROCESSAMENTO_LABEL[row.status_processamento]}
+        </Badge>
+      </Td>
+      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+    </tr>
+  );
+
+  if (!expandido) return linhaCompacta;
 
   return (
     <>
+      {linhaCompacta}
       <tr>
-        <Td>{TIPOS.find(([v]) => v === row.tipo)?.[1] ?? row.tipo}</Td>
-        <Td>{row.numero ?? "—"}</Td>
-        <Td>{row.chave_acesso ?? "—"}</Td>
-        <Td>{row.entity_type ? `${row.entity_type} (${row.entity_id?.slice(0, 8)}…)` : "sem vínculo"}</Td>
-        <Td>
-          <Badge variant={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
-          {row.status === "cancelado" && row.motivo_cancelamento && (
-            <p className="mt-0.5 text-[11px] text-text-muted">{row.motivo_cancelamento}</p>
+        <Td colSpan={6} className="bg-page-bg">
+          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+            <div>
+              <dt className="text-text-muted">Chave de acesso</dt>
+              <dd className="text-text">{row.chave_acesso ?? "—"}</dd>
+            </div>
+            {row.status === "cancelado" && row.motivo_cancelamento && (
+              <div>
+                <dt className="text-text-muted">Motivo do cancelamento</dt>
+                <dd className="text-text">{row.motivo_cancelamento}</dd>
+              </div>
+            )}
+            {(row.status === "rejeitado" || row.status === "pendente") && row.motivo_decisao && (
+              <div>
+                <dt className="text-text-muted">Motivo da decisão</dt>
+                <dd className="text-text">{row.motivo_decisao}</dd>
+              </div>
+            )}
+          </dl>
+
+          {canManage && row.status !== "cancelado" && (
+            <div className="mt-2">
+              <AcoesDocumento row={row} />
+            </div>
           )}
-          {(row.status === "rejeitado" || row.status === "pendente") && row.motivo_decisao && (
-            <p className="mt-0.5 text-[11px] text-text-muted">{row.motivo_decisao}</p>
-          )}
-        </Td>
-        <Td>
-          <Badge variant={STATUS_PROCESSAMENTO_TONE[row.status_processamento]}>
-            {STATUS_PROCESSAMENTO_LABEL[row.status_processamento]}
-          </Badge>
+
           {tentativas.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setVerHistorico((v) => !v)}
-              className="ml-1.5 cursor-pointer text-xs text-primary underline"
-            >
-              {tentativas.length} tentativa{tentativas.length > 1 ? "s" : ""}
-            </button>
+            <div className="mt-2">
+              <p className="text-xs font-medium text-text">Histórico de tentativas</p>
+              <ul className="mt-0.5 flex flex-col gap-0.5 text-xs text-text-muted">
+                {tentativas
+                  .slice()
+                  .sort((a, b) => b.numero_tentativa - a.numero_tentativa)
+                  .map((t) => (
+                    <li key={t.id}>
+                      #{t.numero_tentativa} — {RESULTADO_LABEL[t.resultado]}
+                      {t.provedor && ` (${t.provedor})`}
+                      {t.mensagem_retorno && `: ${t.mensagem_retorno}`}
+                      {" — "}
+                      {new Date(t.created_at).toLocaleString("pt-BR")}
+                    </li>
+                  ))}
+              </ul>
+            </div>
           )}
         </Td>
-        {canManage && <Td>{row.status !== "cancelado" && <AcoesDocumento row={row} />}</Td>}
       </tr>
-      {verHistorico && tentativas.length > 0 && (
-        <tr>
-          <Td colSpan={canManage ? 7 : 6} className="bg-page-bg">
-            <ul className="flex flex-col gap-0.5 text-xs text-text-muted">
-              {tentativas
-                .slice()
-                .sort((a, b) => b.numero_tentativa - a.numero_tentativa)
-                .map((t) => (
-                  <li key={t.id}>
-                    #{t.numero_tentativa} — {RESULTADO_LABEL[t.resultado]}
-                    {t.provedor && ` (${t.provedor})`}
-                    {t.mensagem_retorno && `: ${t.mensagem_retorno}`}
-                    {" — "}
-                    {new Date(t.created_at).toLocaleString("pt-BR")}
-                  </li>
-                ))}
-            </ul>
-          </Td>
-        </tr>
-      )}
     </>
   );
 }

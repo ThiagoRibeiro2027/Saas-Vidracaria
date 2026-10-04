@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import ContratosSection from "./ContratosSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 18 — Contratos completo (§4-7, §10): estrutura genérica única com
 // os três tipos (cliente/fornecedor/funcionário), ciclo de vida completo
@@ -10,7 +12,17 @@ import ContratosSection from "./ContratosSection";
 // Só a integração real de assinatura eletrônica (§10, DocuSign/Clicksign)
 // segue fora, por decisão consciente do próprio doc — o campo de
 // referência externa já existe.
-export default async function ContratosPage() {
+//
+// 2026-10-04: a tela usava um estilo próprio (inline style), diferente do
+// resto do app — migrada pros componentes padrão (Table/Button/Input...)
+// e pro mesmo tratamento de layout dos demais módulos (tela larga, lista
+// paginada no servidor, linha compacta que expande pro detalhe e ações).
+export default async function ContratosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ pagina?: string; por_pagina?: string }>;
+}) {
+  const { pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }, { data: canAprovar }, { data: canGerarTitulos }] = await Promise.all([
@@ -22,19 +34,22 @@ export default async function ContratosPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar os contratos desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar os contratos desta empresa." />
+      </div>
     );
   }
 
+  const { pagina: paginaPedida, porPagina } = lerParametrosPaginacao({
+    pagina: paginaParam,
+    por_pagina: porPaginaParam,
+  });
+  const { count: totalContratos } = await supabase.from("contratos").select("id", { count: "exact", head: true });
+  const { paginacao, from, to } = calcularPaginacao(paginaPedida, porPagina, totalContratos ?? 0);
+
   const [{ data: contratos }, { data: pessoas }, { data: papeis }, { data: obras }, { data: pedidos }, { data: funcionarios }, { data: titulos }] =
     await Promise.all([
-      supabase.from("contratos").select("*").order("created_at", { ascending: false }),
+      supabase.from("contratos").select("*").order("created_at", { ascending: false }).order("id").range(from, to),
       supabase.from("pessoas").select("id, nome").order("nome"),
       supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
       supabase.from("obras").select("id, nome, pessoa_id").order("nome"),
@@ -49,28 +64,34 @@ export default async function ContratosPage() {
   const fornecedores = (pessoas ?? []).filter((p) => fornecedorIds.has(p.id));
   const contratoIdsComTitulo = new Set((titulos ?? []).map((t) => t.contrato_id as string));
 
+  const contratoIds = (contratos ?? []).map((c) => c.id);
   // §8 — anexos por contrato (agrupados no client, mesmo padrão dos outros
   // mapas desta página). files_select já filtra por entity_type/
   // contratos.view (migration 20261209000000).
-  const { data: anexos } = await supabase
-    .from("files")
-    .select("id, entity_id, original_name, mime_type, size_bytes, created_at")
-    .eq("entity_type", "contrato")
-    .order("created_at", { ascending: false });
+  const { data: anexos } =
+    contratoIds.length > 0
+      ? await supabase
+          .from("files")
+          .select("id, entity_id, original_name, mime_type, size_bytes, created_at")
+          .eq("entity_type", "contrato")
+          .in("entity_id", contratoIds)
+          .order("created_at", { ascending: false })
+      : { data: [] as never[] };
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 18 — CONTRATOS</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Contratos</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
-          Estrutura genérica para contratos com cliente, fornecedor e funcionário/prestador. Ciclo
-          de vida completo com alçada de aprovação, garantia (só cliente) e vínculo financeiro
-          detalhado (título financeiro gerado a partir de contrato vigente com cliente).
-        </p>
+    <div className="mx-auto max-w-7xl p-6">
+      <p className="font-mono text-[11px] text-primary">TÓPICO 18 — Contratos</p>
+      <h1 className="mt-1 text-lg font-semibold text-text">Contratos</h1>
+      <p className="mt-1 text-sm text-text">
+        Estrutura genérica para contratos com cliente, fornecedor e funcionário/prestador. Ciclo
+        de vida completo com alçada de aprovação, garantia (só cliente) e vínculo financeiro
+        detalhado (título financeiro gerado a partir de contrato vigente com cliente).
+      </p>
 
+      <div className="mt-6">
         <ContratosSection
           rows={contratos ?? []}
+          paginacao={paginacao}
           pessoas={pessoas ?? []}
           clientes={clientes}
           fornecedores={fornecedores}
@@ -84,35 +105,6 @@ export default async function ContratosPage() {
           canGerarTitulos={!!canGerarTitulos}
         />
       </div>
-    </main>
+    </div>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "1040px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

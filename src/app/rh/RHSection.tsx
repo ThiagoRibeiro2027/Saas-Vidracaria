@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   cancelarAfastamentoAction,
   cancelarDocumentoFuncionarioAction,
@@ -13,11 +13,14 @@ import {
   uploadDocumentoFuncionarioAnexoAction,
   upsertFuncionarioAction,
 } from "./actions";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -98,35 +101,54 @@ type Afastamento = {
 
 type Unidade = { id: string; name: string };
 type Profile = { id: string; display_name: string; login_identifier: string };
+type FuncionarioResumo = { id: string; nome: string; status: Funcionario["status"]; profile_id: string | null };
 
+// 2026-10-04: mesmo tratamento de layout já aplicado em Comercial/
+// Pedidos/Engenharia/Fiscal — as 3 listas (funcionários, documentos,
+// afastamentos) paginadas no servidor, cada linha compacta e clicável
+// pra ver o detalhe/ações, em vez de tudo sempre visível na linha.
 export default function RHSection({
   rows,
+  fuPaginacao,
+  funcionariosTodos,
   unidades,
   profiles,
   documentos,
+  docPaginacao,
   afastamentos,
+  afPaginacao,
   recursos,
   anexos,
   canManage,
 }: {
   rows: Funcionario[];
+  fuPaginacao: PaginacaoInfo;
+  funcionariosTodos: FuncionarioResumo[];
   unidades: Unidade[];
   profiles: Profile[];
   documentos: Documento[];
+  docPaginacao: PaginacaoInfo;
   afastamentos: Afastamento[];
+  afPaginacao: PaginacaoInfo;
   recursos: Recurso[];
   anexos: Anexo[];
   canManage: boolean;
 }) {
   const unidadePorId = new Map(unidades.map((u) => [u.id, u.name]));
   const profilePorId = new Map(profiles.map((p) => [p.id, `${p.display_name} (${p.login_identifier})`]));
-  const funcionarioPorId = new Map(rows.map((r) => [r.id, r.nome]));
-  const profileIdsEmUso = new Set(rows.filter((r) => r.status !== "desligado" && r.profile_id).map((r) => r.profile_id));
-  const funcionariosAtivos = rows.filter((r) => r.status !== "desligado");
+  const funcionarioPorId = new Map(funcionariosTodos.map((r) => [r.id, r.nome]));
+  const profileIdsEmUso = new Set(
+    funcionariosTodos.filter((r) => r.status !== "desligado" && r.profile_id).map((r) => r.profile_id),
+  );
+  const funcionariosAtivos = funcionariosTodos.filter((r) => r.status !== "desligado");
 
   const recursoPorId = new Map(recursos.map((r) => [r.id, r.nome]));
   const anexosPorDocumento = new Map<string, Anexo[]>();
   for (const a of anexos) anexosPorDocumento.set(a.entity_id, [...(anexosPorDocumento.get(a.entity_id) ?? []), a]);
+
+  const [expandidoFuncionario, setExpandidoFuncionario] = useState<string | null>(null);
+  const [expandidoDocumento, setExpandidoDocumento] = useState<string | null>(null);
+  const [expandidoAfastamento, setExpandidoAfastamento] = useState<string | null>(null);
 
   return (
     <>
@@ -134,7 +156,8 @@ export default function RHSection({
         <h2 className="text-sm font-semibold text-text">Funcionários</h2>
         <p className="mt-1 text-xs text-text-muted">
           Cadastro de funcionários, vínculo com usuário do sistema e desligamento (que revoga o
-          acesso do usuário vinculado). Sem folha de pagamento, encargos, rescisão, escala ou ponto.
+          acesso do usuário vinculado). Sem folha de pagamento, encargos, rescisão, escala ou
+          ponto. Clique num funcionário para ver detalhes e ações.
         </p>
 
         {canManage && (
@@ -150,35 +173,85 @@ export default function RHSection({
                 <Th>Nome</Th>
                 <Th>Cargo/Função</Th>
                 <Th>Unidade</Th>
-                <Th>Usuário vinculado</Th>
                 <Th>Status</Th>
-                {canManage && <Th />}
+                <Th className="w-6" />
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <Td>{row.nome}</Td>
-                  <Td>{[row.cargo, row.funcao].filter(Boolean).join(" — ") || "—"}</Td>
-                  <Td>{row.unidade_id ? unidadePorId.get(row.unidade_id) ?? "—" : "—"}</Td>
-                  <Td>{row.profile_id ? profilePorId.get(row.profile_id) ?? "—" : "—"}</Td>
-                  <Td>
-                    <Badge variant={STATUS_TONE[row.status]}>
-                      {STATUS_LABEL[row.status]}
-                      {row.status === "desligado" && row.motivo_desligamento && ` — ${row.motivo_desligamento}`}
-                    </Badge>
-                  </Td>
-                  {canManage && (
+              {rows.map((row) => {
+                const expandido = expandidoFuncionario === row.id;
+                const linhaCompacta = (
+                  <tr
+                    onClick={() => setExpandidoFuncionario((atual) => (atual === row.id ? null : row.id))}
+                    className="cursor-pointer hover:bg-page-bg"
+                  >
+                    <Td>{row.nome}</Td>
+                    <Td>{[row.cargo, row.funcao].filter(Boolean).join(" — ") || "—"}</Td>
+                    <Td>{row.unidade_id ? unidadePorId.get(row.unidade_id) ?? "—" : "—"}</Td>
                     <Td>
-                      {row.status !== "desligado" && (
-                        <AcoesFuncionario row={row} unidades={unidades} profiles={profiles.filter((p) => !profileIdsEmUso.has(p.id) || p.id === row.profile_id)} />
-                      )}
+                      <Badge variant={STATUS_TONE[row.status]}>
+                        {STATUS_LABEL[row.status]}
+                        {row.status === "desligado" && row.motivo_desligamento && ` — ${row.motivo_desligamento}`}
+                      </Badge>
                     </Td>
-                  )}
+                    <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                  </tr>
+                );
+                return (
+                  <Fragment key={row.id}>
+                    {linhaCompacta}
+                    {expandido && (
+                      <tr>
+                        <Td colSpan={5} className="bg-page-bg">
+                          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                            <div>
+                              <dt className="text-text-muted">Telefone</dt>
+                              <dd className="text-text">{row.telefone ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-text-muted">E-mail</dt>
+                              <dd className="text-text">{row.email ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-text-muted">Admissão</dt>
+                              <dd className="text-text">{row.data_admissao ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-text-muted">Usuário vinculado</dt>
+                              <dd className="text-text">{row.profile_id ? profilePorId.get(row.profile_id) ?? "—" : "—"}</dd>
+                            </div>
+                            {row.observacoes && (
+                              <div className="w-full">
+                                <dt className="text-text-muted">Observações</dt>
+                                <dd className="text-text">{row.observacoes}</dd>
+                              </div>
+                            )}
+                          </dl>
+                          {canManage && row.status !== "desligado" && (
+                            <div className="mt-2">
+                              <AcoesFuncionario
+                                row={row}
+                                unidades={unidades}
+                                profiles={profiles.filter((p) => !profileIdsEmUso.has(p.id) || p.id === row.profile_id)}
+                              />
+                            </div>
+                          )}
+                        </Td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <Td colSpan={5} className="text-text-muted">
+                    Nenhum funcionário cadastrado ainda.
+                  </Td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </Table>
+          <Paginacao {...fuPaginacao} paramPagina="fu_pagina" paramPorPagina="fu_por_pagina" />
         </div>
       </section>
 
@@ -188,7 +261,8 @@ export default function RHSection({
           Documento de admissão, certificação/treinamento, entrega de EPI e habilitação para operar
           equipamento — uma estrutura só, com vínculo opcional a um recurso produtivo cadastrado
           quando o tipo for habilitação. O arquivo do comprovante (PDF ou imagem) é anexado na própria linha do documento.
-          Cancelar corrige um registro errado, sem apagar o histórico.
+          Cancelar corrige um registro errado, sem apagar o histórico. Clique num documento para ver
+          detalhes, anexos e ações.
         </p>
 
         {canManage && (
@@ -204,46 +278,80 @@ export default function RHSection({
                 <Th>Funcionário</Th>
                 <Th>Tipo</Th>
                 <Th>Nome</Th>
-                <Th>Referência</Th>
-                <Th>Validade</Th>
-                <Th>Anexos</Th>
                 <Th>Status</Th>
-                {canManage && <Th />}
+                <Th className="w-6" />
               </tr>
             </thead>
             <tbody>
-              {documentos.map((doc) => (
-                <tr key={doc.id}>
-                  <Td>{funcionarioPorId.get(doc.funcionario_id) ?? "—"}</Td>
-                  <Td>
-                    {TIPO_DOCUMENTO_LABEL[doc.tipo]}
-                    {doc.recurso_produtivo_id && ` (${recursoPorId.get(doc.recurso_produtivo_id) ?? "recurso removido"})`}
-                  </Td>
-                  <Td>{doc.nome}</Td>
-                  <Td>{doc.data_referencia ?? "—"}</Td>
-                  <Td>{doc.validade ?? "—"}</Td>
-                  <Td>
-                    <DocumentoAnexos
-                      documentoId={doc.id}
-                      anexos={anexosPorDocumento.get(doc.id) ?? []}
-                      canManage={canManage && doc.status === "ativo"}
-                    />
-                  </Td>
-                  <Td>
-                    <Badge variant={doc.status === "ativo" ? "success" : "danger"}>
-                      {doc.status === "ativo" ? "Ativo" : `Cancelado${doc.motivo_cancelamento ? ` — ${doc.motivo_cancelamento}` : ""}`}
-                    </Badge>
-                  </Td>
-                  {canManage && <Td>{doc.status === "ativo" && <CancelarDocumentoBotao id={doc.id} />}</Td>}
-                </tr>
-              ))}
+              {documentos.map((doc) => {
+                const expandido = expandidoDocumento === doc.id;
+                return (
+                  <Fragment key={doc.id}>
+                    <tr
+                      onClick={() => setExpandidoDocumento((atual) => (atual === doc.id ? null : doc.id))}
+                      className="cursor-pointer hover:bg-page-bg"
+                    >
+                      <Td>{funcionarioPorId.get(doc.funcionario_id) ?? "—"}</Td>
+                      <Td>
+                        {TIPO_DOCUMENTO_LABEL[doc.tipo]}
+                        {doc.recurso_produtivo_id && ` (${recursoPorId.get(doc.recurso_produtivo_id) ?? "recurso removido"})`}
+                      </Td>
+                      <Td>{doc.nome}</Td>
+                      <Td>
+                        <Badge variant={doc.status === "ativo" ? "success" : "danger"}>
+                          {doc.status === "ativo" ? "Ativo" : `Cancelado${doc.motivo_cancelamento ? ` — ${doc.motivo_cancelamento}` : ""}`}
+                        </Badge>
+                      </Td>
+                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                    </tr>
+                    {expandido && (
+                      <tr>
+                        <Td colSpan={5} className="bg-page-bg">
+                          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                            <div>
+                              <dt className="text-text-muted">Referência</dt>
+                              <dd className="text-text">{doc.data_referencia ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-text-muted">Validade</dt>
+                              <dd className="text-text">{doc.validade ?? "—"}</dd>
+                            </div>
+                            {doc.observacoes && (
+                              <div>
+                                <dt className="text-text-muted">Observações</dt>
+                                <dd className="text-text">{doc.observacoes}</dd>
+                              </div>
+                            )}
+                          </dl>
+                          <div className="mt-2">
+                            <p className="mb-1 text-xs font-medium text-text">Anexos</p>
+                            <DocumentoAnexos
+                              documentoId={doc.id}
+                              anexos={anexosPorDocumento.get(doc.id) ?? []}
+                              canManage={canManage && doc.status === "ativo"}
+                            />
+                          </div>
+                          {canManage && doc.status === "ativo" && (
+                            <div className="mt-2">
+                              <CancelarDocumentoBotao id={doc.id} />
+                            </div>
+                          )}
+                        </Td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
               {documentos.length === 0 && (
                 <tr>
-                  <Td colSpan={canManage ? 8 : 7}>Nenhum documento registrado ainda.</Td>
+                  <Td colSpan={5} className="text-text-muted">
+                    Nenhum documento registrado ainda.
+                  </Td>
                 </tr>
               )}
             </tbody>
           </Table>
+          <Paginacao {...docPaginacao} paramPagina="doc_pagina" paramPorPagina="doc_por_pagina" />
         </div>
       </section>
 
@@ -251,7 +359,7 @@ export default function RHSection({
         <h2 className="text-sm font-semibold text-text">Afastamentos e férias</h2>
         <p className="mt-1 text-xs text-text-muted">
           Registro simples de período (datas e motivo), sem cálculo de valores ou encargos —
-          desacoplado do status do funcionário.
+          desacoplado do status do funcionário. Clique num período para ver o motivo e as ações.
         </p>
 
         {canManage && (
@@ -268,34 +376,66 @@ export default function RHSection({
                 <Th>Tipo</Th>
                 <Th>Início</Th>
                 <Th>Fim</Th>
-                <Th>Motivo</Th>
                 <Th>Status</Th>
-                {canManage && <Th />}
+                <Th className="w-6" />
               </tr>
             </thead>
             <tbody>
-              {afastamentos.map((af) => (
-                <tr key={af.id}>
-                  <Td>{funcionarioPorId.get(af.funcionario_id) ?? "—"}</Td>
-                  <Td>{TIPO_AFASTAMENTO_LABEL[af.tipo]}</Td>
-                  <Td>{af.data_inicio}</Td>
-                  <Td>{af.data_fim ?? "em aberto"}</Td>
-                  <Td>{af.motivo ?? "—"}</Td>
-                  <Td>
-                    <Badge variant={af.status === "ativo" ? "success" : "danger"}>
-                      {af.status === "ativo" ? "Ativo" : `Cancelado${af.motivo_cancelamento ? ` — ${af.motivo_cancelamento}` : ""}`}
-                    </Badge>
-                  </Td>
-                  {canManage && <Td>{af.status === "ativo" && <AcoesAfastamento row={af} />}</Td>}
-                </tr>
-              ))}
+              {afastamentos.map((af) => {
+                const expandido = expandidoAfastamento === af.id;
+                return (
+                  <Fragment key={af.id}>
+                    <tr
+                      onClick={() => setExpandidoAfastamento((atual) => (atual === af.id ? null : af.id))}
+                      className="cursor-pointer hover:bg-page-bg"
+                    >
+                      <Td>{funcionarioPorId.get(af.funcionario_id) ?? "—"}</Td>
+                      <Td>{TIPO_AFASTAMENTO_LABEL[af.tipo]}</Td>
+                      <Td>{af.data_inicio}</Td>
+                      <Td>{af.data_fim ?? "em aberto"}</Td>
+                      <Td>
+                        <Badge variant={af.status === "ativo" ? "success" : "danger"}>
+                          {af.status === "ativo" ? "Ativo" : `Cancelado${af.motivo_cancelamento ? ` — ${af.motivo_cancelamento}` : ""}`}
+                        </Badge>
+                      </Td>
+                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                    </tr>
+                    {expandido && (
+                      <tr>
+                        <Td colSpan={6} className="bg-page-bg">
+                          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                            <div>
+                              <dt className="text-text-muted">Motivo</dt>
+                              <dd className="text-text">{af.motivo ?? "—"}</dd>
+                            </div>
+                            {af.observacoes && (
+                              <div>
+                                <dt className="text-text-muted">Observações</dt>
+                                <dd className="text-text">{af.observacoes}</dd>
+                              </div>
+                            )}
+                          </dl>
+                          {canManage && af.status === "ativo" && (
+                            <div className="mt-2">
+                              <AcoesAfastamento row={af} />
+                            </div>
+                          )}
+                        </Td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
               {afastamentos.length === 0 && (
                 <tr>
-                  <Td colSpan={canManage ? 7 : 6}>Nenhum período registrado ainda.</Td>
+                  <Td colSpan={6} className="text-text-muted">
+                    Nenhum período registrado ainda.
+                  </Td>
                 </tr>
               )}
             </tbody>
           </Table>
+          <Paginacao {...afPaginacao} paramPagina="af_pagina" paramPorPagina="af_por_pagina" />
         </div>
       </section>
     </>
@@ -381,7 +521,7 @@ function AcoesFuncionario({ row, unidades, profiles }: { row: Funcionario; unida
   );
 }
 
-function DocumentoForm({ funcionarios, recursos }: { funcionarios: Funcionario[]; recursos: Recurso[] }) {
+function DocumentoForm({ funcionarios, recursos }: { funcionarios: { id: string; nome: string }[]; recursos: Recurso[] }) {
   const [tipo, setTipo] = useState("");
 
   return (
@@ -563,7 +703,7 @@ function CancelarDocumentoBotao({ id }: { id: string }) {
   );
 }
 
-function AfastamentoForm({ funcionarios }: { funcionarios: Funcionario[] }) {
+function AfastamentoForm({ funcionarios }: { funcionarios: { id: string; nome: string }[] }) {
   return (
     <form action={registrarAfastamentoAction} className="flex flex-wrap items-center gap-1.5 rounded-md bg-page-bg p-3">
       <Select name="funcionario_id" required>

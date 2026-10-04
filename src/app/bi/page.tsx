@@ -77,7 +77,7 @@ export default async function BIPage({
   });
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-7xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 12 — BI</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Indicadores</h1>
       <p className="mt-1 text-sm text-text">

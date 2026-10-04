@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   ativarContaBancariaAction,
   cancelarCobrancaAction,
@@ -20,12 +20,14 @@ import {
   submeterPagamentoTituloAction,
   upsertAlcadaFinanceiroAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../configuracoes/styles";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { formatarData, parseDataLocal } from "@/lib/formato/data";
 
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -113,19 +115,29 @@ type Movimentacao = {
 
 type RoleOption = { id: string; name: string };
 
+// 2026-10-04: mesmo tratamento de layout já aplicado nos demais módulos
+// — as 4 listas que crescem (títulos a receber/pagar, cobranças,
+// movimentações) paginadas no servidor, cada linha compacta e clicável
+// pra ver detalhes/ações, em vez de todas as ações sempre visíveis na
+// linha. Também migra as seções que ainda usavam estilo antigo (inline
+// style) pros mesmos componentes do resto do app (Table/Button/Input).
 export default function FinanceiroSection({
   titulos,
+  trPaginacao,
   pedidosSemTitulo,
   nomePorPedido,
   nomePorPessoa,
   contasBancarias,
   titulosPagar,
+  tpPaginacao,
   alcadaEtapas,
   aprovacoesPendentes,
   numeroPorTituloPagar,
   statusAprovacaoPorTitulo,
   cobrancas,
+  cbPaginacao,
   movimentacoes,
+  mvPaginacao,
   roles,
   canManage,
   canReceber,
@@ -133,17 +145,21 @@ export default function FinanceiroSection({
   canAprovar,
 }: {
   titulos: Titulo[];
+  trPaginacao: PaginacaoInfo;
   pedidosSemTitulo: PedidoResumo[];
   nomePorPedido: Map<string, PedidoResumo>;
   nomePorPessoa: Map<string, string>;
   contasBancarias: ContaBancaria[];
   titulosPagar: TituloPagar[];
+  tpPaginacao: PaginacaoInfo;
   alcadaEtapas: AlcadaEtapa[];
   aprovacoesPendentes: AprovacaoEtapaPendente[];
   numeroPorTituloPagar: Map<string, string>;
   statusAprovacaoPorTitulo: Map<string, string>;
   cobrancas: Cobranca[];
+  cbPaginacao: PaginacaoInfo;
   movimentacoes: Movimentacao[];
+  mvPaginacao: PaginacaoInfo;
   roles: RoleOption[];
   canManage: boolean;
   canReceber: boolean;
@@ -155,364 +171,454 @@ export default function FinanceiroSection({
   const titulosPagarAbertos = titulosPagar.filter((t) => t.status === "aberto" || t.status === "parcial");
   const cobrancasGeradas = cobrancas.filter((c) => c.status === "gerada");
 
+  const [expTitulo, setExpTitulo] = useState<string | null>(null);
+  const [expTituloPagar, setExpTituloPagar] = useState<string | null>(null);
+  const [expCobranca, setExpCobranca] = useState<string | null>(null);
+  const [expMovimentacao, setExpMovimentacao] = useState<string | null>(null);
+
   return (
     <>
-    <section>
-      <h2 className="text-sm font-semibold text-text">Títulos financeiros</h2>
-      <p className="mt-1 text-xs text-text-muted">
-        Recorte mínimo do MVP (ADR-002 §4.14): título a receber vinculado a pedido, gerado
-        manualmente com as parcelas planejadas — a soma precisa fechar o valor do pedido. Sem
-        plano de contas, contas a pagar, conciliação ou DRE.
-      </p>
+      <section>
+        <h2 className="text-sm font-semibold text-text">Títulos financeiros</h2>
+        <p className="mt-1 text-xs text-text-muted">
+          Recorte mínimo do MVP (ADR-002 §4.14): título a receber vinculado a pedido, gerado
+          manualmente com as parcelas planejadas — a soma precisa fechar o valor do pedido. Sem
+          plano de contas, contas a pagar, conciliação ou DRE. Clique num título para ver ações.
+        </p>
 
-      {canManage && pedidosSemTitulo.length > 0 && (
-        <div className="mt-3">
-          <GerarTitulosForm pedidos={pedidosSemTitulo} />
+        {canManage && pedidosSemTitulo.length > 0 && (
+          <div className="mt-3">
+            <GerarTitulosForm pedidos={pedidosSemTitulo} />
+          </div>
+        )}
+
+        <div className="mt-3 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Número</Th>
+                <Th>Pedido</Th>
+                <Th>Cliente</Th>
+                <Th>Parcela</Th>
+                <Th>Saldo</Th>
+                <Th>Vencimento</Th>
+                <Th>Status</Th>
+                <Th className="w-6" />
+              </tr>
+            </thead>
+            <tbody>
+              {titulos.map((t) => {
+                const pedido = nomePorPedido.get(t.pedido_id);
+                // parseDataLocal (e não new Date(t.vencimento) bare) pelo
+                // mesmo motivo da exibição: lido como UTC, um vencimento de
+                // hoje fica atrás da meia-noite local o dia inteiro e o
+                // título aparece como vencido antes da hora.
+                const vencido = t.status !== "pago" && t.status !== "cancelado" && parseDataLocal(t.vencimento) < new Date(new Date().toDateString());
+                const expandido = expTitulo === t.id;
+                return (
+                  <Fragment key={t.id}>
+                    <tr onClick={() => setExpTitulo((atual) => (atual === t.id ? null : t.id))} className="cursor-pointer hover:bg-page-bg">
+                      <Td>{t.numero}</Td>
+                      <Td>{pedido?.numero ?? t.pedido_id}</Td>
+                      <Td>{pedido ? nomePorPessoa.get(pedido.pessoa_id) ?? "—" : "—"}</Td>
+                      <Td>{t.parcela_numero}/{t.parcela_total}</Td>
+                      <Td>{currency(t.saldo_pendente)}</Td>
+                      <Td>
+                        {formatarData(t.vencimento)}
+                        {vencido && <span className="text-danger"> (vencido)</span>}
+                      </Td>
+                      <Td>
+                        <Badge variant={STATUS_TONE[t.status]}>
+                          {t.status === "cancelado" ? `${STATUS_LABEL[t.status]} — ${t.motivo_cancelamento ?? ""}` : STATUS_LABEL[t.status]}
+                        </Badge>
+                      </Td>
+                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                    </tr>
+                    {expandido && (
+                      <tr>
+                        <Td colSpan={8} className="bg-page-bg">
+                          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                            <div>
+                              <dt className="text-text-muted">Valor</dt>
+                              <dd className="text-text">{currency(t.valor)}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-text-muted">Recebido</dt>
+                              <dd className="text-text">{currency(t.valor_recebido)}</dd>
+                            </div>
+                            {t.condicao_pagamento && (
+                              <div>
+                                <dt className="text-text-muted">Condição</dt>
+                                <dd className="text-text">{t.condicao_pagamento}</dd>
+                              </div>
+                            )}
+                          </dl>
+                          {(canManage || canReceber) && (t.status === "aberto" || t.status === "parcial") && (
+                            <div className="mt-2">
+                              <AcoesTitulo id={t.id} status={t.status} canManage={canManage} canReceber={canReceber} />
+                            </div>
+                          )}
+                        </Td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {titulos.length === 0 && (
+                <tr>
+                  <Td colSpan={8} className="text-text-muted">
+                    Nenhum título a receber ainda.
+                  </Td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+          <Paginacao {...trPaginacao} paramPagina="tr_pagina" paramPorPagina="tr_por_pagina" />
         </div>
-      )}
+      </section>
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Número</Th>
-              <Th>Pedido</Th>
-              <Th>Cliente</Th>
-              <Th>Parcela</Th>
-              <Th>Valor</Th>
-              <Th>Recebido</Th>
-              <Th>Saldo</Th>
-              <Th>Vencimento</Th>
-              <Th>Status</Th>
-              {(canManage || canReceber) && <Th />}
-            </tr>
-          </thead>
-          <tbody>
-            {titulos.map((t) => {
-              const pedido = nomePorPedido.get(t.pedido_id);
-              // parseDataLocal (e não new Date(t.vencimento) bare) pelo
-              // mesmo motivo da exibição: lido como UTC, um vencimento de
-              // hoje fica atrás da meia-noite local o dia inteiro e o
-              // título aparece como vencido antes da hora.
-              const vencido = t.status !== "pago" && t.status !== "cancelado" && parseDataLocal(t.vencimento) < new Date(new Date().toDateString());
-              return (
-                <tr key={t.id}>
-                  <Td>{t.numero}</Td>
-                  <Td>{pedido?.numero ?? t.pedido_id}</Td>
-                  <Td>{pedido ? nomePorPessoa.get(pedido.pessoa_id) ?? "—" : "—"}</Td>
-                  <Td>{t.parcela_numero}/{t.parcela_total}</Td>
-                  <Td>{currency(t.valor)}</Td>
-                  <Td>{currency(t.valor_recebido)}</Td>
-                  <Td>{currency(t.saldo_pendente)}</Td>
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold text-text">Contas bancárias</h2>
+        <p className="mt-1 text-xs text-text-muted">Cadastro de conta bancária da empresa. Nenhum provedor real conectado.</p>
+        {canManage && <ContaBancariaForm />}
+        <div className="mt-3 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Banco</Th>
+                <Th>Agência</Th>
+                <Th>Conta</Th>
+                <Th>Tipo</Th>
+                <Th>Chave PIX</Th>
+                <Th>Status</Th>
+                {canManage && <Th />}
+              </tr>
+            </thead>
+            <tbody>
+              {contasBancarias.map((c) => (
+                <tr key={c.id}>
+                  <Td>{c.banco}</Td>
+                  <Td>{c.agencia}</Td>
+                  <Td>{c.conta}</Td>
+                  <Td>{c.tipo_conta === "corrente" ? "Corrente" : "Poupança"}</Td>
+                  <Td>{c.pix_chave ?? "—"}</Td>
                   <Td>
-                    {formatarData(t.vencimento)}
-                    {vencido && <span className="text-danger"> (vencido)</span>}
+                    <Badge variant={c.ativa ? "success" : "neutral"}>{c.ativa ? "Ativa" : "Inativa"}</Badge>
                   </Td>
-                  <Td>
-                    <Badge variant={STATUS_TONE[t.status]}>
-                      {t.status === "cancelado" ? `${STATUS_LABEL[t.status]} — ${t.motivo_cancelamento ?? ""}` : STATUS_LABEL[t.status]}
-                    </Badge>
-                  </Td>
-                  {(canManage || canReceber) && (
+                  {canManage && (
                     <Td>
-                      {(t.status === "aberto" || t.status === "parcial") && (
-                        <AcoesTitulo id={t.id} status={t.status} canManage={canManage} canReceber={canReceber} />
+                      <form action={c.ativa ? desativarContaBancariaAction : ativarContaBancariaAction}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <Button type="submit" variant={c.ativa ? "outlineDanger" : "primary"} size="sm">
+                          {c.ativa ? "Desativar" : "Ativar"}
+                        </Button>
+                      </form>
+                    </Td>
+                  )}
+                </tr>
+              ))}
+              {contasBancarias.length === 0 && (
+                <tr>
+                  <Td colSpan={canManage ? 7 : 6} className="text-text-muted">
+                    Nenhuma conta bancária cadastrada ainda.
+                  </Td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold text-text">Alçada de pagamento — título a pagar</h2>
+        <p className="mt-1 text-xs text-text-muted">
+          Sem etapa configurada, pagamento é registrado direto. Com etapa, o título precisa ser
+          submetido e aprovado antes do pagamento.
+        </p>
+        {canManage && <AlcadaForm roles={roles} />}
+        <div className="mt-3 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Ordem</Th>
+                <Th>A partir de</Th>
+                <Th>Perfil aprovador</Th>
+                <Th>Status</Th>
+                {canManage && <Th />}
+              </tr>
+            </thead>
+            <tbody>
+              {alcadaEtapas.map((e) => (
+                <tr key={e.id}>
+                  <Td>{e.ordem}</Td>
+                  <Td>{currency(e.valor_minimo)}</Td>
+                  <Td>{e.roles?.name ?? "—"}</Td>
+                  <Td>
+                    <Badge variant={e.ativo ? "success" : "neutral"}>{e.ativo ? "Ativa" : "Inativa"}</Badge>
+                  </Td>
+                  {canManage && (
+                    <Td>
+                      {e.ativo && (
+                        <form action={desativarAlcadaFinanceiroAction}>
+                          <input type="hidden" name="id" value={e.id} />
+                          <Button type="submit" variant="outlineDanger" size="sm">
+                            Desativar
+                          </Button>
+                        </form>
                       )}
                     </Td>
                   )}
                 </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-      </div>
-    </section>
-
-    <section>
-      <h2 style={sectionTitleStyle}>Contas bancárias (TÓPICO 13 §6)</h2>
-      <p style={hintStyle}>Cadastro de conta bancária da empresa. Nenhum provedor real conectado.</p>
-      {canManage && <ContaBancariaForm />}
-      <div style={{ overflowX: "auto", marginTop: "12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Banco</th>
-              <th style={thStyle}>Agência</th>
-              <th style={thStyle}>Conta</th>
-              <th style={thStyle}>Tipo</th>
-              <th style={thStyle}>Chave PIX</th>
-              <th style={thStyle}>Status</th>
-              {canManage && <th style={thStyle}></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {contasBancarias.map((c) => (
-              <tr key={c.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                <td style={tdStyle}>{c.banco}</td>
-                <td style={tdStyle}>{c.agencia}</td>
-                <td style={tdStyle}>{c.conta}</td>
-                <td style={tdStyle}>{c.tipo_conta === "corrente" ? "Corrente" : "Poupança"}</td>
-                <td style={tdStyle}>{c.pix_chave ?? "—"}</td>
-                <td style={tdStyle}>{c.ativa ? "Ativa" : "Inativa"}</td>
-                {canManage && (
-                  <td style={tdStyle}>
-                    <form action={c.ativa ? desativarContaBancariaAction : ativarContaBancariaAction}>
-                      <input type="hidden" name="id" value={c.id} />
-                      <button type="submit" style={c.ativa ? { ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" } : buttonStyle}>
-                        {c.ativa ? "Desativar" : "Ativar"}
-                      </button>
-                    </form>
-                  </td>
-                )}
-              </tr>
-            ))}
-            {contasBancarias.length === 0 && (
-              <tr>
-                <td style={tdStyle} colSpan={canManage ? 7 : 6}>Nenhuma conta bancária cadastrada ainda.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section>
-      <h2 style={sectionTitleStyle}>Alçada de pagamento — título a pagar (§6.2)</h2>
-      <p style={hintStyle}>
-        Sem etapa configurada, pagamento é registrado direto. Com etapa, o título precisa ser
-        submetido e aprovado antes do pagamento.
-      </p>
-      {canManage && <AlcadaForm roles={roles} />}
-      <div style={{ overflowX: "auto", marginTop: "12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Ordem</th>
-              <th style={thStyle}>A partir de</th>
-              <th style={thStyle}>Perfil aprovador</th>
-              <th style={thStyle}>Status</th>
-              {canManage && <th style={thStyle}></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {alcadaEtapas.map((e) => (
-              <tr key={e.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                <td style={tdStyle}>{e.ordem}</td>
-                <td style={tdStyle}>{currency(e.valor_minimo)}</td>
-                <td style={tdStyle}>{e.roles?.name ?? "—"}</td>
-                <td style={tdStyle}>{e.ativo ? "Ativa" : "Inativa"}</td>
-                {canManage && (
-                  <td style={tdStyle}>
-                    {e.ativo && (
-                      <form action={desativarAlcadaFinanceiroAction}>
-                        <input type="hidden" name="id" value={e.id} />
-                        <button type="submit" style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>Desativar</button>
-                      </form>
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))}
-            {alcadaEtapas.length === 0 && (
-              <tr>
-                <td style={tdStyle} colSpan={canManage ? 5 : 4}>Nenhuma etapa de alçada configurada — pagamento é registrado direto.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    {canAprovar && (
-      <section>
-        <h2 style={sectionTitleStyle}>Confirmações de pagamento pendentes</h2>
-        <p style={hintStyle}>Decidida em ordem: só a etapa de menor ordem ainda pendente pode ser decidida.</p>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-                <th style={thStyle}>Título a pagar</th>
-                <th style={thStyle}>Valor</th>
-                <th style={thStyle}>Ordem</th>
-                <th style={thStyle}>Perfil exigido</th>
-                <th style={thStyle}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {aprovacoesPendentes.map((ap) => (
-                <tr key={ap.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{numeroPorTituloPagar.get(ap.financeiro_aprovacoes?.entidade_id ?? "") ?? "—"}</td>
-                  <td style={tdStyle}>{currency(ap.financeiro_aprovacoes?.valor ?? 0)}</td>
-                  <td style={tdStyle}>{ap.ordem}</td>
-                  <td style={tdStyle}>{ap.roles?.name ?? "—"}</td>
-                  <td style={tdStyle}>
-                    <DecidirEtapaForm id={ap.id} />
-                  </td>
-                </tr>
               ))}
-              {aprovacoesPendentes.length === 0 && (
+              {alcadaEtapas.length === 0 && (
                 <tr>
-                  <td style={tdStyle} colSpan={5}>Nenhuma confirmação pendente.</td>
+                  <Td colSpan={canManage ? 5 : 4} className="text-text-muted">
+                    Nenhuma etapa de alçada configurada — pagamento é registrado direto.
+                  </Td>
                 </tr>
               )}
             </tbody>
-          </table>
+          </Table>
         </div>
       </section>
-    )}
 
-    <section>
-      <h2 style={sectionTitleStyle}>Títulos a pagar</h2>
-      <p style={hintStyle}>Vinculado a pedido de compra (Suprimentos/ADR-011). Submeter à aprovação é opcional — sem alçada aplicável, o pagamento pode ser registrado direto.</p>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Número</th>
-              <th style={thStyle}>Fornecedor</th>
-              <th style={thStyle}>Saldo</th>
-              <th style={thStyle}>Vencimento</th>
-              <th style={thStyle}>Status</th>
-              <th style={thStyle}>Aprovação</th>
-              {(canManage || canPagar) && <th style={thStyle}></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {titulosPagar.map((t) => {
-              const statusAprovacao = statusAprovacaoPorTitulo.get(t.id);
-              return (
-                <tr key={t.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{t.numero}</td>
-                  <td style={tdStyle}>{t.pedidos_compra ? nomePorPessoa.get(t.pedidos_compra.pessoa_id) ?? "—" : "—"}</td>
-                  <td style={tdStyle}>{currency(t.saldo_pendente)}</td>
-                  <td style={tdStyle}>{formatarData(t.vencimento)}</td>
-                  <td style={tdStyle}>{TITULO_PAGAR_STATUS_LABEL[t.status]}</td>
-                  <td style={tdStyle}>{statusAprovacao ? APROVACAO_STATUS_LABEL[statusAprovacao] ?? statusAprovacao : "—"}</td>
-                  {(canManage || canPagar) && (t.status === "aberto" || t.status === "parcial") && (
-                    <td style={tdStyle}>
-                      <AcoesTituloPagar
-                        titulo={t}
-                        statusAprovacao={statusAprovacao}
-                        contasAtivas={contasAtivas}
-                        canManage={canManage}
-                        canPagar={canPagar}
-                      />
-                    </td>
-                  )}
+      {canAprovar && (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold text-text">Confirmações de pagamento pendentes</h2>
+          <p className="mt-1 text-xs text-text-muted">Decidida em ordem: só a etapa de menor ordem ainda pendente pode ser decidida.</p>
+          <div className="mt-3 overflow-x-auto">
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Título a pagar</Th>
+                  <Th>Valor</Th>
+                  <Th>Ordem</Th>
+                  <Th>Perfil exigido</Th>
+                  <Th />
                 </tr>
-              );
-            })}
-            {titulosPagar.length === 0 && (
-              <tr>
-                <td style={tdStyle} colSpan={(canManage || canPagar) ? 7 : 6}>Nenhum título a pagar gerado ainda.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section>
-      <h2 style={sectionTitleStyle}>Cobranças (boleto/PIX)</h2>
-      <p style={hintStyle}>Sobre título a receber. Nenhum provedor bancário real conectado — sem linha digitável/QR Code de verdade.</p>
-      {canManage && <GerarCobrancaForm titulosReceberAbertos={titulosReceberAbertos} contasAtivas={contasAtivas} />}
-      <div style={{ overflowX: "auto", marginTop: "12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Número</th>
-              <th style={thStyle}>Título</th>
-              <th style={thStyle}>Tipo</th>
-              <th style={thStyle}>Valor</th>
-              <th style={thStyle}>Vencimento</th>
-              <th style={thStyle}>Status</th>
-              {(canManage || canReceber) && <th style={thStyle}></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {cobrancas.map((c) => (
-              <tr key={c.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                <td style={tdStyle}>{c.numero}</td>
-                <td style={tdStyle}>{c.titulos_financeiros?.numero ?? "—"}</td>
-                <td style={tdStyle}>{c.tipo === "boleto" ? "Boleto" : "PIX"}</td>
-                <td style={tdStyle}>{currency(c.valor)}</td>
-                <td style={tdStyle}>{formatarData(c.vencimento)}</td>
-                <td style={tdStyle}>{COBRANCA_STATUS_LABEL[c.status]}</td>
-                {(canManage || canReceber) && c.status === "gerada" && (
-                  <td style={tdStyle}>
-                    <div style={{ display: "flex", gap: "4px" }}>
-                      {canReceber && (
-                        <form action={marcarCobrancaPagaAction}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <button type="submit" style={buttonStyle}>Marcar paga</button>
-                        </form>
-                      )}
-                      {canManage && (
-                        <form action={cancelarCobrancaAction}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <button type="submit" style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>Cancelar</button>
-                        </form>
-                      )}
-                    </div>
-                  </td>
+              </thead>
+              <tbody>
+                {aprovacoesPendentes.map((ap) => (
+                  <tr key={ap.id}>
+                    <Td>{numeroPorTituloPagar.get(ap.financeiro_aprovacoes?.entidade_id ?? "") ?? "—"}</Td>
+                    <Td>{currency(ap.financeiro_aprovacoes?.valor ?? 0)}</Td>
+                    <Td>{ap.ordem}</Td>
+                    <Td>{ap.roles?.name ?? "—"}</Td>
+                    <Td>
+                      <DecidirEtapaForm id={ap.id} />
+                    </Td>
+                  </tr>
+                ))}
+                {aprovacoesPendentes.length === 0 && (
+                  <tr>
+                    <Td colSpan={5} className="text-text-muted">
+                      Nenhuma confirmação pendente.
+                    </Td>
+                  </tr>
                 )}
-              </tr>
-            ))}
-            {cobrancas.length === 0 && (
-              <tr>
-                <td style={tdStyle} colSpan={(canManage || canReceber) ? 7 : 6}>Nenhuma cobrança gerada ainda.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+              </tbody>
+            </Table>
+          </div>
+        </section>
+      )}
 
-    <section>
-      <h2 style={sectionTitleStyle}>Movimentação bancária e conciliação (§6.1)</h2>
-      <p style={hintStyle}>Lançamento manual — sem extrato real importado. Conciliação manual: vincule à mão a um título ou cobrança.</p>
-      {canManage && <MovimentacaoForm contasAtivas={contasAtivas} />}
-      <div style={{ overflowX: "auto", marginTop: "12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Data</th>
-              <th style={thStyle}>Tipo</th>
-              <th style={thStyle}>Valor</th>
-              <th style={thStyle}>Descrição</th>
-              <th style={thStyle}>Conciliação</th>
-              {canManage && <th style={thStyle}></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {movimentacoes.map((m) => (
-              <tr key={m.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                <td style={tdStyle}>{formatarData(m.data_movimento)}</td>
-                <td style={tdStyle}>{m.tipo === "credito" ? "Crédito" : "Débito"}</td>
-                <td style={tdStyle}>{currency(m.valor)}</td>
-                <td style={tdStyle}>{m.descricao ?? "—"}</td>
-                <td style={tdStyle}>{m.conciliado ? `Conciliada (${m.conciliado_com_tipo})` : "Pendente"}</td>
-                {canManage && (
-                  <td style={tdStyle}>
-                    <AcoesMovimentacao
-                      movimentacao={m}
-                      titulosReceberAbertos={titulosReceberAbertos}
-                      titulosPagarAbertos={titulosPagarAbertos}
-                      cobrancasGeradas={cobrancasGeradas}
-                    />
-                  </td>
-                )}
-              </tr>
-            ))}
-            {movimentacoes.length === 0 && (
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold text-text">Títulos a pagar</h2>
+        <p className="mt-1 text-xs text-text-muted">
+          Vinculado a pedido de compra (Suprimentos/ADR-011). Submeter à aprovação é opcional —
+          sem alçada aplicável, o pagamento pode ser registrado direto. Clique num título para ver
+          ações.
+        </p>
+        <div className="mt-3 overflow-x-auto">
+          <Table>
+            <thead>
               <tr>
-                <td style={tdStyle} colSpan={canManage ? 6 : 5}>Nenhuma movimentação registrada ainda.</td>
+                <Th>Número</Th>
+                <Th>Fornecedor</Th>
+                <Th>Saldo</Th>
+                <Th>Vencimento</Th>
+                <Th>Status</Th>
+                <Th>Aprovação</Th>
+                <Th className="w-6" />
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+            </thead>
+            <tbody>
+              {titulosPagar.map((t) => {
+                const statusAprovacao = statusAprovacaoPorTitulo.get(t.id);
+                const expandido = expTituloPagar === t.id;
+                return (
+                  <Fragment key={t.id}>
+                    <tr onClick={() => setExpTituloPagar((atual) => (atual === t.id ? null : t.id))} className="cursor-pointer hover:bg-page-bg">
+                      <Td>{t.numero}</Td>
+                      <Td>{t.pedidos_compra ? nomePorPessoa.get(t.pedidos_compra.pessoa_id) ?? "—" : "—"}</Td>
+                      <Td>{currency(t.saldo_pendente)}</Td>
+                      <Td>{formatarData(t.vencimento)}</Td>
+                      <Td>{TITULO_PAGAR_STATUS_LABEL[t.status]}</Td>
+                      <Td>{statusAprovacao ? APROVACAO_STATUS_LABEL[statusAprovacao] ?? statusAprovacao : "—"}</Td>
+                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                    </tr>
+                    {expandido && (canManage || canPagar) && (t.status === "aberto" || t.status === "parcial") && (
+                      <tr>
+                        <Td colSpan={7} className="bg-page-bg">
+                          <AcoesTituloPagar
+                            titulo={t}
+                            statusAprovacao={statusAprovacao}
+                            contasAtivas={contasAtivas}
+                            canManage={canManage}
+                            canPagar={canPagar}
+                          />
+                        </Td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {titulosPagar.length === 0 && (
+                <tr>
+                  <Td colSpan={7} className="text-text-muted">
+                    Nenhum título a pagar gerado ainda.
+                  </Td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+          <Paginacao {...tpPaginacao} paramPagina="tp_pagina" paramPorPagina="tp_por_pagina" />
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold text-text">Cobranças (boleto/PIX)</h2>
+        <p className="mt-1 text-xs text-text-muted">
+          Sobre título a receber. Nenhum provedor bancário real conectado — sem linha digitável/QR
+          Code de verdade. Clique numa cobrança para ver ações.
+        </p>
+        {canManage && <GerarCobrancaForm titulosReceberAbertos={titulosReceberAbertos} contasAtivas={contasAtivas} />}
+        <div className="mt-3 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Número</Th>
+                <Th>Título</Th>
+                <Th>Tipo</Th>
+                <Th>Valor</Th>
+                <Th>Vencimento</Th>
+                <Th>Status</Th>
+                <Th className="w-6" />
+              </tr>
+            </thead>
+            <tbody>
+              {cobrancas.map((c) => {
+                const expandido = expCobranca === c.id;
+                return (
+                  <Fragment key={c.id}>
+                    <tr onClick={() => setExpCobranca((atual) => (atual === c.id ? null : c.id))} className="cursor-pointer hover:bg-page-bg">
+                      <Td>{c.numero}</Td>
+                      <Td>{c.titulos_financeiros?.numero ?? "—"}</Td>
+                      <Td>{c.tipo === "boleto" ? "Boleto" : "PIX"}</Td>
+                      <Td>{currency(c.valor)}</Td>
+                      <Td>{formatarData(c.vencimento)}</Td>
+                      <Td>{COBRANCA_STATUS_LABEL[c.status]}</Td>
+                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                    </tr>
+                    {expandido && (canManage || canReceber) && c.status === "gerada" && (
+                      <tr>
+                        <Td colSpan={7} className="bg-page-bg">
+                          <div className="flex gap-1.5">
+                            {canReceber && (
+                              <form action={marcarCobrancaPagaAction}>
+                                <input type="hidden" name="id" value={c.id} />
+                                <Button type="submit" variant="primary" size="sm">
+                                  Marcar paga
+                                </Button>
+                              </form>
+                            )}
+                            {canManage && (
+                              <form action={cancelarCobrancaAction}>
+                                <input type="hidden" name="id" value={c.id} />
+                                <Button type="submit" variant="outlineDanger" size="sm">
+                                  Cancelar
+                                </Button>
+                              </form>
+                            )}
+                          </div>
+                        </Td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {cobrancas.length === 0 && (
+                <tr>
+                  <Td colSpan={7} className="text-text-muted">
+                    Nenhuma cobrança gerada ainda.
+                  </Td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+          <Paginacao {...cbPaginacao} paramPagina="cb_pagina" paramPorPagina="cb_por_pagina" />
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="text-sm font-semibold text-text">Movimentação bancária e conciliação</h2>
+        <p className="mt-1 text-xs text-text-muted">
+          Lançamento manual — sem extrato real importado. Conciliação manual: vincule à mão a um
+          título ou cobrança. Clique numa movimentação para conciliar.
+        </p>
+        {canManage && <MovimentacaoForm contasAtivas={contasAtivas} />}
+        <div className="mt-3 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Data</Th>
+                <Th>Tipo</Th>
+                <Th>Valor</Th>
+                <Th>Descrição</Th>
+                <Th>Conciliação</Th>
+                <Th className="w-6" />
+              </tr>
+            </thead>
+            <tbody>
+              {movimentacoes.map((m) => {
+                const expandido = expMovimentacao === m.id;
+                return (
+                  <Fragment key={m.id}>
+                    <tr onClick={() => setExpMovimentacao((atual) => (atual === m.id ? null : m.id))} className="cursor-pointer hover:bg-page-bg">
+                      <Td>{formatarData(m.data_movimento)}</Td>
+                      <Td>{m.tipo === "credito" ? "Crédito" : "Débito"}</Td>
+                      <Td>{currency(m.valor)}</Td>
+                      <Td>{m.descricao ?? "—"}</Td>
+                      <Td>{m.conciliado ? `Conciliada (${m.conciliado_com_tipo})` : "Pendente"}</Td>
+                      <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+                    </tr>
+                    {expandido && canManage && (
+                      <tr>
+                        <Td colSpan={6} className="bg-page-bg">
+                          <AcoesMovimentacao
+                            movimentacao={m}
+                            titulosReceberAbertos={titulosReceberAbertos}
+                            titulosPagarAbertos={titulosPagarAbertos}
+                            cobrancasGeradas={cobrancasGeradas}
+                          />
+                        </Td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {movimentacoes.length === 0 && (
+                <tr>
+                  <Td colSpan={6} className="text-text-muted">
+                    Nenhuma movimentação registrada ainda.
+                  </Td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+          <Paginacao {...mvPaginacao} paramPagina="mv_pagina" paramPorPagina="mv_por_pagina" />
+        </div>
+      </section>
     </>
   );
 }
@@ -621,33 +727,37 @@ function AcoesTitulo({ id, status, canManage, canReceber }: { id: string; status
 
 function ContaBancariaForm() {
   return (
-    <form action={configurarContaBancariaAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
-      <input name="banco" placeholder="banco" required style={{ ...inputStyle, width: "140px" }} />
-      <input name="agencia" placeholder="agência" required style={{ ...inputStyle, width: "80px" }} />
-      <input name="conta" placeholder="conta" required style={{ ...inputStyle, width: "100px" }} />
-      <select name="tipo_conta" required style={inputStyle}>
+    <form action={configurarContaBancariaAction} className="mt-3 flex flex-wrap items-center gap-1.5 rounded-md bg-page-bg p-3">
+      <Input name="banco" placeholder="banco" required className="w-36" />
+      <Input name="agencia" placeholder="agência" required className="w-20" />
+      <Input name="conta" placeholder="conta" required className="w-24" />
+      <Select name="tipo_conta" required>
         <option value="corrente">Corrente</option>
         <option value="poupanca">Poupança</option>
-      </select>
-      <input name="pix_chave" placeholder="chave PIX (opcional)" style={{ ...inputStyle, width: "160px" }} />
-      <button type="submit" style={buttonStyle}>Salvar</button>
+      </Select>
+      <Input name="pix_chave" placeholder="chave PIX (opcional)" className="w-40" />
+      <Button type="submit" variant="primary">
+        Salvar
+      </Button>
     </form>
   );
 }
 
 function AlcadaForm({ roles }: { roles: RoleOption[] }) {
   return (
-    <form action={upsertAlcadaFinanceiroAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
+    <form action={upsertAlcadaFinanceiroAction} className="mt-3 flex flex-wrap items-center gap-1.5 rounded-md bg-page-bg p-3">
       <input type="hidden" name="processo" value="titulo_pagar" />
-      <input name="ordem" type="number" min="1" placeholder="ordem" required style={{ ...inputStyle, width: "70px" }} />
-      <input name="valor_minimo" type="number" min="0" step="0.01" placeholder="a partir de (R$)" required style={{ ...inputStyle, width: "130px" }} />
-      <select name="role_id" required style={inputStyle}>
+      <Input name="ordem" type="number" min="1" placeholder="ordem" required className="w-16" />
+      <Input name="valor_minimo" type="number" min="0" step="0.01" placeholder="a partir de (R$)" required className="w-32" />
+      <Select name="role_id" required>
         <option value="">perfil aprovador…</option>
         {roles.map((r) => (
           <option key={r.id} value={r.id}>{r.name}</option>
         ))}
-      </select>
-      <button type="submit" style={buttonStyle}>Salvar</button>
+      </Select>
+      <Button type="submit" variant="primary">
+        Salvar
+      </Button>
     </form>
   );
 }
@@ -655,11 +765,15 @@ function AlcadaForm({ roles }: { roles: RoleOption[] }) {
 function DecidirEtapaForm({ id }: { id: string }) {
   const [pendente, setPendente] = useState(false);
   return (
-    <form action={decidirEtapaAprovacaoFinanceiroAction} style={{ display: "flex", gap: "4px" }} onSubmit={() => setPendente(true)}>
+    <form action={decidirEtapaAprovacaoFinanceiroAction} className="flex items-center gap-1" onSubmit={() => setPendente(true)}>
       <input type="hidden" name="id" value={id} />
-      <input name="observacao" placeholder="observação (opcional)" style={{ ...inputStyle, width: "140px" }} />
-      <button type="submit" name="decisao" value="aprovar" disabled={pendente} style={buttonStyle}>Aprovar</button>
-      <button type="submit" name="decisao" value="rejeitar" disabled={pendente} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>Rejeitar</button>
+      <Input name="observacao" placeholder="observação (opcional)" className="w-36" />
+      <Button type="submit" name="decisao" value="aprovar" variant="primary" disabled={pendente}>
+        Aprovar
+      </Button>
+      <Button type="submit" name="decisao" value="rejeitar" variant="outlineDanger" disabled={pendente}>
+        Rejeitar
+      </Button>
     </form>
   );
 }
@@ -678,45 +792,55 @@ function AcoesTituloPagar({
 
   if (modoPagar) {
     return (
-      <form action={registrarPagamentoTituloCompraAction} style={{ display: "flex", flexWrap: "wrap", gap: "4px" }} onSubmit={() => setModoPagar(false)}>
+      <form action={registrarPagamentoTituloCompraAction} className="flex flex-wrap items-center gap-1.5" onSubmit={() => setModoPagar(false)}>
         <input type="hidden" name="id" value={titulo.id} />
-        <input name="valor" type="number" min="0" step="0.01" defaultValue={titulo.saldo_pendente} required style={{ ...inputStyle, width: "90px" }} />
-        <input name="data_pagamento" type="date" style={inputStyle} />
-        <select name="conta_bancaria_id" style={inputStyle}>
+        <Input name="valor" type="number" min="0" step="0.01" defaultValue={titulo.saldo_pendente} required className="w-24" />
+        <Input name="data_pagamento" type="date" />
+        <Select name="conta_bancaria_id">
           <option value="">conta (opcional)…</option>
           {contasAtivas.map((c) => (
             <option key={c.id} value={c.id}>{c.banco} {c.conta}</option>
           ))}
-        </select>
-        <select name="forma_pagamento" style={inputStyle}>
+        </Select>
+        <Select name="forma_pagamento">
           <option value="">forma (opcional)…</option>
           <option value="boleto">Boleto</option>
           <option value="pix">PIX</option>
           <option value="ted">TED</option>
           <option value="outro">Outro</option>
-        </select>
-        <button type="submit" style={buttonStyle}>Confirmar</button>
-        <button type="button" onClick={() => setModoPagar(false)} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>Voltar</button>
+        </Select>
+        <Button type="submit" variant="primary">
+          Confirmar
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setModoPagar(false)}>
+          Voltar
+        </Button>
       </form>
     );
   }
 
   return (
-    <div style={{ display: "flex", gap: "4px" }}>
+    <div className="flex flex-wrap items-center gap-1.5">
       {canManage && !statusAprovacao && (
         <form action={submeterPagamentoTituloAction}>
           <input type="hidden" name="id" value={titulo.id} />
-          <button type="submit" style={buttonStyle}>Submeter à aprovação</button>
+          <Button type="submit" variant="secondary">
+            Submeter à aprovação
+          </Button>
         </form>
       )}
       {canManage && statusAprovacao === "rejeitada" && (
         <form action={submeterPagamentoTituloAction}>
           <input type="hidden" name="id" value={titulo.id} />
-          <button type="submit" style={buttonStyle}>Ressubmeter à aprovação</button>
+          <Button type="submit" variant="secondary">
+            Ressubmeter à aprovação
+          </Button>
         </form>
       )}
       {canPagar && !bloqueadoPorAprovacao && (
-        <button onClick={() => setModoPagar(true)} style={buttonStyle}>Registrar pagamento</button>
+        <Button type="button" variant="primary" onClick={() => setModoPagar(true)}>
+          Registrar pagamento
+        </Button>
       )}
     </div>
   );
@@ -724,51 +848,59 @@ function AcoesTituloPagar({
 
 function GerarCobrancaForm({ titulosReceberAbertos, contasAtivas }: { titulosReceberAbertos: Titulo[]; contasAtivas: ContaBancaria[] }) {
   if (titulosReceberAbertos.length === 0 || contasAtivas.length === 0) {
-    return <p style={hintStyle}>Precisa de ao menos um título a receber aberto e uma conta bancária ativa pra gerar cobrança.</p>;
+    return (
+      <p className="mt-1 text-xs text-text-muted">
+        Precisa de ao menos um título a receber aberto e uma conta bancária ativa pra gerar cobrança.
+      </p>
+    );
   }
   return (
-    <form action={gerarCobrancaAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
-      <select name="titulo_id" required style={inputStyle}>
+    <form action={gerarCobrancaAction} className="mt-3 flex flex-wrap items-center gap-1.5 rounded-md bg-page-bg p-3">
+      <Select name="titulo_id" required>
         <option value="">título a receber…</option>
         {titulosReceberAbertos.map((t) => (
           <option key={t.id} value={t.id}>{t.numero} — {currency(t.saldo_pendente)}</option>
         ))}
-      </select>
-      <select name="conta_bancaria_id" required style={inputStyle}>
+      </Select>
+      <Select name="conta_bancaria_id" required>
         <option value="">conta bancária…</option>
         {contasAtivas.map((c) => (
           <option key={c.id} value={c.id}>{c.banco} {c.conta}</option>
         ))}
-      </select>
-      <select name="tipo" required style={inputStyle}>
+      </Select>
+      <Select name="tipo" required>
         <option value="boleto">Boleto</option>
         <option value="pix">PIX</option>
-      </select>
-      <button type="submit" style={buttonStyle}>Gerar cobrança</button>
+      </Select>
+      <Button type="submit" variant="primary">
+        Gerar cobrança
+      </Button>
     </form>
   );
 }
 
 function MovimentacaoForm({ contasAtivas }: { contasAtivas: ContaBancaria[] }) {
   if (contasAtivas.length === 0) {
-    return <p style={hintStyle}>Cadastre uma conta bancária ativa pra registrar movimentação.</p>;
+    return <p className="mt-1 text-xs text-text-muted">Cadastre uma conta bancária ativa pra registrar movimentação.</p>;
   }
   return (
-    <form action={registrarMovimentacaoBancariaAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
-      <select name="conta_bancaria_id" required style={inputStyle}>
+    <form action={registrarMovimentacaoBancariaAction} className="mt-3 flex flex-wrap items-center gap-1.5 rounded-md bg-page-bg p-3">
+      <Select name="conta_bancaria_id" required>
         <option value="">conta bancária…</option>
         {contasAtivas.map((c) => (
           <option key={c.id} value={c.id}>{c.banco} {c.conta}</option>
         ))}
-      </select>
-      <select name="tipo" required style={inputStyle}>
+      </Select>
+      <Select name="tipo" required>
         <option value="credito">Crédito</option>
         <option value="debito">Débito</option>
-      </select>
-      <input name="valor" type="number" min="0" step="0.01" placeholder="valor" required style={{ ...inputStyle, width: "90px" }} />
-      <input name="data_movimento" type="date" required style={inputStyle} />
-      <input name="descricao" placeholder="descrição (opcional)" style={{ ...inputStyle, width: "160px" }} />
-      <button type="submit" style={buttonStyle}>Registrar</button>
+      </Select>
+      <Input name="valor" type="number" min="0" step="0.01" placeholder="valor" required className="w-24" />
+      <Input name="data_movimento" type="date" required />
+      <Input name="descricao" placeholder="descrição (opcional)" className="w-44" />
+      <Button type="submit" variant="primary">
+        Registrar
+      </Button>
     </form>
   );
 }
@@ -787,7 +919,9 @@ function AcoesMovimentacao({
     return (
       <form action={desconciliarMovimentacaoAction}>
         <input type="hidden" name="id" value={movimentacao.id} />
-        <button type="submit" style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>Desconciliar</button>
+        <Button type="submit" variant="outlineDanger" size="sm">
+          Desconciliar
+        </Button>
       </form>
     );
   }
@@ -795,20 +929,22 @@ function AcoesMovimentacao({
   const opcoes = tipoAlvo === "titulo_receber" ? titulosReceberAbertos : tipoAlvo === "titulo_pagar" ? titulosPagarAbertos : cobrancasGeradas;
 
   return (
-    <form action={conciliarMovimentacaoAction} style={{ display: "flex", gap: "4px" }}>
+    <form action={conciliarMovimentacaoAction} className="flex flex-wrap items-center gap-1.5">
       <input type="hidden" name="id" value={movimentacao.id} />
-      <select name="tipo_alvo" value={tipoAlvo} onChange={(e) => setTipoAlvo(e.target.value as typeof tipoAlvo)} style={inputStyle}>
+      <Select name="tipo_alvo" value={tipoAlvo} onChange={(e) => setTipoAlvo(e.target.value as typeof tipoAlvo)}>
         <option value="titulo_receber">Título a receber</option>
         <option value="titulo_pagar">Título a pagar</option>
         <option value="cobranca">Cobrança</option>
-      </select>
-      <select name="alvo_id" required style={inputStyle}>
+      </Select>
+      <Select name="alvo_id" required>
         <option value="">selecione…</option>
         {opcoes.map((o) => (
           <option key={o.id} value={o.id}>{o.numero}</option>
         ))}
-      </select>
-      <button type="submit" style={buttonStyle}>Conciliar</button>
+      </Select>
+      <Button type="submit" variant="primary">
+        Conciliar
+      </Button>
     </form>
   );
 }
