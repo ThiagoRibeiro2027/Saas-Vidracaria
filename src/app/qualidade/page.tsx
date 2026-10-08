@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import QualidadeSection from "./QualidadeSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 8 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // dezembro: "saída, campo e homologação"). Inspeção simples de OP
@@ -9,7 +10,18 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 // instrumentos ou disposições além de retrabalho. Qualidade é autoridade
 // PARALELA à de Produção (status_qualidade nunca altera ordens_producao.
 // status).
-export default async function QualidadePage() {
+//
+// 2026-10-04: tela larga + paginação server-side nas OPs concluídas (lista
+// que só cresce — nunca "esvazia") + linha compacta que expande (mesmo
+// tratamento já aplicado nos outros módulos). Inspeções/não conformidades
+// passam a ser buscadas só para as OPs da página atual, não a tabela
+// inteira.
+export default async function QualidadePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ pagina?: string; por_pagina?: string }>;
+}) {
+  const { pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -25,38 +37,49 @@ export default async function QualidadePage() {
     );
   }
 
-  const [
-    { data: ordens },
-    { data: pedidos },
-    { data: pedidoItens },
-    { data: itens },
-    { data: pessoas },
-    { data: obras },
-    { data: inspecoes },
-    { data: naoConformidades },
-  ] = await Promise.all([
-    supabase.from("ordens_producao").select("*").eq("status", "concluida").order("created_at", { ascending: false }),
-    supabase.from("pedidos").select("id, numero, pessoa_id, obra_id"),
-    supabase.from("pedido_itens").select("id, pedido_id, item_id"),
-    supabase.from("itens").select("id, codigo, descricao"),
-    supabase.from("pessoas").select("id, nome"),
-    supabase.from("obras").select("id, nome"),
-    supabase.from("inspecoes_qualidade").select("*").order("inspecionado_em", { ascending: true }),
-    supabase.from("nao_conformidades").select("*").order("aberta_em", { ascending: true }),
+  const { pagina: paginaPedida, porPagina } = lerParametrosPaginacao({
+    pagina: paginaParam,
+    por_pagina: porPaginaParam,
+  });
+  const { count: totalOrdens } = await supabase
+    .from("ordens_producao")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "concluida");
+  const { paginacao, from, to } = calcularPaginacao(paginaPedida, porPagina, totalOrdens ?? 0);
+
+  const [{ data: ordens }, { data: pedidos }, { data: pedidoItens }, { data: itens }, { data: pessoas }, { data: obras }] =
+    await Promise.all([
+      supabase
+        .from("ordens_producao")
+        .select("*")
+        .eq("status", "concluida")
+        .order("created_at", { ascending: false })
+        .range(from, to),
+      supabase.from("pedidos").select("id, numero, pessoa_id, obra_id"),
+      supabase.from("pedido_itens").select("id, pedido_id, item_id"),
+      supabase.from("itens").select("id, codigo, descricao"),
+      supabase.from("pessoas").select("id, nome"),
+      supabase.from("obras").select("id, nome"),
+    ]);
+
+  const ordemIds = (ordens ?? []).map((o) => o.id);
+  const [{ data: inspecoes }, { data: naoConformidades }] = await Promise.all([
+    ordemIds.length > 0
+      ? supabase.from("inspecoes_qualidade").select("*").in("ordem_producao_id", ordemIds).order("inspecionado_em", { ascending: true })
+      : Promise.resolve({ data: [] as never[] }),
+    ordemIds.length > 0
+      ? supabase.from("nao_conformidades").select("*").in("ordem_producao_id", ordemIds).order("aberta_em", { ascending: true })
+      : Promise.resolve({ data: [] as never[] }),
   ]);
 
   const inspecoesPorOrdem = new Map<string, NonNullable<typeof inspecoes>>();
   for (const insp of inspecoes ?? []) {
-    const list = inspecoesPorOrdem.get(insp.ordem_producao_id) ?? [];
-    list.push(insp);
-    inspecoesPorOrdem.set(insp.ordem_producao_id, list);
+    inspecoesPorOrdem.set(insp.ordem_producao_id, [...(inspecoesPorOrdem.get(insp.ordem_producao_id) ?? []), insp]);
   }
 
   const ncsPorOrdem = new Map<string, NonNullable<typeof naoConformidades>>();
   for (const nc of naoConformidades ?? []) {
-    const list = ncsPorOrdem.get(nc.ordem_producao_id) ?? [];
-    list.push(nc);
-    ncsPorOrdem.set(nc.ordem_producao_id, list);
+    ncsPorOrdem.set(nc.ordem_producao_id, [...(ncsPorOrdem.get(nc.ordem_producao_id) ?? []), nc]);
   }
 
   // TÓPICO 4 §41 (Fase 7c) — rótulo de status_qualidade configurado em
@@ -69,7 +92,7 @@ export default async function QualidadePage() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-7xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 8 — Qualidade</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Inspeção de ordens de produção</h1>
       <p className="mt-1 text-sm text-text">
@@ -81,6 +104,7 @@ export default async function QualidadePage() {
       <div className="mt-6">
         <QualidadeSection
           ordens={ordens ?? []}
+          paginacao={paginacao}
           pedidos={pedidos ?? []}
           pedidoItens={pedidoItens ?? []}
           itens={itens ?? []}

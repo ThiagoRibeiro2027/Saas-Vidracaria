@@ -1,7 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle } from "../configuracoes/styles";
+import { Fragment, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
+import { Select } from "@/components/ui/Select";
+import { Table, Th, Td } from "@/components/ui/Table";
 import { formatarData } from "@/lib/formato/data";
 
 export type FilaProducaoRow = {
@@ -39,16 +42,23 @@ const SITUACAO_LABEL: Record<FilaProducaoRow["situacao"], string> = {
   bloqueada: "Bloqueada",
 };
 
-const SITUACAO_COLOR: Record<FilaProducaoRow["situacao"], string> = {
-  liberada: "#1f5d57",
-  liberada_com_restricao: "#a15c00",
-  bloqueada: "#9b2c2c",
+const SITUACAO_TONE: Record<FilaProducaoRow["situacao"], "success" | "warning" | "danger"> = {
+  liberada: "success",
+  liberada_com_restricao: "warning",
+  bloqueada: "danger",
 };
 
+// 2026-10-04: migrado do estilo legado (configuracoes/styles) pros
+// componentes padrão — cada pedido agora é uma linha compacta que
+// expande ao clicar pra mostrar a tabela de OPs, em vez de ficar sempre
+// aberta. Sem paginação real: a RPC traz tudo de uma vez e os filtros
+// (cliente/obra/status) continuam sendo aplicados no cliente, como já
+// eram — ver nota em page.tsx.
 export default function FilaProducaoSection({ linhas }: { linhas: FilaProducaoRow[] }) {
   const [filtroPessoa, setFiltroPessoa] = useState("");
   const [filtroObra, setFiltroObra] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
+  const [expandido, setExpandido] = useState<string | null>(null);
 
   const pessoaOpcoes = useMemo(() => {
     const map = new Map<string, string>();
@@ -83,102 +93,122 @@ export default function FilaProducaoSection({ linhas }: { linhas: FilaProducaoRo
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Fila por pedido</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Fila por pedido</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Ordens de produção agrupadas por pedido de cliente, ordenadas por prioridade e previsão de
         entrega (mesma prioridade já usada em Produção → Programação). Progresso de lotes é
-        concluídos/total de op_lotes da OP.
+        concluídos/total de op_lotes da OP. Clique num pedido para ver as OPs.
       </p>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-        <select value={filtroPessoa} onChange={(e) => setFiltroPessoa(e.target.value)} style={{ ...inputStyle, width: "200px" }}>
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <Select value={filtroPessoa} onChange={(e) => setFiltroPessoa(e.target.value)} className="w-52">
           <option value="">Todos os clientes</option>
           {pessoaOpcoes.map((p) => (
             <option key={p.id} value={p.id}>
               {p.nome}
             </option>
           ))}
-        </select>
-        <select value={filtroObra} onChange={(e) => setFiltroObra(e.target.value)} style={{ ...inputStyle, width: "180px" }}>
+        </Select>
+        <Select value={filtroObra} onChange={(e) => setFiltroObra(e.target.value)} className="w-44">
           <option value="">Todas as obras</option>
           {obraOpcoes.map((o) => (
             <option key={o.id} value={o.id}>
               {o.nome}
             </option>
           ))}
-        </select>
-        <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{ ...inputStyle, width: "160px" }}>
+        </Select>
+        <Select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="w-40">
           <option value="">Todos os status</option>
           {Object.entries(STATUS_LABEL).map(([valor, rotulo]) => (
             <option key={valor} value={valor}>
               {rotulo}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
-      {pedidosAgrupados.length === 0 && <p style={hintStyle}>Nenhuma ordem de produção encontrada com esses filtros.</p>}
-
-      {pedidosAgrupados.map((grupo) => {
-        const primeira = grupo[0];
-        return (
-          <div
-            key={primeira.pedido_id}
-            style={{ border: "1px solid #dae2de", borderRadius: "6px", marginBottom: "12px", overflow: "hidden" }}
-          >
-            <div
-              style={{
-                background: "#f5f7f5",
-                padding: "8px 10px",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "4px 16px",
-                fontSize: "12.5px",
-              }}
-            >
-              <strong>Pedido {primeira.pedido_numero}</strong>
-              <span>{primeira.pessoa_nome}</span>
-              {primeira.obra_nome && <span style={{ color: "#6b7a75" }}>Obra: {primeira.obra_nome}</span>}
-              <span style={{ color: "#6b7a75" }}>Previsão de entrega: {formatarData(primeira.previsao_entrega)}</span>
-            </div>
-
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px" }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                  <th style={thStyle}>OP</th>
-                  <th style={thStyle}>Item</th>
-                  <th style={thStyle}>Prioridade</th>
-                  <th style={thStyle}>Planejado</th>
-                  <th style={thStyle}>Produzido</th>
-                  <th style={thStyle}>Perdido</th>
-                  <th style={thStyle}>Status</th>
-                  <th style={thStyle}>Situação</th>
-                  <th style={thStyle}>Lotes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grupo.map((op) => (
-                  <tr key={op.ordem_producao_id} style={{ borderBottom: "1px solid #f2f4f2" }}>
-                    <td style={tdStyle}>{op.ordem_producao_numero}</td>
-                    <td style={tdStyle}>
-                      {op.item_codigo} — {op.item_descricao}
-                    </td>
-                    <td style={tdStyle}>{op.prioridade}</td>
-                    <td style={tdStyle}>{op.quantidade_planejada}</td>
-                    <td style={tdStyle}>{op.quantidade_produzida}</td>
-                    <td style={tdStyle}>{op.quantidade_perdida}</td>
-                    <td style={tdStyle}>{STATUS_LABEL[op.status]}</td>
-                    <td style={{ ...tdStyle, color: SITUACAO_COLOR[op.situacao] }}>{SITUACAO_LABEL[op.situacao]}</td>
-                    <td style={tdStyle}>
-                      {op.lotes_total > 0 ? `${op.lotes_concluidos}/${op.lotes_total}` : "—"}
-                    </td>
+      <div className="mt-3 overflow-x-auto">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Pedido</Th>
+              <Th>Cliente</Th>
+              <Th>Obra</Th>
+              <Th>Previsão de entrega</Th>
+              <Th>OPs</Th>
+              <Th className="w-6" />
+            </tr>
+          </thead>
+          <tbody>
+            {pedidosAgrupados.map((grupo) => {
+              const primeira = grupo[0];
+              const aberto = expandido === primeira.pedido_id;
+              return (
+                <Fragment key={primeira.pedido_id}>
+                  <tr
+                    onClick={() => setExpandido((atual) => (atual === primeira.pedido_id ? null : primeira.pedido_id))}
+                    className="cursor-pointer hover:bg-page-bg"
+                  >
+                    <Td className="font-medium text-text">{primeira.pedido_numero}</Td>
+                    <Td>{primeira.pessoa_nome}</Td>
+                    <Td className="text-text-muted">{primeira.obra_nome ?? "—"}</Td>
+                    <Td className="text-text-muted">{formatarData(primeira.previsao_entrega)}</Td>
+                    <Td className="text-text-muted">{grupo.length}</Td>
+                    <Td className="text-text-muted">{aberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-      })}
+                  {aberto && (
+                    <tr>
+                      <Td colSpan={6} className="bg-page-bg">
+                        <Table>
+                          <thead>
+                            <tr>
+                              <Th>OP</Th>
+                              <Th>Item</Th>
+                              <Th>Prioridade</Th>
+                              <Th>Planejado</Th>
+                              <Th>Produzido</Th>
+                              <Th>Perdido</Th>
+                              <Th>Status</Th>
+                              <Th>Situação</Th>
+                              <Th>Lotes</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {grupo.map((op) => (
+                              <tr key={op.ordem_producao_id}>
+                                <Td>{op.ordem_producao_numero}</Td>
+                                <Td>
+                                  {op.item_codigo} — {op.item_descricao}
+                                </Td>
+                                <Td>{op.prioridade}</Td>
+                                <Td>{op.quantidade_planejada}</Td>
+                                <Td>{op.quantidade_produzida}</Td>
+                                <Td>{op.quantidade_perdida}</Td>
+                                <Td>{STATUS_LABEL[op.status]}</Td>
+                                <Td>
+                                  <Badge variant={SITUACAO_TONE[op.situacao]}>{SITUACAO_LABEL[op.situacao]}</Badge>
+                                </Td>
+                                <Td>{op.lotes_total > 0 ? `${op.lotes_concluidos}/${op.lotes_total}` : "—"}</Td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </Td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+            {pedidosAgrupados.length === 0 && (
+              <tr>
+                <Td colSpan={6} className="text-text-muted">
+                  Nenhuma ordem de produção encontrada com esses filtros.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+      </div>
     </section>
   );
 }

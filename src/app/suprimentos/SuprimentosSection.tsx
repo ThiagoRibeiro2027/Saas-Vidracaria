@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { formatarData } from "@/lib/formato/data";
 
 const ORIGENS = [
@@ -56,12 +58,14 @@ type OrdemProducao = { id: string; numero: string; pedido_id: string };
 
 export default function SuprimentosSection({
   rows,
+  paginacao,
   itens,
   pedidos,
   ordensProducao,
   canManage,
 }: {
   rows: Necessidade[];
+  paginacao: PaginacaoInfo;
   itens: Item[];
   pedidos: Pedido[];
   ordensProducao: OrdemProducao[];
@@ -133,8 +137,16 @@ export default function SuprimentosSection({
                 </tr>
               );
             })}
+            {rows.length === 0 && (
+              <tr>
+                <Td colSpan={canManage ? 7 : 6} className="text-text-muted">
+                  Nenhuma necessidade registrada ainda.
+                </Td>
+              </tr>
+            )}
           </tbody>
         </Table>
+        <Paginacao {...paginacao} />
       </div>
     </section>
   );

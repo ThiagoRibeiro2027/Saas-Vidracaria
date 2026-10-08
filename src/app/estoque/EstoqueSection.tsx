@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useActionState } from "react";
+import { Fragment, useState, useActionState } from "react";
 import {
   ajustarSaldoAction,
   reservarParaPedidoItemAction,
@@ -18,6 +18,9 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { Paginacao } from "@/components/ui/Paginacao";
+import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -50,8 +53,11 @@ const num = (v: number) => Number(v).toLocaleString("pt-BR", { maximumFractionDi
 export default function EstoqueSection({
   activeTab,
   itens,
+  itensSaldoPagina,
+  sdPaginacao,
   saldoPorItem,
   pedidos,
+  rsPaginacao,
   pedidoItensPorPedido,
   reservaAtivaPorPedidoItem,
   pessoas,
@@ -59,10 +65,13 @@ export default function EstoqueSection({
   pecasDimensionais,
   canManage,
 }: {
-  activeTab: "saldo" | "reserva" | "sobra" | "dimensional";
+  activeTab: "geral" | "saldo" | "reserva" | "sobra" | "dimensional";
   itens: Item[];
+  itensSaldoPagina: Item[];
+  sdPaginacao: PaginacaoInfo;
   saldoPorItem: Map<string, Saldo>;
   pedidos: Pedido[];
+  rsPaginacao: PaginacaoInfo;
   pedidoItensPorPedido: Map<string, PedidoItem[]>;
   reservaAtivaPorPedidoItem: Map<string, Reserva>;
   pessoas: Pessoa[];
@@ -85,72 +94,45 @@ export default function EstoqueSection({
       {activeTab === "saldo" && (
       <section>
         <h2 className="text-sm font-semibold text-text">Saldo por item</h2>
-        <Table className="mt-2">
-          <thead>
-            <tr>
-              <Th>Item</Th>
-              <Th>Físico</Th>
-              <Th>Reservado</Th>
-              <Th>Disponível</Th>
-              <Th>Unidade</Th>
-              {canManage && <Th />}
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map((it) => {
-              const saldo = saldoPorItem.get(it.id);
-              const fisica = saldo?.quantidade_fisica ?? 0;
-              const reservada = saldo?.quantidade_reservada ?? 0;
-              return (
-                <tr key={it.id}>
-                  <Td>
-                    {it.codigo} — {it.descricao}
-                  </Td>
-                  <Td>{num(fisica)}</Td>
-                  <Td>{num(reservada)}</Td>
-                  <Td>{num(fisica - reservada)}</Td>
-                  <Td>{it.unidade_principal}</Td>
-                  {canManage && (
-                    <Td>
-                      <form action={ajustarSaldoAction} className="flex items-center gap-1">
-                        <input type="hidden" name="item_id" value={it.id} />
-                        <Input
-                          name="quantidade_delta"
-                          type="number"
-                          step="0.001"
-                          placeholder="+/- qtd"
-                          required
-                          className="w-[70px]"
-                        />
-                        <Input name="motivo" placeholder="motivo" required className="w-28" />
-                        <Button type="submit" variant="primary">
-                          Ajustar
-                        </Button>
-                      </form>
-                    </Td>
-                  )}
-                </tr>
-              );
-            })}
-            {itens.length === 0 && (
-              <tr>
-                <Td colSpan={canManage ? 6 : 5}>
-                  <span className="text-text-muted">Nenhum item cadastrado.</span>
-                </Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-        <p className="mt-2 text-xs text-text-muted">
+        <p className="mt-1 text-xs text-text-muted">
           Sem módulo de Compras ainda (TÓPICO 18, M2) — ajuste é o único jeito de estabelecer ou
           corrigir saldo neste recorte. Disponível = físico − reservado.
         </p>
+        <div className="mt-2 overflow-x-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Item</Th>
+                <Th>Físico</Th>
+                <Th>Reservado</Th>
+                <Th>Disponível</Th>
+                <Th>Unidade</Th>
+                {canManage && <Th />}
+              </tr>
+            </thead>
+            <tbody>
+              {itensSaldoPagina.map((it) => {
+                const saldo = saldoPorItem.get(it.id);
+                return <SaldoItemRow key={it.id} item={it} saldo={saldo} canManage={canManage} />;
+              })}
+              {itensSaldoPagina.length === 0 && (
+                <tr>
+                  <Td colSpan={canManage ? 6 : 5}>
+                    <span className="text-text-muted">Nenhum item cadastrado.</span>
+                  </Td>
+                </tr>
+              )}
+            </tbody>
+          </Table>
+          <Paginacao {...sdPaginacao} paramPagina="sd_pagina" paramPorPagina="sd_por_pagina" />
+        </div>
       </section>
       )}
 
       {activeTab === "reserva" && (
       <section>
         <h2 className="text-sm font-semibold text-text">Reserva para pedidos liberados</h2>
+        <p className="mt-1 text-xs text-text-muted">Clique num pedido para ver e reservar os itens.</p>
 
         <div className="mt-2 overflow-x-auto">
           <Table>
@@ -199,6 +181,7 @@ export default function EstoqueSection({
               )}
             </tbody>
           </Table>
+          <Paginacao {...rsPaginacao} paramPagina="rs_pagina" paramPorPagina="rs_por_pagina" />
         </div>
 
         {pedidoSelecionado && (
@@ -309,6 +292,45 @@ export default function EstoqueSection({
   );
 }
 
+function SaldoItemRow({ item, saldo, canManage }: { item: Item; saldo: Saldo | undefined; canManage: boolean }) {
+  const [ajustando, setAjustando] = useState(false);
+  const fisica = saldo?.quantidade_fisica ?? 0;
+  const reservada = saldo?.quantidade_reservada ?? 0;
+
+  return (
+    <tr>
+      <Td>
+        {item.codigo} — {item.descricao}
+      </Td>
+      <Td>{num(fisica)}</Td>
+      <Td>{num(reservada)}</Td>
+      <Td>{num(fisica - reservada)}</Td>
+      <Td>{item.unidade_principal}</Td>
+      {canManage && (
+        <Td>
+          {ajustando ? (
+            <form action={ajustarSaldoAction} onSubmit={() => setAjustando(false)} className="flex items-center gap-1">
+              <input type="hidden" name="item_id" value={item.id} />
+              <Input name="quantidade_delta" type="number" step="0.001" placeholder="+/- qtd" required className="w-[70px]" />
+              <Input name="motivo" placeholder="motivo" required className="w-28" />
+              <Button type="submit" variant="primary" size="sm">
+                Confirmar
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setAjustando(false)}>
+                Cancelar
+              </Button>
+            </form>
+          ) : (
+            <Button type="button" variant="secondary" size="sm" onClick={() => setAjustando(true)}>
+              Ajustar
+            </Button>
+          )}
+        </Td>
+      )}
+    </tr>
+  );
+}
+
 // Fase 2 da ADR-011 (TÓPICO 7 §5-6, §9 base). Item com dimensao_tipo
 // deixa de ser saldo escalar e passa a ter peça física individual: barra,
 // chapa, bobina. Consumir parte de uma peça só reduz a disponível DELA — o
@@ -332,7 +354,7 @@ function DimensionalTab({
         <h2 className="text-sm font-semibold text-text">Peças dimensionais</h2>
         <p className="mt-1 text-xs text-text-muted">
           Nenhum item com controle dimensional ainda. Isso é opcional e por item: em{" "}
-          <strong>Cadastros → Itens</strong>, defina o controle dimensional como linear
+          <strong>Engenharia → Cadastro de itens</strong>, defina o controle dimensional como linear
           (barra/perfil, medido em metro) ou área (chapa/bobina/vidro, medido em m²). Todo o
           resto do catálogo segue com saldo escalar, sem mudança.
         </p>
@@ -345,117 +367,191 @@ function DimensionalTab({
       <h2 className="text-sm font-semibold text-text">Peças dimensionais</h2>
       <p className="mt-1 text-xs text-text-muted">
         Cada linha é uma peça física. Consumir parte dela reduz só a quantidade disponível
-        daquela peça — o que sobra continua ali, disponível para o próximo uso.
+        daquela peça — o que sobra continua ali, disponível para o próximo uso. Clique num item
+        para ver e gerenciar as peças.
       </p>
 
       <ConversorUnidade itens={itens} />
 
-      {itens.map((it) => {
-        const pecas = pecasDimensionais.filter((p) => p.item_id === it.id);
-        const disponivelTotal = pecas
-          .filter((p) => p.situacao === "disponivel")
-          .reduce((acc, p) => acc + Number(p.quantidade_disponivel), 0);
+      <div className="mt-3 overflow-x-auto">
+        <DimensionalTable itens={itens} pecasDimensionais={pecasDimensionais} canManage={canManage} />
+      </div>
+    </section>
+  );
+}
 
-        return (
-          <Card key={it.id} className="mt-3">
-            <div className="flex flex-wrap items-baseline gap-2">
-              <span className="text-xs font-semibold text-text">
-                {it.codigo} — {it.descricao}
-              </span>
-              <span className="text-xs text-text-muted">
-                {it.dimensao_tipo === "linear" ? "linear (metro)" : "área (m²)"}
-                {it.peso_por_unidade_dimensao
-                  ? ` · ${num(it.peso_por_unidade_dimensao)} kg/${it.dimensao_tipo === "linear" ? "m" : "m²"}`
-                  : " · sem peso configurado (conversão indisponível)"}
-              </span>
-              <span className="text-xs text-text">
-                Disponível: {num(disponivelTotal)} {it.unidade_principal} em{" "}
-                {pecas.filter((p) => p.situacao === "disponivel").length} peça(s)
-              </span>
-            </div>
+function DimensionalTable({
+  itens,
+  pecasDimensionais,
+  canManage,
+}: {
+  itens: Item[];
+  pecasDimensionais: PecaDimensional[];
+  canManage: boolean;
+}) {
+  const [expandido, setExpandido] = useState<string | null>(null);
 
-            <div className="mt-2 overflow-x-auto">
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Identificação</Th>
-                    <Th>Original</Th>
-                    <Th>Disponível</Th>
-                    <Th>Situação</Th>
-                    {canManage && <Th>Consumir</Th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pecas.map((p) => (
-                    <tr key={p.id}>
-                      <Td>
-                        {p.identificador ?? "—"}
-                        {p.observacao && <span className="ml-1 text-text-muted">({p.observacao})</span>}
-                      </Td>
-                      <Td>{num(p.quantidade_original)}</Td>
-                      <Td>{num(p.quantidade_disponivel)}</Td>
-                      <Td>{p.situacao === "disponivel" ? "Disponível" : "Esgotada"}</Td>
-                      {canManage && (
-                        <Td>
-                          {p.situacao === "disponivel" ? (
-                            <form action={consumirPecaDimensionalAction} className="flex items-center gap-1">
-                              <input type="hidden" name="peca_id" value={p.id} />
-                              <Input
-                                name="quantidade"
-                                type="number"
-                                step="0.0001"
-                                min="0.0001"
-                                max={p.quantidade_disponivel}
-                                placeholder="qtd."
-                                required
-                                className="w-[80px]"
-                              />
-                              <Input name="observacao" placeholder="obs. (opcional)" className="w-32" />
-                              <Button type="submit" variant="primary">
-                                Consumir
-                              </Button>
-                            </form>
-                          ) : (
-                            "—"
-                          )}
-                        </Td>
-                      )}
-                    </tr>
-                  ))}
-                  {pecas.length === 0 && (
-                    <tr>
-                      <Td colSpan={canManage ? 5 : 4}>
-                        <span className="text-text-muted">Nenhuma peça registrada para este item.</span>
-                      </Td>
-                    </tr>
-                  )}
-                </tbody>
-              </Table>
-            </div>
+  return (
+    <Table>
+      <thead>
+        <tr>
+          <Th>Item</Th>
+          <Th>Controle</Th>
+          <Th>Disponível</Th>
+          <Th className="w-6" />
+        </tr>
+      </thead>
+      <tbody>
+        {itens.map((it) => {
+          const pecas = pecasDimensionais.filter((p) => p.item_id === it.id);
+          const disponiveis = pecas.filter((p) => p.situacao === "disponivel");
+          const disponivelTotal = disponiveis.reduce((acc, p) => acc + Number(p.quantidade_disponivel), 0);
+          const aberto = expandido === it.id;
 
-            {canManage && (
-              <form action={registrarPecaDimensionalAction} className="mt-2 flex flex-wrap items-center gap-1.5">
-                <input type="hidden" name="item_id" value={it.id} />
+          return (
+            <Fragment key={it.id}>
+              <tr onClick={() => setExpandido((atual) => (atual === it.id ? null : it.id))} className="cursor-pointer hover:bg-page-bg">
+                <Td className="font-medium text-text">
+                  {it.codigo} — {it.descricao}
+                </Td>
+                <Td className="text-text-muted">
+                  {it.dimensao_tipo === "linear" ? "linear (metro)" : "área (m²)"}
+                  {it.peso_por_unidade_dimensao
+                    ? ` · ${num(it.peso_por_unidade_dimensao)} kg/${it.dimensao_tipo === "linear" ? "m" : "m²"}`
+                    : " · sem peso configurado"}
+                </Td>
+                <Td className="text-text-muted">
+                  {num(disponivelTotal)} {it.unidade_principal} em {disponiveis.length} peça(s)
+                </Td>
+                <Td className="text-text-muted">{aberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
+              </tr>
+              {aberto && (
+                <tr>
+                  <Td colSpan={4} className="bg-page-bg">
+                    <ItemDimensionalDetalhe item={it} pecas={pecas} canManage={canManage} />
+                  </Td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
+      </tbody>
+    </Table>
+  );
+}
+
+function ItemDimensionalDetalhe({ item, pecas, canManage }: { item: Item; pecas: PecaDimensional[]; canManage: boolean }) {
+  const [registrando, setRegistrando] = useState(false);
+
+  return (
+    <div>
+      <Table>
+        <thead>
+          <tr>
+            <Th>Identificação</Th>
+            <Th>Original</Th>
+            <Th>Disponível</Th>
+            <Th>Situação</Th>
+            {canManage && <Th>Consumir</Th>}
+          </tr>
+        </thead>
+        <tbody>
+          {pecas.map((p) => (
+            <PecaDimensionalRow key={p.id} peca={p} canManage={canManage} />
+          ))}
+          {pecas.length === 0 && (
+            <tr>
+              <Td colSpan={canManage ? 5 : 4}>
+                <span className="text-text-muted">Nenhuma peça registrada para este item.</span>
+              </Td>
+            </tr>
+          )}
+        </tbody>
+      </Table>
+
+      {canManage && (
+        registrando ? (
+          <form
+            action={registrarPecaDimensionalAction}
+            onSubmit={() => setRegistrando(false)}
+            className="mt-2 flex flex-wrap items-center gap-1.5"
+          >
+            <input type="hidden" name="item_id" value={item.id} />
+            <Input
+              name="quantidade"
+              type="number"
+              step="0.0001"
+              min="0.0001"
+              placeholder={`quantidade (${item.unidade_principal})`}
+              required
+              className="w-36"
+            />
+            <Input name="identificador" placeholder="identificação (opcional)" className="w-40" />
+            <Input name="observacao" placeholder="observação (opcional)" className="w-44" />
+            <Button type="submit" variant="primary" size="sm">
+              Registrar
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setRegistrando(false)}>
+              Cancelar
+            </Button>
+          </form>
+        ) : (
+          <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={() => setRegistrando(true)}>
+            + Registrar peça
+          </Button>
+        )
+      )}
+    </div>
+  );
+}
+
+function PecaDimensionalRow({ peca, canManage }: { peca: PecaDimensional; canManage: boolean }) {
+  const [consumindo, setConsumindo] = useState(false);
+
+  return (
+    <tr>
+      <Td>
+        {peca.identificador ?? "—"}
+        {peca.observacao && <span className="ml-1 text-text-muted">({peca.observacao})</span>}
+      </Td>
+      <Td>{num(peca.quantidade_original)}</Td>
+      <Td>{num(peca.quantidade_disponivel)}</Td>
+      <Td>{peca.situacao === "disponivel" ? "Disponível" : "Esgotada"}</Td>
+      {canManage && (
+        <Td>
+          {peca.situacao === "disponivel" ? (
+            consumindo ? (
+              <form action={consumirPecaDimensionalAction} onSubmit={() => setConsumindo(false)} className="flex items-center gap-1">
+                <input type="hidden" name="peca_id" value={peca.id} />
                 <Input
                   name="quantidade"
                   type="number"
                   step="0.0001"
                   min="0.0001"
-                  placeholder={`quantidade (${it.unidade_principal})`}
+                  max={peca.quantidade_disponivel}
+                  placeholder="qtd."
                   required
-                  className="w-36"
+                  className="w-[80px]"
                 />
-                <Input name="identificador" placeholder="identificação (opcional)" className="w-40" />
-                <Input name="observacao" placeholder="observação (opcional)" className="w-44" />
-                <Button type="submit" variant="primary">
-                  Registrar peça
+                <Input name="observacao" placeholder="obs. (opcional)" className="w-32" />
+                <Button type="submit" variant="primary" size="sm">
+                  Confirmar
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setConsumindo(false)}>
+                  Cancelar
                 </Button>
               </form>
-            )}
-          </Card>
-        );
-      })}
-    </section>
+            ) : (
+              <Button type="button" variant="secondary" size="sm" onClick={() => setConsumindo(true)}>
+                Consumir
+              </Button>
+            )
+          ) : (
+            "—"
+          )}
+        </Td>
+      )}
+    </tr>
   );
 }
 
