@@ -294,3 +294,151 @@ export async function calcularMaoObraOrcamentoItemAction(
   if (error) return { error: error.message };
   return { data: data as Record<string, unknown> };
 }
+
+// =========================================================================
+// Clientes (pessoas com papel CLIENTE) e Obras — 2026-10-04: cadastro de
+// cliente saiu de /cadastros (T2) e passou a viver aqui, perto de quem mais
+// usa (Orçamento). Fornecedor é a mesma tabela `pessoas`, mas com cadastro
+// próprio em Compras (ver src/app/compras/actions.ts) — decisão do dono do
+// produto. RPCs reaproveitadas sem nenhuma mudança: upsert_pessoa,
+// set_pessoa_papel, upsert_obra já existiam e já checam has_permission
+// internamente.
+// =========================================================================
+
+export type PessoaState = { error: string } | undefined;
+
+export async function upsertPessoaAction(
+  _prevState: PessoaState,
+  formData: FormData,
+): Promise<PessoaState> {
+  const id = String(formData.get("id") ?? "") || null;
+  const tipoDocumento = String(formData.get("tipo_documento") ?? "") || null;
+  const documento = String(formData.get("documento") ?? "").trim() || null;
+  const nome = String(formData.get("nome") ?? "").trim();
+  const nomeFantasia = String(formData.get("nome_fantasia") ?? "").trim() || null;
+  const telefone = String(formData.get("telefone") ?? "").trim() || null;
+  const email = String(formData.get("email") ?? "").trim() || null;
+  const logradouro = String(formData.get("logradouro") ?? "").trim() || null;
+  const cidade = String(formData.get("cidade") ?? "").trim() || null;
+  const uf = String(formData.get("uf") ?? "").trim() || null;
+  const cep = String(formData.get("cep") ?? "").trim() || null;
+  const situacao = String(formData.get("situacao") ?? "ativo");
+
+  if (!nome) return { error: "Nome é obrigatório." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_pessoa", {
+    p_id: id,
+    p_tipo_documento: tipoDocumento,
+    p_documento: documento,
+    p_nome: nome,
+    p_nome_fantasia: nomeFantasia,
+    p_telefone: telefone,
+    p_email: email,
+    p_logradouro: logradouro,
+    p_cidade: cidade,
+    p_uf: uf,
+    p_cep: cep,
+    p_situacao: situacao,
+  });
+  if (error) {
+    if (error.code === "23505") {
+      return { error: "Já existe uma pessoa cadastrada com esse documento (CPF/CNPJ)." };
+    }
+    return { error: error.message };
+  }
+
+  revalidatePath("/comercial");
+}
+
+export async function setPessoaPapelAction(formData: FormData) {
+  const pessoaId = String(formData.get("pessoa_id") ?? "");
+  const papel = String(formData.get("papel") ?? "");
+  const ativo = formData.get("ativo") === "on";
+
+  if (!pessoaId || (papel !== "CLIENTE" && papel !== "FORNECEDOR")) {
+    throw new Error("Dados inválidos para papel de pessoa.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_pessoa_papel", {
+    p_pessoa_id: pessoaId,
+    p_papel: papel,
+    p_ativo: ativo,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
+
+// Composta: cria a pessoa e já liga o papel CLIENTE num único submit — o
+// fluxo genérico (upsertPessoaAction + setPessoaPapelAction em dois passos)
+// continua existindo para edição e para alternar o papel FORNECEDOR de um
+// cliente que também vende para a empresa, mas "+ Novo cliente" não deveria
+// exigir que o usuário lembre de ligar o papel depois de salvar.
+export async function criarClienteAction(
+  _prevState: PessoaState,
+  formData: FormData,
+): Promise<PessoaState> {
+  const nome = String(formData.get("nome") ?? "").trim();
+  if (!nome) return { error: "Nome é obrigatório." };
+
+  const supabase = await createClient();
+  const { data: pessoaId, error: erroPessoa } = await supabase.rpc("upsert_pessoa", {
+    p_id: null,
+    p_tipo_documento: String(formData.get("tipo_documento") ?? "") || null,
+    p_documento: String(formData.get("documento") ?? "").trim() || null,
+    p_nome: nome,
+    p_nome_fantasia: String(formData.get("nome_fantasia") ?? "").trim() || null,
+    p_telefone: String(formData.get("telefone") ?? "").trim() || null,
+    p_email: String(formData.get("email") ?? "").trim() || null,
+    p_logradouro: String(formData.get("logradouro") ?? "").trim() || null,
+    p_cidade: String(formData.get("cidade") ?? "").trim() || null,
+    p_uf: String(formData.get("uf") ?? "").trim() || null,
+    p_cep: String(formData.get("cep") ?? "").trim() || null,
+    p_situacao: "ativo",
+  });
+  if (erroPessoa) {
+    if (erroPessoa.code === "23505") {
+      return { error: "Já existe uma pessoa cadastrada com esse documento (CPF/CNPJ)." };
+    }
+    return { error: erroPessoa.message };
+  }
+
+  const { error: erroPapel } = await supabase.rpc("set_pessoa_papel", {
+    p_pessoa_id: pessoaId,
+    p_papel: "CLIENTE",
+    p_ativo: true,
+  });
+  if (erroPapel) return { error: erroPapel.message };
+
+  revalidatePath("/comercial");
+}
+
+export async function upsertObraAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "") || null;
+  const pessoaId = String(formData.get("pessoa_id") ?? "");
+  const nome = String(formData.get("nome") ?? "").trim();
+  const logradouro = String(formData.get("logradouro") ?? "").trim() || null;
+  const cidade = String(formData.get("cidade") ?? "").trim() || null;
+  const uf = String(formData.get("uf") ?? "").trim() || null;
+  const cep = String(formData.get("cep") ?? "").trim() || null;
+  const situacao = String(formData.get("situacao") ?? "ativo");
+
+  if (!pessoaId || !nome) throw new Error("Cliente e nome da obra são obrigatórios.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_obra", {
+    p_id: id,
+    p_pessoa_id: pessoaId,
+    p_nome: nome,
+    p_logradouro: logradouro,
+    p_cidade: cidade,
+    p_uf: uf,
+    p_cep: cep,
+    p_situacao: situacao,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}

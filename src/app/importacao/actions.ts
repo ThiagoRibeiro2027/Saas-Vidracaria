@@ -153,126 +153,7 @@ function lerMapeamentoDoForm(
   return mapeamento;
 }
 
-export type PessoaState = { error: string } | undefined;
-
-export async function upsertPessoaAction(
-  _prevState: PessoaState,
-  formData: FormData,
-): Promise<PessoaState> {
-  const id = String(formData.get("id") ?? "") || null;
-  const tipoDocumento = String(formData.get("tipo_documento") ?? "") || null;
-  const documento = String(formData.get("documento") ?? "").trim() || null;
-  const nome = String(formData.get("nome") ?? "").trim();
-  const nomeFantasia = String(formData.get("nome_fantasia") ?? "").trim() || null;
-  const telefone = String(formData.get("telefone") ?? "").trim() || null;
-  const email = String(formData.get("email") ?? "").trim() || null;
-  const logradouro = String(formData.get("logradouro") ?? "").trim() || null;
-  const cidade = String(formData.get("cidade") ?? "").trim() || null;
-  const uf = String(formData.get("uf") ?? "").trim() || null;
-  const cep = String(formData.get("cep") ?? "").trim() || null;
-  const situacao = String(formData.get("situacao") ?? "ativo");
-
-  if (!nome) return { error: "Nome é obrigatório." };
-
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("upsert_pessoa", {
-    p_id: id,
-    p_tipo_documento: tipoDocumento,
-    p_documento: documento,
-    p_nome: nome,
-    p_nome_fantasia: nomeFantasia,
-    p_telefone: telefone,
-    p_email: email,
-    p_logradouro: logradouro,
-    p_cidade: cidade,
-    p_uf: uf,
-    p_cep: cep,
-    p_situacao: situacao,
-  });
-  if (error) {
-    if (error.code === "23505") {
-      return { error: "Já existe uma pessoa cadastrada com esse documento (CPF/CNPJ)." };
-    }
-    return { error: error.message };
-  }
-
-  revalidatePath("/cadastros");
-}
-
-export async function setPessoaPapelAction(formData: FormData) {
-  const pessoaId = String(formData.get("pessoa_id") ?? "");
-  const papel = String(formData.get("papel") ?? "");
-  const ativo = formData.get("ativo") === "on";
-
-  if (!pessoaId || (papel !== "CLIENTE" && papel !== "FORNECEDOR")) {
-    throw new Error("Dados inválidos para papel de pessoa.");
-  }
-
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("set_pessoa_papel", {
-    p_pessoa_id: pessoaId,
-    p_papel: papel,
-    p_ativo: ativo,
-  });
-  if (error) throw new Error(error.message);
-
-  revalidatePath("/cadastros");
-}
-
-export async function upsertObraAction(formData: FormData) {
-  const id = String(formData.get("id") ?? "") || null;
-  const pessoaId = String(formData.get("pessoa_id") ?? "");
-  const nome = String(formData.get("nome") ?? "").trim();
-  const logradouro = String(formData.get("logradouro") ?? "").trim() || null;
-  const cidade = String(formData.get("cidade") ?? "").trim() || null;
-  const uf = String(formData.get("uf") ?? "").trim() || null;
-  const cep = String(formData.get("cep") ?? "").trim() || null;
-  const situacao = String(formData.get("situacao") ?? "ativo");
-
-  if (!pessoaId || !nome) throw new Error("Cliente e nome da obra são obrigatórios.");
-
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("upsert_obra", {
-    p_id: id,
-    p_pessoa_id: pessoaId,
-    p_nome: nome,
-    p_logradouro: logradouro,
-    p_cidade: cidade,
-    p_uf: uf,
-    p_cep: cep,
-    p_situacao: situacao,
-  });
-  if (error) throw new Error(error.message);
-
-  revalidatePath("/cadastros");
-}
-
-// =========================================================================
-// Importação — Fase 8a: uma action por etapa, não por entidade.
-//
-// A entidade chega pelo formulário e é resolvida contra o registro em
-// importacao-entidades.ts. Nome que não está no registro é recusado antes
-// de qualquer chamada ao banco, então o cliente não escolhe que função SQL
-// será executada — ele escolhe entre as que o registro permite.
-// =========================================================================
-
-// As funções importar_<x> devolvem sempre (linha, <identificador>,
-// <rotulo>, status, erro, campos_alterados). Quais são as duas colunas do
-// meio muda por entidade, e é o registro que diz.
-function normalizarResultados(
-  rows: Record<string, unknown>[],
-  entidade: EntidadeImportacao,
-): ImportacaoResultadoLinha[] {
-  return rows.map((r) => ({
-    linha: Number(r.linha),
-    identificador: (r[entidade.colunaIdentificador] as string | null) ?? null,
-    rotulo: (r[entidade.colunaRotulo] as string | null) ?? null,
-    status: r.status as ImportacaoResultadoLinha["status"],
-    erro: (r.erro as string | null) ?? null,
-    campos_alterados: (r.campos_alterados as string[] | null) ?? null,
-  }));
-}
-
+// A mesma action atende ao reprocessamento: os dois produzem uma prévia.
 // Reprocessamento (TÓPICO 13 §29): traz de volta o payload original das
 // linhas que falharam numa importação anterior e roda a prévia com elas.
 // Não tem caminho de gravação próprio — a confirmação usa a mesma action
@@ -320,6 +201,23 @@ async function previaDeReprocessamento(
     arquivoNome: origem?.arquivo_nome ?? null,
     origemImportacaoId: importacaoId,
   };
+}
+
+// As funções importar_<x> devolvem sempre (linha, <identificador>,
+// <rotulo>, status, erro, campos_alterados). Quais são as duas colunas do
+// meio muda por entidade, e é o registro que diz.
+function normalizarResultados(
+  rows: Record<string, unknown>[],
+  entidade: EntidadeImportacao,
+): ImportacaoResultadoLinha[] {
+  return rows.map((r) => ({
+    linha: Number(r.linha),
+    identificador: (r[entidade.colunaIdentificador] as string | null) ?? null,
+    rotulo: (r[entidade.colunaRotulo] as string | null) ?? null,
+    status: r.status as ImportacaoResultadoLinha["status"],
+    erro: (r.erro as string | null) ?? null,
+    campos_alterados: (r.campos_alterados as string[] | null) ?? null,
+  }));
 }
 
 export async function previsualizarImportacaoAction(
@@ -381,8 +279,7 @@ export async function confirmarImportacaoAction(
   });
   if (error) return { error: error.message };
 
-  // Revalida a tela dona do dado, não sempre /cadastros: importar recurso
-  // produtivo precisa atualizar /producao para o usuário ver o resultado.
+  // Revalida a tela dona do dado — cada entidade aponta pro módulo dono.
   revalidatePath(entidade.caminhoRevalidar);
   return {
     linhas,

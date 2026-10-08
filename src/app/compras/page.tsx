@@ -12,9 +12,14 @@ import ComprasSection from "./ComprasSection";
 export default async function ComprasPage() {
   const supabase = await createClient();
 
-  const [{ data: canView }, { data: canManage }] = await Promise.all([
+  const [{ data: canView }, { data: canManage }, { data: canManagePessoas }] = await Promise.all([
     supabase.rpc("has_permission", { p_resource: "compras", p_action: "view" }),
     supabase.rpc("has_permission", { p_resource: "compras", p_action: "manage" }),
+    // upsert_pessoa/set_pessoa_papel (usadas para criar/editar fornecedor,
+    // ver ComprasSection.tsx) checam pessoas.manage internamente, não
+    // compras.manage — sem este gate, quem só tem compras.manage veria o
+    // botão "+ Novo fornecedor" e tomaria erro de permissão da RPC.
+    supabase.rpc("has_permission", { p_resource: "pessoas", p_action: "manage" }),
   ]);
 
   if (!canView) {
@@ -38,7 +43,7 @@ export default async function ComprasPage() {
     { data: materiaisAlternativos },
     { data: politicas },
   ] = await Promise.all([
-    supabase.from("pessoas").select("id, nome, nome_fantasia").order("nome"),
+    supabase.from("pessoas").select("*").order("nome"),
     supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
     supabase.from("fornecedor_dados").select("*"),
     supabase
@@ -91,6 +96,7 @@ export default async function ComprasPage() {
           materiaisAlternativos={materiaisAlternativos ?? []}
           politicas={politicas ?? []}
           canManage={!!canManage}
+          canManagePessoas={!!canManagePessoas}
         />
       </div>
     </main>

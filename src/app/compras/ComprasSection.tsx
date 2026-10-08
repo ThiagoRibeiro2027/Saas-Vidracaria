@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import {
   upsertFornecedorDadosAction,
   upsertItemFornecedorAction,
@@ -8,8 +8,13 @@ import {
   upsertItemMaterialAlternativoAction,
   desativarItemMaterialAlternativoAction,
   upsertPoliticaAbastecimentoAction,
+  criarFornecedorAction,
+  atualizarIdentidadeFornecedorAction,
 } from "./actions";
 import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 
 const TIPOS_POLITICA = [
   ["sob_demanda", "Sob demanda"],
@@ -18,7 +23,19 @@ const TIPOS_POLITICA = [
   ["ponto_reposicao", "Ponto de reposição"],
 ] as const;
 
-type Pessoa = { id: string; nome: string; nome_fantasia: string | null };
+type Pessoa = {
+  id: string;
+  tipo_documento: string | null;
+  documento: string | null;
+  nome: string;
+  nome_fantasia: string | null;
+  telefone: string | null;
+  email: string | null;
+  logradouro: string | null;
+  cidade: string | null;
+  uf: string | null;
+  cep: string | null;
+};
 type Item = { id: string; codigo: string; descricao: string; tipo: string; unidade_principal: string };
 type FornecedorDados = {
   id: string;
@@ -71,6 +88,7 @@ export default function ComprasSection({
   materiaisAlternativos,
   politicas,
   canManage,
+  canManagePessoas,
 }: {
   fornecedores: Pessoa[];
   fornecedorDados: FornecedorDados[];
@@ -79,6 +97,7 @@ export default function ComprasSection({
   materiaisAlternativos: MaterialAlternativo[];
   politicas: PoliticaAbastecimento[];
   canManage: boolean;
+  canManagePessoas: boolean;
 }) {
   const pessoaPorId = new Map(fornecedores.map((p) => [p.id, p]));
   const itemPorId = new Map(itens.map((i) => [i.id, i]));
@@ -86,7 +105,7 @@ export default function ComprasSection({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
-      <FornecedoresSubsecao fornecedores={fornecedores} dadosPorPessoa={dadosPorPessoa} canManage={canManage} />
+      <FornecedoresSubsecao fornecedores={fornecedores} dadosPorPessoa={dadosPorPessoa} canManage={canManage} canManagePessoas={canManagePessoas} />
       <ItemFornecedoresSubsecao
         itens={itens}
         fornecedores={fornecedores}
@@ -105,19 +124,35 @@ function FornecedoresSubsecao({
   fornecedores,
   dadosPorPessoa,
   canManage,
+  canManagePessoas,
 }: {
   fornecedores: Pessoa[];
   dadosPorPessoa: Map<string, FornecedorDados>;
   canManage: boolean;
+  canManagePessoas: boolean;
 }) {
+  const [criando, setCriando] = useState(false);
+
   return (
     <section>
       <h2 style={sectionTitleStyle}>Fornecedores</h2>
       <p style={hintStyle}>
-        Cadastro comercial de quem já tem papel FORNECEDOR ativo em Cadastros (T2). Cadastre o
-        fornecedor lá primeiro — aqui só se acrescenta prazo de pagamento, lead time, dados
-        bancários e condições padrão.
+        Cadastre o fornecedor abaixo — identidade (nome, documento, contato, endereço) e, na
+        própria linha, prazo de pagamento, lead time, dados bancários e condições padrão.
       </p>
+
+      {canManagePessoas && (
+        <div style={{ marginBottom: "12px" }}>
+          {criando ? (
+            <NovoFornecedorForm onSubmit={() => setCriando(false)} onCancel={() => setCriando(false)} />
+          ) : (
+            <Button type="button" variant="primary" onClick={() => setCriando(true)}>
+              + Novo fornecedor
+            </Button>
+          )}
+        </div>
+      )}
+
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
           <thead>
@@ -127,26 +162,103 @@ function FornecedoresSubsecao({
               <th style={thStyle}>Lead time</th>
               <th style={thStyle}>Dados bancários</th>
               <th style={thStyle}>Homologado</th>
-              {canManage && <th style={thStyle}></th>}
+              {(canManage || canManagePessoas) && <th style={thStyle}></th>}
             </tr>
           </thead>
           <tbody>
             {fornecedores.map((f) => {
               const dados = dadosPorPessoa.get(f.id);
-              return <FornecedorRow key={f.id} pessoa={f} dados={dados} canManage={canManage} />;
+              return <FornecedorRow key={f.id} pessoa={f} dados={dados} canManage={canManage} canManagePessoas={canManagePessoas} />;
             })}
           </tbody>
         </table>
         {fornecedores.length === 0 && (
-          <p style={hintStyle}>Nenhuma pessoa com papel FORNECEDOR ativo ainda — cadastre em Cadastros.</p>
+          <p style={hintStyle}>Nenhum fornecedor cadastrado ainda.</p>
         )}
       </div>
     </section>
   );
 }
 
-function FornecedorRow({ pessoa, dados, canManage }: { pessoa: Pessoa; dados: FornecedorDados | undefined; canManage: boolean }) {
+function NovoFornecedorForm({ onSubmit, onCancel }: { onSubmit?: () => void; onCancel?: () => void }) {
+  const [state, formAction] = useActionState(criarFornecedorAction, undefined);
+
+  return (
+    <div>
+      <form action={formAction} onSubmit={onSubmit} className="flex flex-wrap items-center gap-1.5">
+        <Select name="tipo_documento" defaultValue="">
+          <option value="">—</option>
+          <option value="CPF">CPF</option>
+          <option value="CNPJ">CNPJ</option>
+        </Select>
+        <Input name="documento" placeholder="documento" className="w-32" />
+        <Input name="nome" placeholder="nome / razão social" required className="w-44" />
+        <Input name="nome_fantasia" placeholder="nome fantasia" className="w-32" />
+        <Input name="telefone" placeholder="telefone" className="w-28" />
+        <Input name="email" placeholder="e-mail" className="w-36" />
+        <Input name="logradouro" placeholder="endereço" className="w-40" />
+        <Input name="cidade" placeholder="cidade" className="w-28" />
+        <Input name="uf" placeholder="UF" className="w-12" />
+        <Input name="cep" placeholder="CEP" className="w-24" />
+        <Button type="submit" variant="primary">
+          Criar fornecedor
+        </Button>
+        {onCancel && (
+          <Button type="button" variant="secondary" onClick={onCancel}>
+            Cancelar
+          </Button>
+        )}
+      </form>
+      {state?.error && <p className="mt-1 text-xs text-danger">{state.error}</p>}
+    </div>
+  );
+}
+
+function FornecedorRow({
+  pessoa,
+  dados,
+  canManage,
+  canManagePessoas,
+}: {
+  pessoa: Pessoa;
+  dados: FornecedorDados | undefined;
+  canManage: boolean;
+  canManagePessoas: boolean;
+}) {
   const [editando, setEditando] = useState(false);
+  const [editandoIdentidade, setEditandoIdentidade] = useState(false);
+
+  if (editandoIdentidade) {
+    return (
+      <tr style={{ borderBottom: "1px solid #eef1ef" }}>
+        <td style={tdStyle} colSpan={canManage || canManagePessoas ? 6 : 5}>
+          <form action={atualizarIdentidadeFornecedorAction} onSubmit={() => setEditandoIdentidade(false)} className="flex flex-wrap items-center gap-1.5">
+            <input type="hidden" name="id" value={pessoa.id} />
+            <Select name="tipo_documento" defaultValue={pessoa.tipo_documento ?? ""}>
+              <option value="">—</option>
+              <option value="CPF">CPF</option>
+              <option value="CNPJ">CNPJ</option>
+            </Select>
+            <Input name="documento" placeholder="documento" defaultValue={pessoa.documento ?? ""} className="w-32" />
+            <Input name="nome" placeholder="nome / razão social" defaultValue={pessoa.nome} required className="w-44" />
+            <Input name="nome_fantasia" placeholder="nome fantasia" defaultValue={pessoa.nome_fantasia ?? ""} className="w-32" />
+            <Input name="telefone" placeholder="telefone" defaultValue={pessoa.telefone ?? ""} className="w-28" />
+            <Input name="email" placeholder="e-mail" defaultValue={pessoa.email ?? ""} className="w-36" />
+            <Input name="logradouro" placeholder="endereço" defaultValue={pessoa.logradouro ?? ""} className="w-40" />
+            <Input name="cidade" placeholder="cidade" defaultValue={pessoa.cidade ?? ""} className="w-28" />
+            <Input name="uf" placeholder="UF" defaultValue={pessoa.uf ?? ""} className="w-12" />
+            <Input name="cep" placeholder="CEP" defaultValue={pessoa.cep ?? ""} className="w-24" />
+            <Button type="submit" variant="primary">
+              Salvar
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setEditandoIdentidade(false)}>
+              Cancelar
+            </Button>
+          </form>
+        </td>
+      </tr>
+    );
+  }
 
   if (editando) {
     return (
@@ -193,11 +305,18 @@ function FornecedorRow({ pessoa, dados, canManage }: { pessoa: Pessoa; dados: Fo
       <td style={tdStyle}>{dados?.lead_time_dias != null ? `${dados.lead_time_dias}d` : "—"}</td>
       <td style={tdStyle}>{dados?.banco ? `${dados.banco} ag.${dados.agencia ?? "—"} cc.${dados.conta ?? "—"}` : dados?.chave_pix ? `PIX: ${dados.chave_pix}` : "—"}</td>
       <td style={tdStyle}>{dados?.homologado ? "Sim" : "Não"}</td>
-      {canManage && (
-        <td style={tdStyle}>
-          <button onClick={() => setEditando(true)} style={buttonStyle}>
-            {dados ? "Editar" : "Cadastrar dados"}
-          </button>
+      {(canManage || canManagePessoas) && (
+        <td style={{ ...tdStyle, display: "flex", gap: "6px" }}>
+          {canManage && (
+            <button onClick={() => setEditando(true)} style={buttonStyle}>
+              {dados ? "Editar" : "Cadastrar dados"}
+            </button>
+          )}
+          {canManagePessoas && (
+            <button onClick={() => setEditandoIdentidade(true)} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+              Editar identidade
+            </button>
+          )}
         </td>
       )}
     </tr>

@@ -63,7 +63,10 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     ],
     colunaIdentificador: "documento",
     colunaRotulo: "nome",
-    caminhoRevalidar: "/cadastros",
+    // 2026-10-04: cadastro de cliente foi para Comercial → Clientes; de
+    // fornecedor foi para Compras. Pessoas em si (identidade) revalida
+    // Comercial, que é onde a lista completa de pessoas-cliente mora.
+    caminhoRevalidar: "/comercial",
     descricao:
       "Cliente e fornecedor são a mesma pessoa — o papel é definido à parte. O documento é a chave: linha com documento já existente atualiza, não duplica.",
   },
@@ -89,7 +92,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     campos: ["documento_pessoa", "papel", "ativo"],
     colunaIdentificador: "documento",
     colunaRotulo: "papel",
-    caminhoRevalidar: "/cadastros",
+    caminhoRevalidar: "/comercial",
     descricao:
       "Define quem é CLIENTE e quem é FORNECEDOR. A mesma pessoa pode ter os dois papéis — nesse caso, uma linha para cada. Importe Pessoas antes.",
   },
@@ -102,7 +105,7 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     campos: ["documento_cliente", "nome", "logradouro", "cidade", "uf", "cep"],
     colunaIdentificador: "documento",
     colunaRotulo: "nome",
-    caminhoRevalidar: "/cadastros",
+    caminhoRevalidar: "/comercial",
     descricao:
       "Exige que o cliente já exista e tenha o papel CLIENTE — importe Pessoas antes. A obra é identificada por cliente + nome.",
   },

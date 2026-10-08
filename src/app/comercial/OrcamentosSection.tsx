@@ -362,6 +362,7 @@ function OrcamentoForm({
   todasPessoas,
   obras,
   onSuccess,
+  onCancel,
   largo = false,
 }: {
   orcamento?: Orcamento;
@@ -374,6 +375,9 @@ function OrcamentoForm({
   // formulário de cabeçalho para a revisão com os itens (ver aoCriar em
   // OrcamentosSection). Editar um orçamento existente chama sem argumento.
   onSuccess: (novoId?: string) => void;
+  // Só quando o form está dentro da consulta inline (ver OrcamentoReview) —
+  // o modal de "Novo orçamento" tem seu próprio fechar, não precisa disso.
+  onCancel?: () => void;
   // Na janela larga de revisão os campos do cabeçalho ficam em 2 colunas.
   largo?: boolean;
 }) {
@@ -414,7 +418,7 @@ function OrcamentoForm({
   if (!orcamento && clientesElegiveis.length === 0) {
     return (
       <p className="text-xs text-text-muted">
-        Nenhuma pessoa com papel Cliente ativo — cadastre um em Cadastros antes.
+        Nenhuma pessoa com papel Cliente ativo — cadastre um em Comercial → Clientes antes.
       </p>
     );
   }
@@ -507,14 +511,16 @@ function OrcamentoForm({
       {state && "error" in state && (
         <p className="col-span-2 text-xs text-danger">{state.error}</p>
       )}
-      <Button
-        type="submit"
-        variant="primary"
-        disabled={isPending}
-        className="col-span-2 mt-1 w-fit"
-      >
-        {isPending ? "Salvando..." : "Salvar"}
-      </Button>
+      <div className="col-span-2 mt-1 flex gap-1.5">
+        <Button type="submit" variant="primary" disabled={isPending} className="w-fit">
+          {isPending ? "Salvando..." : "Salvar"}
+        </Button>
+        {onCancel && (
+          <Button type="button" variant="secondary" onClick={onCancel} className="w-fit">
+            Cancelar
+          </Button>
+        )}
+      </div>
     </form>
   );
 }
@@ -576,6 +582,13 @@ function OrcamentoReview({
     ? (oportunidadesAbertas.find((o) => o.id === orcamento.oportunidade_id)
         ?.descricao ?? orcamento.oportunidade_id)
     : null;
+  // 2026-10-04: expandir o orçamento abre em consulta — o cabeçalho
+  // (cliente/obra/validade/condição/observações) só vira formulário depois
+  // de "Editar cabeçalho", mesmo padrão já aplicado em Clientes/RH/
+  // Contratos. `editavel` continua sendo a regra de negócio (só rascunho
+  // pode editar) — isso só controla SE o botão aparece, não o formulário em
+  // si.
+  const [editandoCabecalho, setEditandoCabecalho] = useState(false);
 
   return (
     <div className="flex flex-col gap-3">
@@ -589,44 +602,52 @@ function OrcamentoReview({
         </span>
       </div>
 
-      {editavel ? (
+      {editavel && editandoCabecalho ? (
         <OrcamentoForm
           orcamento={orcamento}
           clientesElegiveis={clientesElegiveis}
           obrasAtivas={obrasAtivas}
           todasPessoas={todasPessoas}
           obras={obras}
-          onSuccess={() => {}}
+          onSuccess={() => setEditandoCabecalho(false)}
+          onCancel={() => setEditandoCabecalho(false)}
           largo
         />
       ) : (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-          <div>
-            <dt className="text-text-muted">Cliente</dt>
-            <dd className="text-text">{pessoaNome(orcamento.pessoa_id)}</dd>
-          </div>
-          <div>
-            <dt className="text-text-muted">Obra</dt>
-            <dd className="text-text">{obraNome(orcamento.obra_id)}</dd>
-          </div>
-          <div>
-            <dt className="text-text-muted">Validade</dt>
-            <dd className="text-text">{orcamento.validade ?? "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-text-muted">Condição comercial</dt>
-            <dd className="text-text">{orcamento.condicao_comercial ?? "—"}</dd>
-          </div>
-          {orcamento.observacoes && (
-            <div className="col-span-2">
-              <dt className="text-text-muted">Observações</dt>
-              <dd className="text-text">{orcamento.observacoes}</dd>
+        <>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+            <div>
+              <dt className="text-text-muted">Cliente</dt>
+              <dd className="text-text">{pessoaNome(orcamento.pessoa_id)}</dd>
             </div>
+            <div>
+              <dt className="text-text-muted">Obra</dt>
+              <dd className="text-text">{obraNome(orcamento.obra_id)}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">Validade</dt>
+              <dd className="text-text">{orcamento.validade ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">Condição comercial</dt>
+              <dd className="text-text">{orcamento.condicao_comercial ?? "—"}</dd>
+            </div>
+            {orcamento.observacoes && (
+              <div className="col-span-2">
+                <dt className="text-text-muted">Observações</dt>
+                <dd className="text-text">{orcamento.observacoes}</dd>
+              </div>
+            )}
+          </dl>
+          {editavel && (
+            <Button type="button" variant="secondary" size="sm" className="mt-1.5" onClick={() => setEditandoCabecalho(true)}>
+              Editar cabeçalho
+            </Button>
           )}
-        </dl>
+        </>
       )}
 
-      {editavel && (
+      {editavel && !editandoCabecalho && (
         <OportunidadeVinculoForm
           orcamentoId={orcamento.id}
           oportunidadeAtualId={orcamento.oportunidade_id}

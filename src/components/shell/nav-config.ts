@@ -15,12 +15,12 @@ import {
   Users,
   BarChart3,
   UserCog,
-  BookUser,
   ShieldCheck,
   Settings,
   History,
   FileStack,
   Download,
+  Upload,
   Plug,
   FileSignature,
   type LucideIcon,
@@ -82,8 +82,10 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/comercial",
         icon: ShoppingCart,
         children: [
-          { label: "Orçamentos", href: "/comercial", tab: "orcamentos" },
+          { label: "Visão geral", href: "/comercial", tab: "geral" },
+          { label: "Orçamentos", href: "/comercial?tab=orcamentos", tab: "orcamentos" },
           { label: "Oportunidades", href: "/comercial?tab=oportunidades", tab: "oportunidades" },
+          { label: "Clientes", href: "/comercial?tab=clientes", tab: "clientes" },
         ],
       },
       // "Propostas" (gerar/enviar/aceite) e "Conversão de orçamentos" deixaram
@@ -101,7 +103,8 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/engenharia",
         icon: Ruler,
         children: [
-          { label: "Itens a fabricar", href: "/engenharia", tab: "fabricar" },
+          { label: "Visão geral", href: "/engenharia", tab: "geral" },
+          { label: "Itens a fabricar", href: "/engenharia?tab=fabricar", tab: "fabricar" },
           { label: "Cadastro de itens", href: "/engenharia?tab=itens", tab: "itens" },
           { label: "Pré-engenharia", href: "/engenharia?tab=pre-engenharia", tab: "pre-engenharia" },
         ],
@@ -135,7 +138,8 @@ export const NAV_GROUPS: NavGroup[] = [
         href: "/instalacao",
         icon: Wrench,
         children: [
-          { label: "Equipes", href: "/instalacao", tab: "equipes" },
+          { label: "Visão geral", href: "/instalacao", tab: "geral" },
+          { label: "Equipes", href: "/instalacao?tab=equipes", tab: "equipes" },
           { label: "Agenda de instalação", href: "/instalacao?tab=agenda", tab: "agenda" },
           { label: "Danos em obra", href: "/instalacao?tab=danos", tab: "danos" },
         ],
@@ -157,9 +161,11 @@ export const NAV_GROUPS: NavGroup[] = [
             label: "Estoque",
             href: "/estoque",
             children: [
-              { label: "Saldo por item", href: "/estoque", tab: "saldo" },
+              { label: "Visão geral", href: "/estoque", tab: "geral" },
+              { label: "Saldo por item", href: "/estoque?tab=saldo", tab: "saldo" },
               { label: "Reserva para pedidos", href: "/estoque?tab=reserva", tab: "reserva" },
               { label: "Registrar sobra", href: "/estoque?tab=sobra", tab: "sobra" },
+              { label: "Peças dimensionais", href: "/estoque?tab=dimensional", tab: "dimensional" },
             ],
           },
           {
@@ -201,7 +207,17 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
       },
       { label: "Fiscal", href: "/fiscal", icon: Receipt },
-      { label: "RH", href: "/rh", icon: Users },
+      {
+        label: "RH",
+        href: "/rh",
+        icon: Users,
+        children: [
+          { label: "Visão geral", href: "/rh", tab: "geral" },
+          { label: "Funcionários", href: "/rh?tab=funcionarios", tab: "funcionarios" },
+          { label: "Documentos, EPI e habilitações", href: "/rh?tab=documentos", tab: "documentos" },
+          { label: "Afastamentos e férias", href: "/rh?tab=afastamentos", tab: "afastamentos" },
+        ],
+      },
       { label: "Contratos", href: "/contratos", icon: FileSignature },
       { label: "BI (Indicadores)", href: "/bi", icon: BarChart3 },
     ],
@@ -216,16 +232,6 @@ export const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Usuários", href: "/usuarios", tab: "usuarios" },
           { label: "Papéis e permissões", href: "/usuarios?tab=papeis", tab: "papeis" },
-        ],
-      },
-      {
-        label: "Cadastros",
-        href: "/cadastros",
-        icon: BookUser,
-        children: [
-          { label: "Pessoas", href: "/cadastros", tab: "pessoas" },
-          { label: "Obras", href: "/cadastros?tab=obras", tab: "obras" },
-          { label: "Importação", href: "/cadastros?tab=importacao", tab: "importacao" },
         ],
       },
       { label: "Integrações", href: "/integracoes", icon: Plug },
@@ -251,6 +257,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Auditoria", href: "/audit", icon: History },
       { label: "Arquivos", href: "/files", icon: FileStack },
       { label: "Exportar dados", href: "/export", icon: Download },
+      { label: "Importação", href: "/importacao", icon: Upload },
     ],
   },
 ];

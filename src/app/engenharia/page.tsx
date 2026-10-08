@@ -2,10 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import EngenhariaSection from "./EngenhariaSection";
 import ItensSection from "./ItensSection";
 import PecasSection from "../pecas/PecasSection";
+import VisaoGeralSection from "./VisaoGeralSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
-type TabSlug = "fabricar" | "itens" | "pre-engenharia";
+type TabSlug = "geral" | "fabricar" | "itens" | "pre-engenharia";
 
 // TÓPICO 5 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // novembro: "o que a fábrica faz"): vínculo pedido_item → medida de obra
@@ -63,16 +64,35 @@ export default async function EngenhariaPage({
   }
 
   const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "geral", label: "Visão geral" },
     ...(canViewFabricar ? [{ slug: "fabricar" as const, label: "Itens a fabricar" }] : []),
     ...(canViewItens ? [{ slug: "itens" as const, label: "Cadastro de itens" }] : []),
     ...(canViewPecas ? [{ slug: "pre-engenharia" as const, label: "Pré-engenharia" }] : []),
   ];
-  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : availableTabs[0].slug;
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "geral";
 
   const { pagina: paginaPedida, porPagina } = lerParametrosPaginacao({
     pagina: paginaParam,
     por_pagina: porPaginaParam,
   });
+
+  // Visão geral — contagens leves (head:true), sem nenhuma consulta pesada
+  // nova. Só busca quando a aba está ativa, mesmo padrão lazy-por-aba já
+  // usado nas outras 3 abas desta rota.
+  const [
+    { count: pedidosAguardandoCount },
+    { count: itensAtivosCount },
+    { count: pecasCount },
+    { count: itensDimensionalCount },
+  ] =
+    activeTab === "geral"
+      ? await Promise.all([
+          supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("status", "liberado"),
+          supabase.from("itens").select("id", { count: "exact", head: true }).eq("situacao", "ativo"),
+          supabase.from("pecas").select("id", { count: "exact", head: true }),
+          supabase.from("itens").select("id", { count: "exact", head: true }).not("dimensao_tipo", "is", null),
+        ])
+      : [{ count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }];
 
   return (
     <div className="mx-auto max-w-7xl p-6">
@@ -85,6 +105,16 @@ export default async function EngenhariaPage({
       </p>
 
       <div className="mt-6">
+        {activeTab === "geral" && (
+          <VisaoGeralSection
+            indicadores={{
+              pedidosAguardandoFabricacao: pedidosAguardandoCount ?? 0,
+              itensAtivos: itensAtivosCount ?? 0,
+              pecasConfiguraveis: pecasCount ?? 0,
+              itensComControleDimensional: itensDimensionalCount ?? 0,
+            }}
+          />
+        )}
         {activeTab === "fabricar" && canViewFabricar && (
           <FabricarTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManageFabricar} />
         )}

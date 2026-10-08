@@ -117,7 +117,7 @@ export default function OportunidadesSection({
         Ampliação de escopo do TÓPICO 10 (ADR-002 v2.4, 19/09/2026): funil fixo, não configurável
         por empresa nesta fase. &quot;Cliente/prospect&quot; reaproveita o cadastro de Pessoas — uma
         oportunidade pode apontar para uma pessoa que ainda não tem papel Cliente; convertê-la em
-        cliente é feito em Cadastros. Clique numa linha para abrir, revisar e mudar o estágio.
+        cliente é feito em Comercial → Clientes. Clique numa linha para abrir, revisar e mudar o estágio.
       </p>
 
       <div className="overflow-x-auto">
@@ -206,30 +206,70 @@ function OportunidadeLinha({
       {linhaCompacta}
       <tr>
         <Td colSpan={COLUNAS} className="bg-page-bg">
-          {editavel ? (
-            <MudarEstagioForm oportunidadeId={oportunidade.id} estagioAtual={oportunidade.estagio} onSaved={onSaved} />
-          ) : (
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4">
-              <div>
-                <dt className="text-text-muted">Previsão de fechamento</dt>
-                <dd className="text-text">{oportunidade.previsao_fechamento ?? "—"}</dd>
-              </div>
-              {oportunidade.motivo_perda && (
-                <div>
-                  <dt className="text-text-muted">Motivo da perda</dt>
-                  <dd className="text-text">{motivoPerdaLabel(oportunidade.motivo_perda)}</dd>
-                </div>
-              )}
-              {oportunidade.observacoes && (
-                <div className="col-span-2 sm:col-span-4">
-                  <dt className="text-text-muted">Observações</dt>
-                  <dd className="text-text">{oportunidade.observacoes}</dd>
-                </div>
-              )}
-            </dl>
-          )}
+          <OportunidadeDetalhe oportunidade={oportunidade} editavel={editavel} onSaved={onSaved} />
         </Td>
       </tr>
+    </>
+  );
+}
+
+// 2026-10-04: componente próprio (montado só enquanto a linha está
+// expandida, ver uso acima) pra que o estado local `mudandoEstagio` comece
+// sempre em consulta a cada vez que a linha abre — mesmo padrão já
+// aplicado em Clientes/Orçamentos/RH/Contratos. Antes, oportunidade
+// editável pulava direto pro form de mudar estágio e escondia previsão de
+// fechamento/motivo/observações por baixo; "Mudar estágio" agora é que
+// revela o form.
+function OportunidadeDetalhe({
+  oportunidade,
+  editavel,
+  onSaved,
+}: {
+  oportunidade: Oportunidade;
+  editavel: boolean;
+  onSaved: () => void;
+}) {
+  const [mudandoEstagio, setMudandoEstagio] = useState(false);
+
+  if (editavel && mudandoEstagio) {
+    return (
+      <MudarEstagioForm
+        oportunidadeId={oportunidade.id}
+        estagioAtual={oportunidade.estagio}
+        onSaved={() => {
+          onSaved();
+          setMudandoEstagio(false);
+        }}
+        onCancel={() => setMudandoEstagio(false)}
+      />
+    );
+  }
+
+  return (
+    <>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4">
+        <div>
+          <dt className="text-text-muted">Previsão de fechamento</dt>
+          <dd className="text-text">{oportunidade.previsao_fechamento ?? "—"}</dd>
+        </div>
+        {oportunidade.motivo_perda && (
+          <div>
+            <dt className="text-text-muted">Motivo da perda</dt>
+            <dd className="text-text">{motivoPerdaLabel(oportunidade.motivo_perda)}</dd>
+          </div>
+        )}
+        {oportunidade.observacoes && (
+          <div className="col-span-2 sm:col-span-4">
+            <dt className="text-text-muted">Observações</dt>
+            <dd className="text-text">{oportunidade.observacoes}</dd>
+          </div>
+        )}
+      </dl>
+      {editavel && (
+        <Button type="button" variant="secondary" size="sm" className="mt-1.5" onClick={() => setMudandoEstagio(true)}>
+          Mudar estágio
+        </Button>
+      )}
     </>
   );
 }
@@ -238,10 +278,12 @@ function MudarEstagioForm({
   oportunidadeId,
   estagioAtual,
   onSaved,
+  onCancel,
 }: {
   oportunidadeId: string;
   estagioAtual: Estagio;
   onSaved: () => void;
+  onCancel?: () => void;
 }) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -284,6 +326,11 @@ function MudarEstagioForm({
       <Button type="submit" variant="primary" disabled={enviando}>
         {enviando ? "Salvando..." : "Mudar estágio"}
       </Button>
+      {onCancel && (
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancelar
+        </Button>
+      )}
       {erro && <span className="text-xs text-danger">{erro}</span>}
     </form>
   );
@@ -312,7 +359,7 @@ function NovaOportunidadeLinha({
     return (
       <tr>
         <Td colSpan={COLUNAS} className="bg-page-bg text-text-muted">
-          Nenhuma pessoa cadastrada — cadastre uma em Cadastros antes.
+          Nenhuma pessoa cadastrada — cadastre uma em Comercial → Clientes antes.
         </Td>
       </tr>
     );

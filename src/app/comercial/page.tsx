@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import OrcamentosSection from "./OrcamentosSection";
 import OportunidadesSection from "./OportunidadesSection";
+import ClientesSection from "./ClientesSection";
+import VisaoGeralSection from "./VisaoGeralSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
-type TabSlug = "orcamentos" | "oportunidades";
+type TabSlug = "geral" | "orcamentos" | "oportunidades" | "clientes";
 
 // TÓPICO 10 — orçamento simples (cabeçalho + itens + decisão), recorte
 // mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0). Oportunidades e
@@ -31,6 +33,10 @@ export default async function ComercialPage({
     // a sua, senão paginar uma bagunçava a página atual da outra.
     op_pagina?: string;
     op_por_pagina?: string;
+    // Clientes, mesmo padrão (2026-10-04, cadastro de cliente que veio de
+    // /cadastros).
+    cli_pagina?: string;
+    cli_por_pagina?: string;
   }>;
 }) {
   const {
@@ -39,6 +45,8 @@ export default async function ComercialPage({
     por_pagina: porPaginaParam,
     op_pagina: opPaginaParam,
     op_por_pagina: opPorPaginaParam,
+    cli_pagina: cliPaginaParam,
+    cli_por_pagina: cliPorPaginaParam,
   } = await searchParams;
   const supabase = await createClient();
 
@@ -50,6 +58,9 @@ export default async function ComercialPage({
     { data: canViewPropostas },
     { data: canManagePropostas },
     { data: canManagePedidos },
+    { data: canViewPessoas },
+    { data: canManagePessoas },
+    { data: canManageObras },
   ] = await Promise.all([
     supabase.rpc("has_permission", {
       p_resource: "orcamentos",
@@ -82,6 +93,9 @@ export default async function ComercialPage({
       p_resource: "pedidos",
       p_action: "manage",
     }),
+    supabase.rpc("has_permission", { p_resource: "pessoas", p_action: "view" }),
+    supabase.rpc("has_permission", { p_resource: "pessoas", p_action: "manage" }),
+    supabase.rpc("has_permission", { p_resource: "obras", p_action: "manage" }),
   ]);
 
   if (!canView) {
@@ -205,6 +219,35 @@ export default async function ComercialPage({
   );
   const clientesElegiveis = (pessoas ?? []).filter((p) => clienteIds.has(p.id));
 
+  // Visão geral — contagens leves (head:true), sem nenhuma consulta pesada
+  // nova. Oportunidades abertas e clientes ativos já vêm do que é buscado
+  // sempre, acima.
+  const [{ count: orcamentosRascunhoCount }, { count: orcamentosAprovadosCount }] = await Promise.all([
+    supabase.from("orcamentos").select("id", { count: "exact", head: true }).eq("status", "rascunho"),
+    supabase.from("orcamentos").select("id", { count: "exact", head: true }).eq("status", "aprovado"),
+  ]);
+
+  // Aba Clientes — colunas completas, paginada, só quando ativa (mesmo
+  // padrão lazy-por-aba já usado em Financeiro/RH/Engenharia). O lookup
+  // leve acima (pessoas/papeis/obras) continua sempre ativo, pros
+  // formulários de Orçamento/Oportunidade. clientesElegiveis já veio
+  // ordenado por nome (pessoas é buscado com .order("nome")) — pagina em
+  // memória sobre esse id set em vez de refazer o join no banco.
+  const { pagina: cliPaginaPedida, porPagina: cliPorPagina } = lerParametrosPaginacao({
+    pagina: cliPaginaParam,
+    por_pagina: cliPorPaginaParam,
+  });
+  const { paginacao: cliPaginacao, from: cliFrom, to: cliTo } = calcularPaginacao(cliPaginaPedida, cliPorPagina, clientesElegiveis.length);
+  const idsClientesPagina = tab === "clientes" && canViewPessoas ? clientesElegiveis.slice(cliFrom, cliTo + 1).map((p) => p.id) : [];
+  const { data: pessoasClientesPagina } =
+    idsClientesPagina.length > 0
+      ? await supabase.from("pessoas").select("*").in("id", idsClientesPagina).order("nome")
+      : { data: [] as never[] };
+  const { data: obrasDosClientesPagina } =
+    idsClientesPagina.length > 0
+      ? await supabase.from("obras").select("*").in("pessoa_id", idsClientesPagina).order("nome")
+      : { data: [] as never[] };
+
   const itensPorOrcamento = new Map<string, typeof orcamentoItens>();
   for (const oi of orcamentoItens ?? []) {
     const list = itensPorOrcamento.get(oi.orcamento_id) ?? [];
@@ -300,14 +343,16 @@ export default async function ComercialPage({
   );
 
   const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "geral", label: "Visão geral" },
     { slug: "orcamentos", label: "Orçamentos" },
     ...(canViewOportunidades
       ? [{ slug: "oportunidades" as const, label: "Oportunidades" }]
       : []),
+    ...(canViewPessoas ? [{ slug: "clientes" as const, label: "Clientes" }] : []),
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab)
     ? (tab as TabSlug)
-    : "orcamentos";
+    : "geral";
 
   return (
     <div className="mx-auto max-w-7xl p-6">
@@ -315,6 +360,19 @@ export default async function ComercialPage({
         TÓPICO 10 — Comercial
       </p>
       <h1 className="mt-1 text-lg font-semibold text-text">Comercial</h1>
+
+      {activeTab === "geral" && (
+        <div className="mt-6">
+          <VisaoGeralSection
+            indicadores={{
+              orcamentosRascunho: orcamentosRascunhoCount ?? 0,
+              orcamentosAprovados: orcamentosAprovadosCount ?? 0,
+              oportunidadesAbertas: oportunidadesAbertas.length,
+              clientesAtivos: clientesElegiveis.length,
+            }}
+          />
+        </div>
+      )}
 
       {activeTab === "orcamentos" && (
         <div className="mt-6">
@@ -357,6 +415,19 @@ export default async function ComercialPage({
             paginacao={paginacaoOportunidades}
             todasPessoas={pessoas ?? []}
             canManage={!!canManageOportunidades}
+          />
+        </div>
+      )}
+
+      {activeTab === "clientes" && canViewPessoas && (
+        <div className="mt-6">
+          <ClientesSection
+            rows={pessoasClientesPagina ?? []}
+            paginacao={cliPaginacao}
+            papeis={papeis ?? []}
+            obras={obrasDosClientesPagina ?? []}
+            canManage={!!canManagePessoas}
+            canManageObras={!!canManageObras}
           />
         </div>
       )}
