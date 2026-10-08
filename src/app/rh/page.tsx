@@ -11,17 +11,19 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // 20261029000000). "Cadastro de equipes" já foi antecipado no TÓPICO 16
 // (equipes_instalacao).
 //
-// 2026-10-04: mesmo tratamento de layout já aplicado em Comercial/
-// Pedidos/Engenharia/Fiscal — tela larga e as 3 listas (funcionários,
-// documentos, afastamentos) paginadas no servidor, cada uma com seu
-// próprio par de parâmetros (a mesma rota tem as 3, sem abas). O
-// cadastro completo de funcionários continua buscado à parte (sem
-// paginação) — Documentos/Afastamentos e os formulários de lançamento
-// precisam do nome de qualquer funcionário, não só dos da página atual.
+// 2026-10-04: mesmo tratamento de Financeiro — as 3 seções (funcionários,
+// documentos, afastamentos) viram abas na barra lateral, com uma aba
+// "Visão geral" nova (indicadores) na frente. Só a aba ativa busca sua
+// lista paginada; funcionários/unidades/profiles/recursos continuam
+// sempre buscados (sem paginação) por serem usados como lookup/opção em
+// mais de uma aba.
+type TabSlug = "geral" | "funcionarios" | "documentos" | "afastamentos";
+
 export default async function RHPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    tab?: string;
     fu_pagina?: string;
     fu_por_pagina?: string;
     doc_pagina?: string;
@@ -46,6 +48,14 @@ export default async function RHPage({
     );
   }
 
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "geral", label: "Visão geral" },
+    { slug: "funcionarios", label: "Funcionários" },
+    { slug: "documentos", label: "Documentos, EPI e habilitações" },
+    { slug: "afastamentos", label: "Afastamentos e férias" },
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === params.tab) ? (params.tab as TabSlug) : "geral";
+
   const { pagina: fuPaginaPedida, porPagina: fuPorPagina } = lerParametrosPaginacao({
     pagina: params.fu_pagina,
     por_pagina: params.fu_por_pagina,
@@ -59,10 +69,39 @@ export default async function RHPage({
     por_pagina: params.af_por_pagina,
   });
 
-  const [{ count: totalFuncionarios }, { count: totalDocumentos }, { count: totalAfastamentos }] = await Promise.all([
+  const agora = new Date();
+  const hoje = agora.toISOString().slice(0, 10);
+  const em30Dias = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const [
+    { count: totalFuncionarios },
+    { count: totalDocumentos },
+    { count: totalAfastamentos },
+    { count: funcionariosAtivosCount },
+    { count: funcionariosAfastadosCount },
+    { count: funcionariosDesligadosCount },
+    { count: documentosAtivosCount },
+    { count: documentosVencendoCount },
+    { count: afastamentosAbertosCount },
+  ] = await Promise.all([
     supabase.from("funcionarios").select("id", { count: "exact", head: true }),
     supabase.from("funcionario_documentos").select("id", { count: "exact", head: true }),
     supabase.from("funcionario_afastamentos").select("id", { count: "exact", head: true }),
+    supabase.from("funcionarios").select("id", { count: "exact", head: true }).eq("status", "ativo"),
+    supabase.from("funcionarios").select("id", { count: "exact", head: true }).eq("status", "afastado"),
+    supabase.from("funcionarios").select("id", { count: "exact", head: true }).eq("status", "desligado"),
+    supabase.from("funcionario_documentos").select("id", { count: "exact", head: true }).eq("status", "ativo"),
+    supabase
+      .from("funcionario_documentos")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "ativo")
+      .gte("validade", hoje)
+      .lte("validade", em30Dias),
+    supabase
+      .from("funcionario_afastamentos")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "ativo")
+      .is("data_fim", null),
   ]);
   const { paginacao: fuPaginacao, from: fuFrom, to: fuTo } = calcularPaginacao(fuPaginaPedida, fuPorPagina, totalFuncionarios ?? 0);
   const { paginacao: docPaginacao, from: docFrom, to: docTo } = calcularPaginacao(docPaginaPedida, docPorPagina, totalDocumentos ?? 0);
@@ -77,15 +116,19 @@ export default async function RHPage({
     { data: afastamentos },
     { data: recursos },
   ] = await Promise.all([
-    supabase.from("funcionarios").select("*").order("nome").range(fuFrom, fuTo),
+    activeTab === "funcionarios" ? supabase.from("funcionarios").select("*").order("nome").range(fuFrom, fuTo) : Promise.resolve({ data: [] as never[] }),
     // Lookups (nome por funcionário) e os <select> dos formulários de
     // Documentos/Afastamentos precisam de qualquer funcionário, não só
     // dos da página atual — mesmo padrão de itens/pessoas em Comercial.
     supabase.from("funcionarios").select("id, nome, status, profile_id").order("nome"),
     supabase.from("company_units").select("id, name").eq("active", true).order("name"),
     supabase.from("profiles").select("id, display_name, login_identifier").eq("active", true).order("display_name"),
-    supabase.from("funcionario_documentos").select("*").order("created_at", { ascending: false }).range(docFrom, docTo),
-    supabase.from("funcionario_afastamentos").select("*").order("data_inicio", { ascending: false }).range(afFrom, afTo),
+    activeTab === "documentos"
+      ? supabase.from("funcionario_documentos").select("*").order("created_at", { ascending: false }).range(docFrom, docTo)
+      : Promise.resolve({ data: [] as never[] }),
+    activeTab === "afastamentos"
+      ? supabase.from("funcionario_afastamentos").select("*").order("data_inicio", { ascending: false }).range(afFrom, afTo)
+      : Promise.resolve({ data: [] as never[] }),
     supabase.from("recursos_produtivos").select("id, codigo, nome, tipo").in("tipo", ["maquina", "equipamento"]).order("nome"),
   ]);
 
@@ -117,6 +160,15 @@ export default async function RHPage({
 
       <div className="mt-6">
         <RHSection
+          activeTab={activeTab}
+          indicadores={{
+            funcionariosAtivos: funcionariosAtivosCount ?? 0,
+            funcionariosAfastados: funcionariosAfastadosCount ?? 0,
+            funcionariosDesligados: funcionariosDesligadosCount ?? 0,
+            documentosAtivos: documentosAtivosCount ?? 0,
+            documentosVencendo: documentosVencendoCount ?? 0,
+            afastamentosAbertos: afastamentosAbertosCount ?? 0,
+          }}
           rows={funcionariosPagina ?? []}
           fuPaginacao={fuPaginacao}
           funcionariosTodos={funcionariosTodos ?? []}

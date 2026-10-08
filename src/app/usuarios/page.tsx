@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import UsuariosSection, { type Profile, type Role, type UserRoleRow } from "./UsuariosSection";
 import PapeisSection, { type Permission } from "./PapeisSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 type TabSlug = "usuarios" | "papeis";
 
@@ -21,12 +22,21 @@ type TabSlug = "usuarios" | "papeis";
 // histórico de auditoria. Papel de empresa é sempre uma linha própria
 // (nunca edita um papel-modelo global, que afetaria todas as outras
 // empresas que o usam).
+// 2026-10-04: mesmo tratamento já aplicado em Comercial/Pedidos/Engenharia/
+// Fiscal/RH — tela larga, a lista de usuários (a que de fato cresce sem
+// limite, um por funcionário/colaborador) paginada no servidor, e cada
+// linha compacta que expande ao clicar pra mostrar papéis/ações. Papéis da
+// empresa e papéis-modelo continuam como catálogo de configuração — bem
+// mais limitado em tamanho (poucas dezenas no máximo), sem necessidade real
+// de paginação — mas as linhas de papéis da empresa também passam a
+// expandir ao clicar, em vez de sempre mostrar todas as permissões e o
+// formulário de conceder.
 export default async function UsuariosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; us_pagina?: string; us_por_pagina?: string }>;
 }) {
-  const { tab } = await searchParams;
+  const params = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }, { data: canManageRoles }] = await Promise.all([
@@ -43,22 +53,48 @@ export default async function UsuariosPage({
     );
   }
 
-  const [
-    { data: profiles },
-    { data: roles },
-    { data: permissions },
-    { data: rolePermissions },
-    { data: userRoles },
-  ] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, login_identifier, display_name, contact_email, active, must_change_password")
-      .order("display_name"),
+  const availableTabs: { slug: TabSlug; label: string }[] = [
+    { slug: "usuarios", label: "Usuários" },
+    { slug: "papeis", label: "Papéis e permissões" },
+  ];
+  const activeTab: TabSlug = availableTabs.some((t) => t.slug === params.tab) ? (params.tab as TabSlug) : "usuarios";
+
+  const { pagina: usPaginaPedida, porPagina: usPorPagina } = lerParametrosPaginacao({
+    pagina: params.us_pagina,
+    por_pagina: params.us_por_pagina,
+  });
+
+  // Papéis e o catálogo de permissões são usados nas duas abas (nome de
+  // papel atribuído a um usuário, opções de <select>) — buscados sempre,
+  // inteiros, como qualquer lookup de configuração neste projeto.
+  const [{ data: roles }, { data: permissions }] = await Promise.all([
     supabase.from("roles").select("id, key, name, company_id").order("name"),
     supabase.from("permissions").select("id, resource, action, description").order("resource").order("action"),
-    supabase.from("role_permissions").select("role_id, permission_id"),
-    supabase.from("user_roles").select("id, profile_id, role_id, valid_until").is("valid_until", null),
   ]);
+
+  // Só a aba ativa busca sua consulta pesada.
+  const { count: totalProfiles } = activeTab === "usuarios" ? await supabase.from("profiles").select("id", { count: "exact", head: true }) : { count: 0 };
+  const { paginacao: usPaginacao, from: usFrom, to: usTo } = calcularPaginacao(usPaginaPedida, usPorPagina, totalProfiles ?? 0);
+  const { data: profiles } =
+    activeTab === "usuarios"
+      ? await supabase
+          .from("profiles")
+          .select("id, login_identifier, display_name, contact_email, active, must_change_password")
+          .order("display_name")
+          .range(usFrom, usTo)
+      : { data: [] as never[] };
+
+  const profileIdsPagina = (profiles ?? []).map((p) => p.id);
+  const { data: userRoles } =
+    profileIdsPagina.length > 0
+      ? await supabase.from("user_roles").select("id, profile_id, role_id, valid_until").is("valid_until", null).in("profile_id", profileIdsPagina)
+      : { data: [] as never[] };
+
+  const roleIdsDaEmpresa = (roles ?? []).filter((r) => r.company_id !== null).map((r) => r.id);
+  const { data: rolePermissions } =
+    activeTab === "papeis" && roleIdsDaEmpresa.length > 0
+      ? await supabase.from("role_permissions").select("role_id, permission_id").in("role_id", roleIdsDaEmpresa)
+      : { data: [] as never[] };
 
   const userRolesPorProfile = new Map<string, UserRoleRow[]>();
   for (const ur of userRoles ?? []) {
@@ -74,14 +110,8 @@ export default async function UsuariosPage({
     permissoesPorPapel.set(rp.role_id, set);
   }
 
-  const availableTabs: { slug: TabSlug; label: string }[] = [
-    { slug: "usuarios", label: "Usuários" },
-    { slug: "papeis", label: "Papéis e permissões" },
-  ];
-  const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "usuarios";
-
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="mx-auto max-w-7xl p-6">
       <p className="font-mono text-[11px] text-primary">TÓPICO 14 — Usuários / Permissões</p>
       <h1 className="mt-1 text-lg font-semibold text-text">Usuários e papéis</h1>
       <p className="mt-1 text-sm text-text">
@@ -94,6 +124,7 @@ export default async function UsuariosPage({
         {activeTab === "usuarios" && (
           <UsuariosSection
             profiles={(profiles as Profile[]) ?? []}
+            paginacao={usPaginacao}
             roles={(roles as Role[]) ?? []}
             userRolesPorProfile={userRolesPorProfile}
             canManage={!!canManage}

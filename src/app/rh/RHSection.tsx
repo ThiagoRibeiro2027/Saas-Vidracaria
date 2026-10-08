@@ -103,11 +103,23 @@ type Unidade = { id: string; name: string };
 type Profile = { id: string; display_name: string; login_identifier: string };
 type FuncionarioResumo = { id: string; nome: string; status: Funcionario["status"]; profile_id: string | null };
 
-// 2026-10-04: mesmo tratamento de layout já aplicado em Comercial/
-// Pedidos/Engenharia/Fiscal — as 3 listas (funcionários, documentos,
-// afastamentos) paginadas no servidor, cada linha compacta e clicável
-// pra ver o detalhe/ações, em vez de tudo sempre visível na linha.
+type TabSlug = "geral" | "funcionarios" | "documentos" | "afastamentos";
+
+type Indicadores = {
+  funcionariosAtivos: number;
+  funcionariosAfastados: number;
+  funcionariosDesligados: number;
+  documentosAtivos: number;
+  documentosVencendo: number;
+  afastamentosAbertos: number;
+};
+
+// 2026-10-04: as 3 seções (funcionários, documentos, afastamentos) viram
+// abas na barra lateral — mesmo tratamento do Financeiro — com uma aba
+// "Visão geral" nova na frente, mostrando indicadores somados no servidor.
 export default function RHSection({
+  activeTab,
+  indicadores,
   rows,
   fuPaginacao,
   funcionariosTodos,
@@ -121,6 +133,8 @@ export default function RHSection({
   anexos,
   canManage,
 }: {
+  activeTab: TabSlug;
+  indicadores: Indicadores;
   rows: Funcionario[];
   fuPaginacao: PaginacaoInfo;
   funcionariosTodos: FuncionarioResumo[];
@@ -152,6 +166,9 @@ export default function RHSection({
 
   return (
     <>
+      {activeTab === "geral" && <VisaoGeral indicadores={indicadores} />}
+
+      {activeTab === "funcionarios" && (
       <section>
         <h2 className="text-sm font-semibold text-text">Funcionários</h2>
         <p className="mt-1 text-xs text-text-muted">
@@ -254,8 +271,10 @@ export default function RHSection({
           <Paginacao {...fuPaginacao} paramPagina="fu_pagina" paramPorPagina="fu_por_pagina" />
         </div>
       </section>
+      )}
 
-      <section className="mt-6">
+      {activeTab === "documentos" && (
+      <section>
         <h2 className="text-sm font-semibold text-text">Documentos, EPI e habilitações</h2>
         <p className="mt-1 text-xs text-text-muted">
           Documento de admissão, certificação/treinamento, entrega de EPI e habilitação para operar
@@ -354,8 +373,10 @@ export default function RHSection({
           <Paginacao {...docPaginacao} paramPagina="doc_pagina" paramPorPagina="doc_por_pagina" />
         </div>
       </section>
+      )}
 
-      <section className="mt-6">
+      {activeTab === "afastamentos" && (
+      <section>
         <h2 className="text-sm font-semibold text-text">Afastamentos e férias</h2>
         <p className="mt-1 text-xs text-text-muted">
           Registro simples de período (datas e motivo), sem cálculo de valores ou encargos —
@@ -438,7 +459,37 @@ export default function RHSection({
           <Paginacao {...afPaginacao} paramPagina="af_pagina" paramPorPagina="af_por_pagina" />
         </div>
       </section>
+      )}
     </>
+  );
+}
+
+function VisaoGeral({ indicadores }: { indicadores: Indicadores }) {
+  const cartoes: { label: string; valor: number; tone?: "warning" }[] = [
+    { label: "Funcionários ativos", valor: indicadores.funcionariosAtivos },
+    { label: "Afastados", valor: indicadores.funcionariosAfastados },
+    { label: "Desligados", valor: indicadores.funcionariosDesligados },
+    { label: "Documentos ativos", valor: indicadores.documentosAtivos },
+    { label: "Vencendo em 30 dias", valor: indicadores.documentosVencendo, tone: "warning" },
+    { label: "Afastamentos em aberto", valor: indicadores.afastamentosAbertos },
+  ];
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-text">Visão geral</h2>
+      <p className="mt-1 text-xs text-text-muted">
+        Indicadores do módulo RH — funcionários por status, documentos/EPI/habilitações ativos (e
+        vencendo em 30 dias) e afastamentos ainda em aberto.
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {cartoes.map((c) => (
+          <div key={c.label} className="rounded-md bg-page-bg p-4">
+            <p className="text-xs text-text-muted">{c.label}</p>
+            <p className={`mt-1 text-2xl font-semibold ${c.tone === "warning" ? "text-warning" : "text-text"}`}>{c.valor}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
