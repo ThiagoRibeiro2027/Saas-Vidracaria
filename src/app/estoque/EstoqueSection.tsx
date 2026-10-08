@@ -13,11 +13,12 @@ import {
   type ConversaoState,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
@@ -98,17 +99,16 @@ export default function EstoqueSection({
           Sem módulo de Compras ainda (TÓPICO 18, M2) — ajuste é o único jeito de estabelecer ou
           corrigir saldo neste recorte. Disponível = físico − reservado.
         </p>
-        <div className="mt-2 overflow-x-auto">
-          <Table>
+        <DenseTable>
             <thead>
-              <tr>
+              <DenseTableHeaderRow>
                 <Th>Item</Th>
                 <Th>Físico</Th>
                 <Th>Reservado</Th>
                 <Th>Disponível</Th>
                 <Th>Unidade</Th>
                 {canManage && <Th />}
-              </tr>
+              </DenseTableHeaderRow>
             </thead>
             <tbody>
               {itensSaldoPagina.map((it) => {
@@ -123,9 +123,8 @@ export default function EstoqueSection({
                 </tr>
               )}
             </tbody>
-          </Table>
-          <Paginacao {...sdPaginacao} paramPagina="sd_pagina" paramPorPagina="sd_por_pagina" />
-        </div>
+        </DenseTable>
+        <Paginacao {...sdPaginacao} paramPagina="sd_pagina" paramPorPagina="sd_por_pagina" />
       </section>
       )}
 
@@ -134,16 +133,15 @@ export default function EstoqueSection({
         <h2 className="text-sm font-semibold text-text">Reserva para pedidos liberados</h2>
         <p className="mt-1 text-xs text-text-muted">Clique num pedido para ver e reservar os itens.</p>
 
-        <div className="mt-2 overflow-x-auto">
-          <Table>
+        <DenseTable>
             <thead>
-              <tr>
+              <DenseTableHeaderRow>
                 <Th>Número</Th>
                 <Th>Cliente</Th>
                 <Th>Obra</Th>
                 <Th>Itens</Th>
                 <Th>Situação</Th>
-              </tr>
+              </DenseTableHeaderRow>
             </thead>
             <tbody>
               {pedidos.map((ped) => {
@@ -164,9 +162,9 @@ export default function EstoqueSection({
                     <Td className="text-text-muted">{itensDoPedido.length}</Td>
                     <Td>
                       {faltantes > 0 ? (
-                        <Badge variant="warning">{faltantes} com falta</Badge>
+                        <StatusPill tone="warning">{faltantes} com falta</StatusPill>
                       ) : (
-                        <Badge variant="success">Completo</Badge>
+                        <StatusPill tone="success">Completo</StatusPill>
                       )}
                     </Td>
                   </tr>
@@ -180,9 +178,8 @@ export default function EstoqueSection({
                 </tr>
               )}
             </tbody>
-          </Table>
-          <Paginacao {...rsPaginacao} paramPagina="rs_pagina" paramPorPagina="rs_por_pagina" />
-        </div>
+        </DenseTable>
+        <Paginacao {...rsPaginacao} paramPagina="rs_pagina" paramPorPagina="rs_por_pagina" />
 
         {pedidoSelecionado && (
           <Card padding="xs" className="mt-3">
@@ -392,14 +389,14 @@ function DimensionalTable({
   const [expandido, setExpandido] = useState<string | null>(null);
 
   return (
-    <Table>
+    <DenseTable>
       <thead>
-        <tr>
+        <DenseTableHeaderRow>
           <Th>Item</Th>
           <Th>Controle</Th>
           <Th>Disponível</Th>
           <Th className="w-6" />
-        </tr>
+        </DenseTableHeaderRow>
       </thead>
       <tbody>
         {itens.map((it) => {
@@ -436,7 +433,7 @@ function DimensionalTable({
           );
         })}
       </tbody>
-    </Table>
+    </DenseTable>
   );
 }
 

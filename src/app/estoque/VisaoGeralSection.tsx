@@ -1,3 +1,5 @@
+import { FieldBox } from "@/components/ui/FieldBox";
+
 type Indicadores = {
   itens: number;
   pecasDimensionaisDisponiveis: number;
@@ -8,14 +10,9 @@ type Indicadores = {
 // 2026-10-04: mesmo padrão de Financeiro/RH/Comercial/Engenharia/
 // Instalação — "Visão geral" é a primeira aba, com indicadores somados no
 // servidor (contagens leves, sem consultas pesadas novas).
+// 2026-10-07 (ADR-013, Fase 3): cartões migrados para FieldBox
+// (Identidade D) — mesmo dado, nova composição visual.
 export default function VisaoGeralSection({ indicadores }: { indicadores: Indicadores }) {
-  const cartoes = [
-    { label: "Itens cadastrados", valor: indicadores.itens },
-    { label: "Peças dimensionais disponíveis", valor: indicadores.pecasDimensionaisDisponiveis },
-    { label: "Pedidos liberados", valor: indicadores.pedidosLiberados },
-    { label: "Reservas ativas", valor: indicadores.reservasAtivas },
-  ];
-
   return (
     <section>
       <h2 className="text-sm font-semibold text-text">Visão geral</h2>
@@ -23,13 +20,11 @@ export default function VisaoGeralSection({ indicadores }: { indicadores: Indica
         Indicadores do módulo Estoque — catálogo de itens, peças dimensionais disponíveis, pedidos
         liberados e reservas ativas.
       </p>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {cartoes.map((c) => (
-          <div key={c.label} className="rounded-md bg-page-bg p-4">
-            <p className="text-xs text-text-muted">{c.label}</p>
-            <p className="mt-1 text-2xl font-semibold text-text">{c.valor}</p>
-          </div>
-        ))}
+      <div className="mt-3 flex flex-wrap gap-3">
+        <FieldBox label="Itens cadastrados" value={String(indicadores.itens)} tone="teal" />
+        <FieldBox label="Peças dimensionais disponíveis" value={String(indicadores.pecasDimensionaisDisponiveis)} tone="teal" />
+        <FieldBox label="Pedidos liberados" value={String(indicadores.pedidosLiberados)} tone="teal" />
+        <FieldBox label="Reservas ativas" value={String(indicadores.reservasAtivas)} tone="teal" />
       </div>
     </section>
   );

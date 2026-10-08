@@ -2,9 +2,19 @@ import { createClient } from "@/lib/supabase/server";
 import EstoqueSection from "./EstoqueSection";
 import VisaoGeralSection from "./VisaoGeralSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 type TabSlug = "geral" | "saldo" | "reserva" | "sobra" | "dimensional";
+
+// ADR-013 (Identidade D), Fase 3.
+const TAB_TITLE: Record<TabSlug, string> = {
+  geral: "Visão geral",
+  saldo: "Saldo por item",
+  reserva: "Reserva para pedidos",
+  sobra: "Registrar sobra",
+  dimensional: "Peças dimensionais",
+};
 
 // TÓPICO 6 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // novembro: "o que a fábrica faz"). Só saldo, reserva para o pedido,
@@ -145,10 +155,10 @@ export default async function EstoquePage({
       : { data: [] as never[] };
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 6 — Estoque</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Saldo, reservas e sobras</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Estoque"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Recorte mínimo do M1: saldo por item, reserva para o pedido (com reserva parcial quando
         falta disponível), consumo e registro de sobra. Sem localização, lote/serial ou
         inventário.
@@ -182,6 +192,7 @@ export default async function EstoquePage({
           canManage={!!canManage}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }
