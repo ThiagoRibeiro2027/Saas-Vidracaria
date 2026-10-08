@@ -9,11 +9,12 @@ import {
   gerarNecessidadesDeOrdemProducaoAction,
   registrarRecebimentoNecessidadeAction,
 } from "./actions";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { formatarData } from "@/lib/formato/data";
@@ -93,20 +94,19 @@ export default function SuprimentosSection({
         </div>
       )}
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Item</Th>
-              <Th>Quantidade</Th>
-              <Th>Necessária em</Th>
-              <Th>Origem</Th>
-              <Th>Status</Th>
-              <Th>Observações</Th>
-              {canManage && <Th />}
-            </tr>
-          </thead>
-          <tbody>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Item</Th>
+            <Th>Quantidade</Th>
+            <Th>Necessária em</Th>
+            <Th>Origem</Th>
+            <Th>Status</Th>
+            <Th>Observações</Th>
+            {canManage && <Th />}
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
             {rows.map((row) => {
               const item = itemPorId.get(row.item_id);
               return (
@@ -118,7 +118,7 @@ export default function SuprimentosSection({
                   <Td>{formatarData(row.data_necessaria)}</Td>
                   <Td>{ORIGENS.find(([v]) => v === row.origem)?.[1] ?? row.origem}</Td>
                   <Td>
-                    <Badge variant={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
+                    <StatusPill tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</StatusPill>
                   </Td>
                   <Td>
                     {row.status === "cancelada" && row.motivo_cancelamento}
@@ -145,9 +145,8 @@ export default function SuprimentosSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} />
     </section>
   );
 }

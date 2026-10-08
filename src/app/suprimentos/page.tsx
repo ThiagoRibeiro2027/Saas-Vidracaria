@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import SuprimentosSection from "./SuprimentosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 7 — Suprimentos e Compras, recorte mínimo do MVP (ADR-002 §4.18,
@@ -48,10 +49,10 @@ export default async function SuprimentosPage({
   ]);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 7 — Suprimentos</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Suprimentos e Compras</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Suprimentos"]} title="Suprimentos e Compras" />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Recorte mínimo do MVP: registrar necessidade de material e acompanhar até atendida ou
         cancelada. Sem cotação, pedido de compra ou recebimento. Necessidades também podem ser
         geradas automaticamente a partir de um pedido ou ordem de produção com peças cadastradas
@@ -68,6 +69,7 @@ export default async function SuprimentosPage({
           canManage={!!canManage}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

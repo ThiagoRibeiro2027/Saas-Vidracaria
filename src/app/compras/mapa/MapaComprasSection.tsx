@@ -1,7 +1,11 @@
 "use client";
 
 import { gerarNecessidadesPoliticaAction, upsertFeriadoAction, removerFeriadoAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { formatarData } from "@/lib/formato/data";
 
 type LinhaMapa = {
@@ -19,8 +23,8 @@ type LinhaMapa = {
 
 type Feriado = { id: string; data: string; descricao: string | null };
 
-const RISCO_LABEL: Record<string, string> = { critico: "🔴 Crítico", atencao: "🟡 Atenção", ok: "🟢 Ok" };
-const RISCO_COLOR: Record<string, string> = { critico: "#9b2c2c", atencao: "#8a6d1a", ok: "#1f5d57" };
+const RISCO_LABEL: Record<string, string> = { critico: "Crítico", atencao: "Atenção", ok: "Ok" };
+const RISCO_TONE: Record<string, "danger" | "warning" | "success"> = { critico: "danger", atencao: "warning", ok: "success" };
 
 export default function MapaComprasSection({
   mapa,
@@ -32,93 +36,103 @@ export default function MapaComprasSection({
   canManage: boolean;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+    <div className="flex flex-col gap-7">
       <section>
-        <h2 style={sectionTitleStyle}>Necessidades × risco de ruptura</h2>
+        <h2 className="text-sm font-semibold text-text">Necessidades × risco de ruptura</h2>
         {canManage && (
-          <form action={gerarNecessidadesPoliticaAction} style={{ marginBottom: "10px" }}>
-            <button type="submit" style={buttonStyle}>
+          <form action={gerarNecessidadesPoliticaAction} className="my-3">
+            <Button type="submit" variant="primary">
               Gerar necessidades das políticas de abastecimento
-            </button>
+            </Button>
           </form>
         )}
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-                <th style={thStyle}>Item</th>
-                <th style={thStyle}>Necessidade aberta</th>
-                <th style={thStyle}>Saldo disponível</th>
-                <th style={thStyle}>Saldo projetado</th>
-                <th style={thStyle}>Necessária em</th>
-                <th style={thStyle}>Lead time</th>
-                <th style={thStyle}>Recomendação de compra</th>
-                <th style={thStyle}>Risco</th>
+        <DenseTable>
+          <thead>
+            <DenseTableHeaderRow>
+              <Th>Item</Th>
+              <Th>Necessidade aberta</Th>
+              <Th>Saldo disponível</Th>
+              <Th>Saldo projetado</Th>
+              <Th>Necessária em</Th>
+              <Th>Lead time</Th>
+              <Th>Recomendação de compra</Th>
+              <Th>Risco</Th>
+            </DenseTableHeaderRow>
+          </thead>
+          <tbody>
+            {mapa.map((linha) => (
+              <tr key={linha.item_id}>
+                <Td>{linha.item_codigo} — {linha.item_descricao}</Td>
+                <Td>{linha.necessidade_aberta}</Td>
+                <Td>{linha.saldo_disponivel}</Td>
+                <Td>{linha.saldo_projetado}</Td>
+                <Td>{formatarData(linha.data_necessaria_mais_proxima)}</Td>
+                <Td>{linha.lead_time_dias}d</Td>
+                <Td>{formatarData(linha.data_recomendada_compra)}</Td>
+                <Td>
+                  <StatusPill tone={RISCO_TONE[linha.risco]}>{RISCO_LABEL[linha.risco]}</StatusPill>
+                </Td>
               </tr>
-            </thead>
-            <tbody>
-              {mapa.map((linha) => (
-                <tr key={linha.item_id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{linha.item_codigo} — {linha.item_descricao}</td>
-                  <td style={tdStyle}>{linha.necessidade_aberta}</td>
-                  <td style={tdStyle}>{linha.saldo_disponivel}</td>
-                  <td style={tdStyle}>{linha.saldo_projetado}</td>
-                  <td style={tdStyle}>{formatarData(linha.data_necessaria_mais_proxima)}</td>
-                  <td style={tdStyle}>{linha.lead_time_dias}d</td>
-                  <td style={tdStyle}>{formatarData(linha.data_recomendada_compra)}</td>
-                  <td style={{ ...tdStyle, color: RISCO_COLOR[linha.risco], fontWeight: 600 }}>{RISCO_LABEL[linha.risco]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {mapa.length === 0 && <p style={hintStyle}>Nenhuma necessidade aberta no momento.</p>}
-        </div>
+            ))}
+            {mapa.length === 0 && (
+              <tr>
+                <Td colSpan={8} className="text-text-muted">
+                  Nenhuma necessidade aberta no momento.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </DenseTable>
       </section>
 
       <section>
-        <h2 style={sectionTitleStyle}>Calendário de feriados</h2>
-        <p style={hintStyle}>Usado por &quot;Recomendação de compra&quot; acima — nunca recomenda comprar num fim de semana ou feriado.</p>
+        <h2 className="text-sm font-semibold text-text">Calendário de feriados</h2>
+        <p className="mt-1 text-xs text-text-muted">Usado por &quot;Recomendação de compra&quot; acima — nunca recomenda comprar num fim de semana ou feriado.</p>
 
         {canManage && (
-          <form action={upsertFeriadoAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-            <input name="data" type="date" required style={inputStyle} />
-            <input name="descricao" placeholder="descrição (opcional)" style={{ ...inputStyle, width: "180px" }} />
-            <button type="submit" style={buttonStyle}>
+          <form action={upsertFeriadoAction} className="my-3 flex flex-wrap items-center gap-1.5">
+            <Input name="data" type="date" required />
+            <Input name="descricao" placeholder="descrição (opcional)" className="w-44" />
+            <Button type="submit" variant="primary">
               Adicionar feriado
-            </button>
+            </Button>
           </form>
         )}
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-                <th style={thStyle}>Data</th>
-                <th style={thStyle}>Descrição</th>
-                {canManage && <th style={thStyle}></th>}
+        <DenseTable>
+          <thead>
+            <DenseTableHeaderRow>
+              <Th>Data</Th>
+              <Th>Descrição</Th>
+              {canManage && <Th />}
+            </DenseTableHeaderRow>
+          </thead>
+          <tbody>
+            {feriados.map((f) => (
+              <tr key={f.id}>
+                <Td>{formatarData(f.data)}</Td>
+                <Td>{f.descricao ?? "—"}</Td>
+                {canManage && (
+                  <Td>
+                    <form action={removerFeriadoAction}>
+                      <input type="hidden" name="id" value={f.id} />
+                      <Button type="submit" variant="danger" size="sm">
+                        Remover
+                      </Button>
+                    </form>
+                  </Td>
+                )}
               </tr>
-            </thead>
-            <tbody>
-              {feriados.map((f) => (
-                <tr key={f.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{formatarData(f.data)}</td>
-                  <td style={tdStyle}>{f.descricao ?? "—"}</td>
-                  {canManage && (
-                    <td style={tdStyle}>
-                      <form action={removerFeriadoAction}>
-                        <input type="hidden" name="id" value={f.id} />
-                        <button type="submit" style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
-                          Remover
-                        </button>
-                      </form>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {feriados.length === 0 && <p style={hintStyle}>Nenhum feriado cadastrado.</p>}
-        </div>
+            ))}
+            {feriados.length === 0 && (
+              <tr>
+                <Td colSpan={canManage ? 3 : 2} className="text-text-muted">
+                  Nenhum feriado cadastrado.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </DenseTable>
       </section>
     </div>
   );

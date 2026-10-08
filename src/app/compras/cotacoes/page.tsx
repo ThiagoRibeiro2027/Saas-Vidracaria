@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import CotacoesSection from "./CotacoesSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 // TÓPICO 7 — Compras, Fase 5 da ADR-011: cotação, negociação, histórico
 // de preços, custo total de aquisição e alçada de aprovação (§17-§23).
@@ -19,13 +21,9 @@ export default async function CotacoesPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar cotações desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar cotações desta empresa." />
+      </div>
     );
   }
 
@@ -69,64 +67,36 @@ export default async function CotacoesPage() {
   const meusRoleIds = new Set((userRoles ?? []).filter((ur) => ur.profile_id === meuId).map((ur) => ur.role_id));
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 5 da ADR-011)</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Cotações, negociação e alçada</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
+    <>
+      <PageHeader breadcrumb={["Compras"]} title="Cotações" />
+      <div className="mx-auto max-w-7xl p-6">
+        <p className="text-sm text-text">
           Custo total por proposta (preço − desconto + impostos + frete, por unidade) é só um
           apoio: qualquer proposta pode ser escolhida, sempre com justificativa. Ao concluir a
           seleção, a cotação passa pela alçada configurada abaixo (múltiplas etapas por valor).{" "}
           <Link href="/compras/solicitacoes">← Voltar para Solicitações</Link>
         </p>
 
-        <CotacoesSection
-          cotacoes={cotacoes ?? []}
-          cotacaoItens={cotacaoItens ?? []}
-          propostas={propostas ?? []}
-          negociacoes={negociacoes ?? []}
-          selecoes={selecoes ?? []}
-          solicitacoes={solicitacoes ?? []}
-          solicitacaoItens={solicitacaoItens ?? []}
-          itens={itens ?? []}
-          fornecedores={fornecedoresAtivos}
-          aprovacoes={aprovacoes ?? []}
-          aprovacaoEtapas={aprovacaoEtapas ?? []}
-          alcadas={alcadas ?? []}
-          roles={roles ?? []}
-          meusRoleIds={meusRoleIds}
-          canManage={!!canManage}
-        />
+        <div className="mt-6">
+          <CotacoesSection
+            cotacoes={cotacoes ?? []}
+            cotacaoItens={cotacaoItens ?? []}
+            propostas={propostas ?? []}
+            negociacoes={negociacoes ?? []}
+            selecoes={selecoes ?? []}
+            solicitacoes={solicitacoes ?? []}
+            solicitacaoItens={solicitacaoItens ?? []}
+            itens={itens ?? []}
+            fornecedores={fornecedoresAtivos}
+            aprovacoes={aprovacoes ?? []}
+            aprovacaoEtapas={aprovacaoEtapas ?? []}
+            alcadas={alcadas ?? []}
+            roles={roles ?? []}
+            meusRoleIds={meusRoleIds}
+            canManage={!!canManage}
+          />
+        </div>
       </div>
-    </main>
+    </>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "1040px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

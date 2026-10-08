@@ -1,7 +1,11 @@
 "use client";
 
 import { upsertCriterioAvaliacaoFornecedorAction, avaliarFornecedorAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { formatarData } from "@/lib/formato/data";
 
 const CRITERIOS = [
@@ -47,18 +51,18 @@ export default function FornecedoresComprasSection({
   const pesoPorChave = new Map(criterios.map((c) => [c.chave, Number(c.peso)]));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+    <div className="flex flex-col gap-7">
       <section>
-        <h2 style={sectionTitleStyle}>Pesos dos critérios de avaliação (§35)</h2>
-        <p style={hintStyle}>Sem configuração, cada critério usa o default de 20% (soma 100%).</p>
+        <h2 className="text-sm font-semibold text-text">Pesos dos critérios de avaliação (§35)</h2>
+        <p className="mt-1 text-xs text-text-muted">Sem configuração, cada critério usa o default de 20% (soma 100%).</p>
         {canManage && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+          <div className="mt-2 flex flex-wrap gap-3">
             {CRITERIOS.map(([chave, label]) => (
-              <form key={chave} action={upsertCriterioAvaliacaoFornecedorAction} style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+              <form key={chave} action={upsertCriterioAvaliacaoFornecedorAction} className="flex items-center gap-1">
                 <input type="hidden" name="chave" value={chave} />
-                <label style={{ fontSize: "12px", color: "#3e4d49" }}>{label}</label>
-                <input name="peso" type="number" min="0" step="0.01" defaultValue={pesoPorChave.get(chave) ?? PESO_DEFAULT} style={{ ...inputStyle, width: "60px" }} />
-                <button type="submit" style={buttonStyle}>Salvar</button>
+                <label className="text-xs text-text">{label}</label>
+                <Input name="peso" type="number" min="0" step="0.01" defaultValue={pesoPorChave.get(chave) ?? PESO_DEFAULT} className="w-16" />
+                <Button type="submit" variant="primary" size="sm">Salvar</Button>
               </form>
             ))}
           </div>
@@ -66,88 +70,92 @@ export default function FornecedoresComprasSection({
       </section>
 
       <section>
-        <h2 style={sectionTitleStyle}>Avaliar fornecedor</h2>
+        <h2 className="text-sm font-semibold text-text">Avaliar fornecedor</h2>
         {canManage && (
-          <form action={avaliarFornecedorAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-            <select name="pessoa_id" required style={inputStyle}>
+          <form action={avaliarFornecedorAction} className="my-3 flex flex-wrap items-center gap-1.5">
+            <Select name="pessoa_id" required>
               <option value="">fornecedor…</option>
               {fornecedores.map((f) => (
                 <option key={f.id} value={f.id}>{f.nome_fantasia || f.nome}</option>
               ))}
-            </select>
-            <input name="periodo_inicio" type="date" required style={inputStyle} />
-            <input name="periodo_fim" type="date" required style={inputStyle} />
-            <button type="submit" style={buttonStyle}>Avaliar</button>
+            </Select>
+            <Input name="periodo_inicio" type="date" required />
+            <Input name="periodo_fim" type="date" required />
+            <Button type="submit" variant="primary">Avaliar</Button>
           </form>
         )}
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-                <th style={thStyle}>Fornecedor</th>
-                <th style={thStyle}>Período</th>
-                <th style={thStyle}>Score</th>
-                <th style={thStyle}>Detalhamento</th>
+        <DenseTable>
+          <thead>
+            <DenseTableHeaderRow>
+              <Th>Fornecedor</Th>
+              <Th>Período</Th>
+              <Th>Score</Th>
+              <Th>Detalhamento</Th>
+            </DenseTableHeaderRow>
+          </thead>
+          <tbody>
+            {avaliacoes.map((a) => (
+              <tr key={a.id}>
+                <Td>{nomeFornecedor(fornecedores, a.pessoa_id)}</Td>
+                <Td>
+                  {formatarData(a.periodo_inicio)} — {formatarData(a.periodo_fim)}
+                </Td>
+                <Td className="font-semibold">{a.score !== null ? Number(a.score).toFixed(2) : "sem dado"}</Td>
+                <Td>
+                  {Object.entries(a.detalhamento).map(([chave, v]) => (
+                    <span key={chave} className="mr-2 text-text-muted">
+                      {chave}: {v.score !== null ? Number(v.score).toFixed(0) : "—"} (peso {v.peso})
+                    </span>
+                  ))}
+                </Td>
               </tr>
-            </thead>
-            <tbody>
-              {avaliacoes.map((a) => (
-                <tr key={a.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{nomeFornecedor(fornecedores, a.pessoa_id)}</td>
-                  <td style={tdStyle}>
-                    {formatarData(a.periodo_inicio)} — {formatarData(a.periodo_fim)}
-                  </td>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>{a.score !== null ? Number(a.score).toFixed(2) : "sem dado"}</td>
-                  <td style={tdStyle}>
-                    {Object.entries(a.detalhamento).map(([chave, v]) => (
-                      <span key={chave} style={{ marginRight: "8px", color: "#6b7a75" }}>
-                        {chave}: {v.score !== null ? Number(v.score).toFixed(0) : "—"} (peso {v.peso})
-                      </span>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {avaliacoes.length === 0 && <p style={hintStyle}>Nenhuma avaliação registrada ainda.</p>}
-        </div>
+            ))}
+            {avaliacoes.length === 0 && (
+              <tr>
+                <Td colSpan={4} className="text-text-muted">
+                  Nenhuma avaliação registrada ainda.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </DenseTable>
       </section>
 
       <section>
-        <h2 style={sectionTitleStyle}>Compras emergenciais (§32)</h2>
-        <p style={hintStyle}>Criação de compra emergencial fica em Solicitações de compra.</p>
+        <h2 className="text-sm font-semibold text-text">Compras emergenciais (§32)</h2>
+        <p className="mt-1 text-xs text-text-muted">Criação de compra emergencial fica em Solicitações de compra.</p>
 
-        <p style={{ fontSize: "12px", fontWeight: 600, margin: "6px 0 2px" }}>Solicitações de compra emergenciais</p>
+        <p className="mb-0.5 mt-2 text-xs font-semibold text-text">Solicitações de compra emergenciais</p>
         {solicitacoesEmergenciais.map((sc) => (
-          <div key={sc.id} style={{ fontSize: "12px", marginBottom: "4px" }}>
-            <strong>{sc.numero}</strong> — {sc.status} — {sc.emergencial_motivo} ({sc.emergencial_impacto})
+          <div key={sc.id} className="mb-1 text-xs text-text-muted">
+            <strong className="text-text">{sc.numero}</strong> — {sc.status} — {sc.emergencial_motivo} ({sc.emergencial_impacto})
           </div>
         ))}
-        {solicitacoesEmergenciais.length === 0 && <p style={hintStyle}>Nenhuma SC emergencial registrada.</p>}
+        {solicitacoesEmergenciais.length === 0 && <p className="text-xs text-text-muted">Nenhuma SC emergencial registrada.</p>}
 
-        <p style={{ fontSize: "12px", fontWeight: 600, margin: "10px 0 2px" }}>Pedidos de compra emergenciais</p>
+        <p className="mb-0.5 mt-2.5 text-xs font-semibold text-text">Pedidos de compra emergenciais</p>
         {pedidosEmergenciais.map((pc) => (
-          <div key={pc.id} style={{ fontSize: "12px", marginBottom: "4px" }}>
-            <strong>{pc.numero}</strong> — {pc.status} — fornecedor {nomeFornecedor(fornecedores, pc.pessoa_id)}
+          <div key={pc.id} className="mb-1 text-xs text-text-muted">
+            <strong className="text-text">{pc.numero}</strong> — {pc.status} — fornecedor {nomeFornecedor(fornecedores, pc.pessoa_id)}
           </div>
         ))}
-        {pedidosEmergenciais.length === 0 && <p style={hintStyle}>Nenhum PC emergencial gerado ainda.</p>}
+        {pedidosEmergenciais.length === 0 && <p className="text-xs text-text-muted">Nenhum PC emergencial gerado ainda.</p>}
       </section>
 
       <section>
-        <h2 style={sectionTitleStyle}>Rastreabilidade (§39)</h2>
-        <p style={hintStyle}>Consulta pontual pelo id — necessidade→SC→cotação→negociação→aprovação→PC→recebimento→estoque, ou o caminho inverso a partir de uma movimentação.</p>
+        <h2 className="text-sm font-semibold text-text">Rastreabilidade (§39)</h2>
+        <p className="mt-1 text-xs text-text-muted">Consulta pontual pelo id — necessidade→SC→cotação→negociação→aprovação→PC→recebimento→estoque, ou o caminho inverso a partir de uma movimentação.</p>
 
-        <form method="get" style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-          <input name="necessidade_id" placeholder="id da necessidade de compra" style={{ ...inputStyle, width: "300px" }} />
-          <button type="submit" style={buttonStyle}>Rastrear necessidade</button>
+        <form method="get" className="my-3 flex items-center gap-1.5">
+          <Input name="necessidade_id" placeholder="id da necessidade de compra" className="w-72" />
+          <Button type="submit" variant="primary">Rastrear necessidade</Button>
         </form>
         {rastreioNecessidade && <RastreioResultado rastreio={rastreioNecessidade} />}
 
-        <form method="get" style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "10px", marginBottom: "10px" }}>
-          <input name="movimentacao_id" placeholder="id da movimentação de estoque" style={{ ...inputStyle, width: "300px" }} />
-          <button type="submit" style={buttonStyle}>Rastrear material (reverso)</button>
+        <form method="get" className="my-3 flex items-center gap-1.5">
+          <Input name="movimentacao_id" placeholder="id da movimentação de estoque" className="w-72" />
+          <Button type="submit" variant="primary">Rastrear material (reverso)</Button>
         </form>
         {rastreioMaterial && <RastreioResultado rastreio={rastreioMaterial} />}
       </section>
@@ -157,10 +165,10 @@ export default function FornecedoresComprasSection({
 
 function RastreioResultado({ rastreio }: { rastreio: { ok: boolean; data: unknown } }) {
   if (!rastreio.ok) {
-    return <p style={{ fontSize: "12px", color: "#9b2c2c" }}>{String(rastreio.data)}</p>;
+    return <p className="text-xs text-danger">{String(rastreio.data)}</p>;
   }
   return (
-    <pre style={{ fontSize: "11px", background: "#f5f7f5", padding: "10px", borderRadius: "4px", overflowX: "auto", maxHeight: "360px" }}>
+    <pre className="max-h-[360px] overflow-x-auto rounded-md bg-page-bg p-2.5 text-[11px] text-text">
       {JSON.stringify(rastreio.data, null, 2)}
     </pre>
   );

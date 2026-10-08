@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import RecebimentosComprasSection from "./RecebimentosComprasSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 // TÓPICO 7 — Compras, Fase 7 da ADR-011 (docs/ADR-011 — Compras v1.0.md):
 // Recebimento completo, conferência/qualidade, lote, divergência, devolução
@@ -20,13 +22,9 @@ export default async function RecebimentosComprasPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar recebimentos de compra desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar recebimentos de compra desta empresa." />
+      </div>
     );
   }
 
@@ -53,59 +51,31 @@ export default async function RecebimentosComprasPage() {
   ]);
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 7 da ADR-011)</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Recebimento, conferência e devoluções</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
+    <>
+      <PageHeader breadcrumb={["Compras"]} title="Recebimentos" />
+      <div className="mx-auto max-w-7xl p-6">
+        <p className="text-sm text-text">
           Recebimento parcial/múltiplo contra um pedido de compra emitido/confirmado. A entrada em
           estoque só acontece ao finalizar a conferência — divergências abertas bloqueiam a
           finalização. Devolução só é possível sobre item já conferido (já entrou em estoque).{" "}
           <Link href="/compras/pedidos">← Voltar para Pedidos</Link>
         </p>
 
-        <RecebimentosComprasSection
-          pedidosCompra={pedidosCompra ?? []}
-          pedidoItens={pedidoItens ?? []}
-          recebimentos={recebimentos ?? []}
-          recebimentoItens={recebimentoItens ?? []}
-          lotes={lotes ?? []}
-          divergencias={divergencias ?? []}
-          devolucoes={devolucoes ?? []}
-          itens={itens ?? []}
-          pessoas={pessoas ?? []}
-          canManage={!!canManage}
-        />
+        <div className="mt-6">
+          <RecebimentosComprasSection
+            pedidosCompra={pedidosCompra ?? []}
+            pedidoItens={pedidoItens ?? []}
+            recebimentos={recebimentos ?? []}
+            recebimentoItens={recebimentoItens ?? []}
+            lotes={lotes ?? []}
+            divergencias={divergencias ?? []}
+            devolucoes={devolucoes ?? []}
+            itens={itens ?? []}
+            pessoas={pessoas ?? []}
+            canManage={!!canManage}
+          />
+        </div>
       </div>
-    </main>
+    </>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "1080px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

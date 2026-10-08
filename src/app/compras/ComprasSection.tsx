@@ -11,10 +11,11 @@ import {
   criarFornecedorAction,
   atualizarIdentidadeFornecedorAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "../configuracoes/styles";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 const TIPOS_POLITICA = [
   ["sob_demanda", "Sob demanda"],
@@ -104,7 +105,7 @@ export default function ComprasSection({
   const dadosPorPessoa = new Map(fornecedorDados.map((f) => [f.pessoa_id, f]));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+    <div className="flex flex-col gap-7">
       <FornecedoresSubsecao fornecedores={fornecedores} dadosPorPessoa={dadosPorPessoa} canManage={canManage} canManagePessoas={canManagePessoas} />
       <ItemFornecedoresSubsecao
         itens={itens}
@@ -135,14 +136,14 @@ function FornecedoresSubsecao({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Fornecedores</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Fornecedores</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Cadastre o fornecedor abaixo — identidade (nome, documento, contato, endereço) e, na
         própria linha, prazo de pagamento, lead time, dados bancários e condições padrão.
       </p>
 
       {canManagePessoas && (
-        <div style={{ marginBottom: "12px" }}>
+        <div className="my-3">
           {criando ? (
             <NovoFornecedorForm onSubmit={() => setCriando(false)} onCancel={() => setCriando(false)} />
           ) : (
@@ -153,29 +154,31 @@ function FornecedoresSubsecao({
         </div>
       )}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Fornecedor</th>
-              <th style={thStyle}>Prazo pgto.</th>
-              <th style={thStyle}>Lead time</th>
-              <th style={thStyle}>Dados bancários</th>
-              <th style={thStyle}>Homologado</th>
-              {(canManage || canManagePessoas) && <th style={thStyle}></th>}
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Fornecedor</Th>
+            <Th>Prazo pgto.</Th>
+            <Th>Lead time</Th>
+            <Th>Dados bancários</Th>
+            <Th>Homologado</Th>
+            {(canManage || canManagePessoas) && <Th />}
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {fornecedores.map((f) => {
+            const dados = dadosPorPessoa.get(f.id);
+            return <FornecedorRow key={f.id} pessoa={f} dados={dados} canManage={canManage} canManagePessoas={canManagePessoas} />;
+          })}
+          {fornecedores.length === 0 && (
+            <tr>
+              <Td colSpan={canManage || canManagePessoas ? 6 : 5} className="text-text-muted">
+                Nenhum fornecedor cadastrado ainda.
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {fornecedores.map((f) => {
-              const dados = dadosPorPessoa.get(f.id);
-              return <FornecedorRow key={f.id} pessoa={f} dados={dados} canManage={canManage} canManagePessoas={canManagePessoas} />;
-            })}
-          </tbody>
-        </table>
-        {fornecedores.length === 0 && (
-          <p style={hintStyle}>Nenhum fornecedor cadastrado ainda.</p>
-        )}
-      </div>
+          )}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }
@@ -230,8 +233,8 @@ function FornecedorRow({
 
   if (editandoIdentidade) {
     return (
-      <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-        <td style={tdStyle} colSpan={canManage || canManagePessoas ? 6 : 5}>
+      <tr>
+        <Td colSpan={canManage || canManagePessoas ? 6 : 5}>
           <form action={atualizarIdentidadeFornecedorAction} onSubmit={() => setEditandoIdentidade(false)} className="flex flex-wrap items-center gap-1.5">
             <input type="hidden" name="id" value={pessoa.id} />
             <Select name="tipo_documento" defaultValue={pessoa.tipo_documento ?? ""}>
@@ -255,69 +258,65 @@ function FornecedorRow({
               Cancelar
             </Button>
           </form>
-        </td>
+        </Td>
       </tr>
     );
   }
 
   if (editando) {
     return (
-      <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-        <td style={tdStyle} colSpan={canManage ? 6 : 5}>
-          <form
-            action={upsertFornecedorDadosAction}
-            onSubmit={() => setEditando(false)}
-            style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}
-          >
+      <tr>
+        <Td colSpan={canManage ? 6 : 5}>
+          <form action={upsertFornecedorDadosAction} onSubmit={() => setEditando(false)} className="flex flex-wrap items-center gap-1.5">
             <input type="hidden" name="pessoa_id" value={pessoa.id} />
-            <span>{pessoa.nome_fantasia || pessoa.nome}</span>
-            <input name="prazo_pagamento_dias" type="number" min="0" step="1" placeholder="prazo (dias)" defaultValue={dados?.prazo_pagamento_dias ?? ""} style={{ ...inputStyle, width: "90px" }} />
-            <input name="lead_time_dias" type="number" min="0" step="1" placeholder="lead time (dias)" defaultValue={dados?.lead_time_dias ?? ""} style={{ ...inputStyle, width: "110px" }} />
-            <input name="banco" placeholder="banco" defaultValue={dados?.banco ?? ""} style={{ ...inputStyle, width: "90px" }} />
-            <input name="agencia" placeholder="agência" defaultValue={dados?.agencia ?? ""} style={{ ...inputStyle, width: "70px" }} />
-            <input name="conta" placeholder="conta" defaultValue={dados?.conta ?? ""} style={{ ...inputStyle, width: "90px" }} />
-            <select name="tipo_conta" defaultValue={dados?.tipo_conta ?? ""} style={inputStyle}>
+            <span className="text-xs text-text">{pessoa.nome_fantasia || pessoa.nome}</span>
+            <Input name="prazo_pagamento_dias" type="number" min="0" step="1" placeholder="prazo (dias)" defaultValue={dados?.prazo_pagamento_dias ?? ""} className="w-[90px]" />
+            <Input name="lead_time_dias" type="number" min="0" step="1" placeholder="lead time (dias)" defaultValue={dados?.lead_time_dias ?? ""} className="w-[110px]" />
+            <Input name="banco" placeholder="banco" defaultValue={dados?.banco ?? ""} className="w-[90px]" />
+            <Input name="agencia" placeholder="agência" defaultValue={dados?.agencia ?? ""} className="w-[70px]" />
+            <Input name="conta" placeholder="conta" defaultValue={dados?.conta ?? ""} className="w-[90px]" />
+            <Select name="tipo_conta" defaultValue={dados?.tipo_conta ?? ""}>
               <option value="">tipo conta…</option>
               <option value="corrente">Corrente</option>
               <option value="poupanca">Poupança</option>
-            </select>
-            <input name="chave_pix" placeholder="chave PIX" defaultValue={dados?.chave_pix ?? ""} style={{ ...inputStyle, width: "110px" }} />
-            <input name="condicoes_padrao" placeholder="condições padrão" defaultValue={dados?.condicoes_padrao ?? ""} style={{ ...inputStyle, width: "140px" }} />
-            <label style={labelStyle}>
-              <input type="checkbox" name="homologado" defaultChecked={dados?.homologado ?? false} /> homologado
+            </Select>
+            <Input name="chave_pix" placeholder="chave PIX" defaultValue={dados?.chave_pix ?? ""} className="w-[110px]" />
+            <Input name="condicoes_padrao" placeholder="condições padrão" defaultValue={dados?.condicoes_padrao ?? ""} className="w-[140px]" />
+            <label className="flex items-center gap-1 text-xs text-text-muted">
+              <input type="checkbox" name="homologado" defaultChecked={dados?.homologado ?? false} className="accent-primary" /> homologado
             </label>
-            <button type="submit" style={buttonStyle}>
+            <Button type="submit" variant="primary">
               Salvar
-            </button>
-            <button type="button" onClick={() => setEditando(false)} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setEditando(false)}>
               Cancelar
-            </button>
+            </Button>
           </form>
-        </td>
+        </Td>
       </tr>
     );
   }
 
   return (
-    <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-      <td style={tdStyle}>{pessoa.nome_fantasia || pessoa.nome}</td>
-      <td style={tdStyle}>{dados?.prazo_pagamento_dias != null ? `${dados.prazo_pagamento_dias}d` : "—"}</td>
-      <td style={tdStyle}>{dados?.lead_time_dias != null ? `${dados.lead_time_dias}d` : "—"}</td>
-      <td style={tdStyle}>{dados?.banco ? `${dados.banco} ag.${dados.agencia ?? "—"} cc.${dados.conta ?? "—"}` : dados?.chave_pix ? `PIX: ${dados.chave_pix}` : "—"}</td>
-      <td style={tdStyle}>{dados?.homologado ? "Sim" : "Não"}</td>
+    <tr>
+      <Td>{pessoa.nome_fantasia || pessoa.nome}</Td>
+      <Td>{dados?.prazo_pagamento_dias != null ? `${dados.prazo_pagamento_dias}d` : "—"}</Td>
+      <Td>{dados?.lead_time_dias != null ? `${dados.lead_time_dias}d` : "—"}</Td>
+      <Td>{dados?.banco ? `${dados.banco} ag.${dados.agencia ?? "—"} cc.${dados.conta ?? "—"}` : dados?.chave_pix ? `PIX: ${dados.chave_pix}` : "—"}</Td>
+      <Td>{dados?.homologado ? "Sim" : "Não"}</Td>
       {(canManage || canManagePessoas) && (
-        <td style={{ ...tdStyle, display: "flex", gap: "6px" }}>
+        <Td className="flex gap-1.5">
           {canManage && (
-            <button onClick={() => setEditando(true)} style={buttonStyle}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(true)}>
               {dados ? "Editar" : "Cadastrar dados"}
-            </button>
+            </Button>
           )}
           {canManagePessoas && (
-            <button onClick={() => setEditandoIdentidade(true)} style={{ ...buttonStyle, background: "#fff", color: "#3e4d49", border: "1px solid #dae2de" }}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditandoIdentidade(true)}>
               Editar identidade
-            </button>
+            </Button>
           )}
-        </td>
+        </Td>
       )}
     </tr>
   );
@@ -340,88 +339,92 @@ function ItemFornecedoresSubsecao({
 }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Fornecedores por item</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Fornecedores por item</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Fornecedor principal e alternativos por material, com prioridade, homologação e preço de
         referência. No máximo um principal por item.
       </p>
 
       {canManage && (
-        <form action={upsertItemFornecedorAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-          <select name="item_id" required style={inputStyle}>
+        <form action={upsertItemFornecedorAction} className="my-3 flex flex-wrap items-center gap-1.5">
+          <Select name="item_id" required>
             <option value="">item…</option>
             {itens.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.codigo} — {i.descricao}
               </option>
             ))}
-          </select>
-          <select name="pessoa_id" required style={inputStyle}>
+          </Select>
+          <Select name="pessoa_id" required>
             <option value="">fornecedor…</option>
             {fornecedores.map((f) => (
               <option key={f.id} value={f.id}>
                 {f.nome_fantasia || f.nome}
               </option>
             ))}
-          </select>
-          <input name="prioridade" type="number" min="1" step="1" placeholder="prioridade" defaultValue={100} style={{ ...inputStyle, width: "80px" }} />
-          <input name="preco_referencia" type="number" min="0" step="0.0001" placeholder="preço ref." style={{ ...inputStyle, width: "100px" }} />
-          <input name="condicoes" placeholder="condições" style={{ ...inputStyle, width: "140px" }} />
-          <label style={labelStyle}>
-            <input type="checkbox" name="homologado" /> homologado
+          </Select>
+          <Input name="prioridade" type="number" min="1" step="1" placeholder="prioridade" defaultValue={100} className="w-20" />
+          <Input name="preco_referencia" type="number" min="0" step="0.0001" placeholder="preço ref." className="w-24" />
+          <Input name="condicoes" placeholder="condições" className="w-[140px]" />
+          <label className="flex items-center gap-1 text-xs text-text-muted">
+            <input type="checkbox" name="homologado" className="accent-primary" /> homologado
           </label>
-          <button type="submit" style={buttonStyle}>
+          <Button type="submit" variant="primary">
             Associar
-          </button>
+          </Button>
         </form>
       )}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Item</th>
-              <th style={thStyle}>Fornecedor</th>
-              <th style={thStyle}>Prioridade</th>
-              <th style={thStyle}>Preço ref.</th>
-              <th style={thStyle}>Homologado</th>
-              <th style={thStyle}>Principal</th>
-              {canManage && <th style={thStyle}></th>}
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Item</Th>
+            <Th>Fornecedor</Th>
+            <Th>Prioridade</Th>
+            <Th>Preço ref.</Th>
+            <Th>Homologado</Th>
+            <Th>Principal</Th>
+            {canManage && <Th />}
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const item = itemPorId.get(row.item_id);
+            const pessoa = pessoaPorId.get(row.pessoa_id);
+            return (
+              <tr key={row.id}>
+                <Td>{item ? `${item.codigo} — ${item.descricao}` : row.item_id}</Td>
+                <Td>{pessoa ? pessoa.nome_fantasia || pessoa.nome : row.pessoa_id}</Td>
+                <Td>{row.prioridade}</Td>
+                <Td>{row.preco_referencia ?? "—"}</Td>
+                <Td>{row.homologado ? "Sim" : "Não"}</Td>
+                <Td>
+                  {row.principal ? (
+                    "★ Principal"
+                  ) : canManage ? (
+                    <form action={definirFornecedorPrincipalAction}>
+                      <input type="hidden" name="item_id" value={row.item_id} />
+                      <input type="hidden" name="pessoa_id" value={row.pessoa_id} />
+                      <Button type="submit" variant="secondary" size="sm">
+                        Tornar principal
+                      </Button>
+                    </form>
+                  ) : (
+                    "—"
+                  )}
+                </Td>
+              </tr>
+            );
+          })}
+          {rows.length === 0 && (
+            <tr>
+              <Td colSpan={canManage ? 7 : 6} className="text-text-muted">
+                Nenhum fornecedor associado a item ainda.
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const item = itemPorId.get(row.item_id);
-              const pessoa = pessoaPorId.get(row.pessoa_id);
-              return (
-                <tr key={row.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{item ? `${item.codigo} — ${item.descricao}` : row.item_id}</td>
-                  <td style={tdStyle}>{pessoa ? pessoa.nome_fantasia || pessoa.nome : row.pessoa_id}</td>
-                  <td style={tdStyle}>{row.prioridade}</td>
-                  <td style={tdStyle}>{row.preco_referencia ?? "—"}</td>
-                  <td style={tdStyle}>{row.homologado ? "Sim" : "Não"}</td>
-                  <td style={tdStyle}>
-                    {row.principal ? (
-                      "★ Principal"
-                    ) : canManage ? (
-                      <form action={definirFornecedorPrincipalAction}>
-                        <input type="hidden" name="item_id" value={row.item_id} />
-                        <input type="hidden" name="pessoa_id" value={row.pessoa_id} />
-                        <button type="submit" style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #dae2de" }}>
-                          Tornar principal
-                        </button>
-                      </form>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {rows.length === 0 && <p style={hintStyle}>Nenhum fornecedor associado a item ainda.</p>}
-      </div>
+          )}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }
@@ -439,78 +442,82 @@ function MateriaisAlternativosSubsecao({
 }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Materiais alternativos</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Materiais alternativos</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Equivalência entre dois materiais. &quot;Exige aprovação&quot; marca se o uso do alternativo
         precisa de decisão humana antes de substituir o item de origem numa compra.
       </p>
 
       {canManage && (
-        <form action={upsertItemMaterialAlternativoAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-          <select name="item_origem_id" required style={inputStyle}>
+        <form action={upsertItemMaterialAlternativoAction} className="my-3 flex flex-wrap items-center gap-1.5">
+          <Select name="item_origem_id" required>
             <option value="">item de origem…</option>
             {itens.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.codigo} — {i.descricao}
               </option>
             ))}
-          </select>
-          <select name="item_equivalente_id" required style={inputStyle}>
+          </Select>
+          <Select name="item_equivalente_id" required>
             <option value="">item equivalente…</option>
             {itens.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.codigo} — {i.descricao}
               </option>
             ))}
-          </select>
-          <input name="regra_substituicao" placeholder="regra (opcional)" style={{ ...inputStyle, width: "160px" }} />
-          <label style={labelStyle}>
-            <input type="checkbox" name="exige_aprovacao" defaultChecked /> exige aprovação
+          </Select>
+          <Input name="regra_substituicao" placeholder="regra (opcional)" className="w-40" />
+          <label className="flex items-center gap-1 text-xs text-text-muted">
+            <input type="checkbox" name="exige_aprovacao" defaultChecked className="accent-primary" /> exige aprovação
           </label>
-          <button type="submit" style={buttonStyle}>
+          <Button type="submit" variant="primary">
             Registrar
-          </button>
+          </Button>
         </form>
       )}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Item de origem</th>
-              <th style={thStyle}>Item equivalente</th>
-              <th style={thStyle}>Exige aprovação</th>
-              <th style={thStyle}>Regra</th>
-              {canManage && <th style={thStyle}></th>}
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Item de origem</Th>
+            <Th>Item equivalente</Th>
+            <Th>Exige aprovação</Th>
+            <Th>Regra</Th>
+            {canManage && <Th />}
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const origem = itemPorId.get(row.item_origem_id);
+            const equivalente = itemPorId.get(row.item_equivalente_id);
+            return (
+              <tr key={row.id}>
+                <Td>{origem ? `${origem.codigo} — ${origem.descricao}` : row.item_origem_id}</Td>
+                <Td>{equivalente ? `${equivalente.codigo} — ${equivalente.descricao}` : row.item_equivalente_id}</Td>
+                <Td>{row.exige_aprovacao ? "Sim" : "Não"}</Td>
+                <Td>{row.regra_substituicao ?? "—"}</Td>
+                {canManage && (
+                  <Td>
+                    <form action={desativarItemMaterialAlternativoAction}>
+                      <input type="hidden" name="id" value={row.id} />
+                      <Button type="submit" variant="danger" size="sm">
+                        Desativar
+                      </Button>
+                    </form>
+                  </Td>
+                )}
+              </tr>
+            );
+          })}
+          {rows.length === 0 && (
+            <tr>
+              <Td colSpan={canManage ? 5 : 4} className="text-text-muted">
+                Nenhum material alternativo ativo ainda.
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const origem = itemPorId.get(row.item_origem_id);
-              const equivalente = itemPorId.get(row.item_equivalente_id);
-              return (
-                <tr key={row.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{origem ? `${origem.codigo} — ${origem.descricao}` : row.item_origem_id}</td>
-                  <td style={tdStyle}>{equivalente ? `${equivalente.codigo} — ${equivalente.descricao}` : row.item_equivalente_id}</td>
-                  <td style={tdStyle}>{row.exige_aprovacao ? "Sim" : "Não"}</td>
-                  <td style={tdStyle}>{row.regra_substituicao ?? "—"}</td>
-                  {canManage && (
-                    <td style={tdStyle}>
-                      <form action={desativarItemMaterialAlternativoAction}>
-                        <input type="hidden" name="id" value={row.id} />
-                        <button type="submit" style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
-                          Desativar
-                        </button>
-                      </form>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {rows.length === 0 && <p style={hintStyle}>Nenhum material alternativo ativo ainda.</p>}
-      </div>
+          )}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }
@@ -532,82 +539,88 @@ function PoliticasSubsecao({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Políticas de abastecimento</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Políticas de abastecimento</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Uma política por item: estoque mínimo, segurança, ponto de reposição, lote mínimo/econômico
         e múltiplo. Consumida pelo Motor de Necessidades (Fase 3 da ADR-011 — ainda não implementada).
       </p>
 
       {canManage && (
-        <form action={upsertPoliticaAbastecimentoAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-          <select name="item_id" required style={inputStyle}>
+        <form action={upsertPoliticaAbastecimentoAction} className="my-3 flex flex-wrap items-center gap-1.5">
+          <Select name="item_id" required>
             <option value="">item…</option>
             {itens.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.codigo} — {i.descricao}
               </option>
             ))}
-          </select>
-          <select name="tipo" defaultValue="sob_demanda" style={inputStyle}>
+          </Select>
+          <Select name="tipo" defaultValue="sob_demanda">
             {TIPOS_POLITICA.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
-          </select>
-          <input name="estoque_minimo" type="number" min="0" step="0.0001" placeholder="estoque mín." style={{ ...inputStyle, width: "90px" }} />
-          <input name="estoque_seguranca" type="number" min="0" step="0.0001" placeholder="segurança" style={{ ...inputStyle, width: "90px" }} />
-          <input name="ponto_reposicao" type="number" min="0" step="0.0001" placeholder="ponto repos." style={{ ...inputStyle, width: "100px" }} />
-          <input name="lote_minimo" type="number" min="0" step="0.0001" placeholder="lote mín." style={{ ...inputStyle, width: "90px" }} />
-          <input name="lote_economico" type="number" min="0" step="0.0001" placeholder="lote econ." style={{ ...inputStyle, width: "90px" }} />
-          <input name="multiplo" type="number" min="0" step="0.0001" placeholder="múltiplo" style={{ ...inputStyle, width: "80px" }} />
-          <select name="fornecedor_preferencial_id" style={inputStyle}>
+          </Select>
+          <Input name="estoque_minimo" type="number" min="0" step="0.0001" placeholder="estoque mín." className="w-[90px]" />
+          <Input name="estoque_seguranca" type="number" min="0" step="0.0001" placeholder="segurança" className="w-[90px]" />
+          <Input name="ponto_reposicao" type="number" min="0" step="0.0001" placeholder="ponto repos." className="w-[100px]" />
+          <Input name="lote_minimo" type="number" min="0" step="0.0001" placeholder="lote mín." className="w-[90px]" />
+          <Input name="lote_economico" type="number" min="0" step="0.0001" placeholder="lote econ." className="w-[90px]" />
+          <Input name="multiplo" type="number" min="0" step="0.0001" placeholder="múltiplo" className="w-20" />
+          <Select name="fornecedor_preferencial_id">
             <option value="">fornecedor preferencial…</option>
             {fornecedores.map((f) => (
               <option key={f.id} value={f.id}>
                 {f.nome_fantasia || f.nome}
               </option>
             ))}
-          </select>
-          <button type="submit" style={buttonStyle}>
+          </Select>
+          <Button type="submit" variant="primary">
             Salvar política
-          </button>
+          </Button>
         </form>
       )}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Item</th>
-              <th style={thStyle}>Tipo</th>
-              <th style={thStyle}>Mín.</th>
-              <th style={thStyle}>Segurança</th>
-              <th style={thStyle}>Reposição</th>
-              <th style={thStyle}>Fornecedor pref.</th>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Item</Th>
+            <Th>Tipo</Th>
+            <Th>Mín.</Th>
+            <Th>Segurança</Th>
+            <Th>Reposição</Th>
+            <Th>Fornecedor pref.</Th>
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {itens
+            .filter((i) => politicaPorItem.has(i.id))
+            .map((i) => {
+              const pol = politicaPorItem.get(i.id)!;
+              const pessoa = pol.fornecedor_preferencial_id ? pessoaPorId.get(pol.fornecedor_preferencial_id) : undefined;
+              return (
+                <tr key={pol.id}>
+                  <Td>
+                    {i.codigo} — {i.descricao}
+                  </Td>
+                  <Td>{TIPOS_POLITICA.find(([v]) => v === pol.tipo)?.[1] ?? pol.tipo}</Td>
+                  <Td>{pol.estoque_minimo ?? "—"}</Td>
+                  <Td>{pol.estoque_seguranca ?? "—"}</Td>
+                  <Td>{pol.ponto_reposicao ?? "—"}</Td>
+                  <Td>{pessoa ? pessoa.nome_fantasia || pessoa.nome : "—"}</Td>
+                </tr>
+              );
+            })}
+          {rows.length === 0 && (
+            <tr>
+              <Td colSpan={6} className="text-text-muted">
+                Nenhuma política de abastecimento configurada ainda.
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {itens
-              .filter((i) => politicaPorItem.has(i.id))
-              .map((i) => {
-                const pol = politicaPorItem.get(i.id)!;
-                const pessoa = pol.fornecedor_preferencial_id ? pessoaPorId.get(pol.fornecedor_preferencial_id) : undefined;
-                return (
-                  <tr key={pol.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                    <td style={tdStyle}>{i.codigo} — {i.descricao}</td>
-                    <td style={tdStyle}>{TIPOS_POLITICA.find(([v]) => v === pol.tipo)?.[1] ?? pol.tipo}</td>
-                    <td style={tdStyle}>{pol.estoque_minimo ?? "—"}</td>
-                    <td style={tdStyle}>{pol.estoque_seguranca ?? "—"}</td>
-                    <td style={tdStyle}>{pol.ponto_reposicao ?? "—"}</td>
-                    <td style={tdStyle}>{pessoa ? pessoa.nome_fantasia || pessoa.nome : "—"}</td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
-        {rows.length === 0 && <p style={hintStyle}>Nenhuma política de abastecimento configurada ainda.</p>}
-      </div>
+          )}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }

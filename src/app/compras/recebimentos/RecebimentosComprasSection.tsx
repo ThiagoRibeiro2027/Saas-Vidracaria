@@ -9,11 +9,19 @@ import {
   finalizarConferenciaRecebimentoAction,
   registrarDevolucaoCompraAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, labelStyle, buttonStyle } from "../../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { Card } from "@/components/ui/Card";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { formatarData } from "@/lib/formato/data";
 
 const STATUS_RECEBIMENTO_LABEL: Record<string, string> = { em_conferencia: "Em conferência", conferido: "Conferido", cancelado: "Cancelado" };
+const STATUS_RECEBIMENTO_TONE: Record<string, "warning" | "success" | "danger"> = { em_conferencia: "warning", conferido: "success", cancelado: "danger" };
 const STATUS_ITEM_LABEL: Record<string, string> = { pendente: "Pendente", quarentena: "Quarentena", conferido: "Conferido" };
+const STATUS_ITEM_TONE: Record<string, "neutral" | "warning" | "success"> = { pendente: "neutral", quarentena: "warning", conferido: "success" };
 const TIPO_DIVERGENCIA_LABEL: Record<string, string> = {
   quantidade_menor: "Quantidade a menor",
   quantidade_maior: "Quantidade a maior",
@@ -68,7 +76,7 @@ export default function RecebimentosComprasSection({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+    <div className="flex flex-col gap-7">
       {canManage && (
         <NovoRecebimentoForm
           pedidosCompra={pedidosCompra}
@@ -80,8 +88,8 @@ export default function RecebimentosComprasSection({
       )}
 
       <section>
-        <h2 style={sectionTitleStyle}>Recebimentos registrados</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <h2 className="text-sm font-semibold text-text">Recebimentos registrados</h2>
+        <div className="mt-3 flex flex-col gap-3">
           {recebimentos.map((r) => (
             <RecebimentoCard
               key={r.id}
@@ -95,7 +103,7 @@ export default function RecebimentosComprasSection({
               canManage={canManage}
             />
           ))}
-          {recebimentos.length === 0 && <p style={hintStyle}>Nenhum recebimento registrado ainda.</p>}
+          {recebimentos.length === 0 && <p className="text-xs text-text-muted">Nenhum recebimento registrado ainda.</p>}
         </div>
       </section>
     </div>
@@ -120,30 +128,30 @@ function NovoRecebimentoForm({
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Registrar recebimento</h2>
-      <form action={registrarRecebimentoPedidoCompraAction} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
-          <select name="pedido_compra_id" required value={pedidoCompraId} onChange={(e) => setPedidoCompraId(e.target.value)} style={inputStyle}>
+      <h2 className="text-sm font-semibold text-text">Registrar recebimento</h2>
+      <form action={registrarRecebimentoPedidoCompraAction} className="mt-2 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Select name="pedido_compra_id" required value={pedidoCompraId} onChange={(e) => setPedidoCompraId(e.target.value)}>
             <option value="">pedido de compra…</option>
             {pedidosCompra.map((pc) => (
               <option key={pc.id} value={pc.id}>
                 {pc.numero} — {pessoaPorId.get(pc.pessoa_id)?.nome_fantasia || pessoaPorId.get(pc.pessoa_id)?.nome || pc.pessoa_id}
               </option>
             ))}
-          </select>
-          <input name="numero_nf" placeholder="número da NF (opcional)" style={inputStyle} />
-          <input name="transportadora" placeholder="transportadora (opcional)" style={inputStyle} />
+          </Select>
+          <Input name="numero_nf" placeholder="número da NF (opcional)" />
+          <Input name="transportadora" placeholder="transportadora (opcional)" />
         </div>
 
         {itensDoPedido.length > 0 && (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+          <DenseTable>
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-                <th style={thStyle}>Item</th>
-                <th style={thStyle}>Total do pedido</th>
-                <th style={thStyle}>Já recebido</th>
-                <th style={thStyle}>Recebendo agora</th>
-              </tr>
+              <DenseTableHeaderRow>
+                <Th>Item</Th>
+                <Th>Total do pedido</Th>
+                <Th>Já recebido</Th>
+                <Th>Recebendo agora</Th>
+              </DenseTableHeaderRow>
             </thead>
             <tbody>
               {itensDoPedido.map((pi) => {
@@ -151,11 +159,11 @@ function NovoRecebimentoForm({
                 const restante = Number(pi.quantidade) - jaRecebido;
                 return (
                   <tr key={pi.id}>
-                    <td style={tdStyle}>{itemPorId.get(pi.item_id)?.codigo ?? pi.item_id}</td>
-                    <td style={tdStyle}>{pi.quantidade}</td>
-                    <td style={tdStyle}>{jaRecebido}</td>
-                    <td style={tdStyle}>
-                      <input
+                    <Td>{itemPorId.get(pi.item_id)?.codigo ?? pi.item_id}</Td>
+                    <Td>{pi.quantidade}</Td>
+                    <Td>{jaRecebido}</Td>
+                    <Td>
+                      <Input
                         name={`qtd_${pi.id}`}
                         type="number"
                         min="0"
@@ -163,20 +171,28 @@ function NovoRecebimentoForm({
                         step="0.0001"
                         placeholder="0"
                         disabled={restante <= 0}
-                        style={{ ...inputStyle, width: "90px" }}
+                        className="w-24"
                       />
-                    </td>
+                    </Td>
                   </tr>
                 );
               })}
             </tbody>
-          </table>
+          </DenseTable>
         )}
 
-        <textarea name="observacoes" placeholder="observações (opcional)" style={{ ...inputStyle, minHeight: "40px" }} />
+        <textarea
+          name="observacoes"
+          placeholder="observações (opcional)"
+          className="min-h-[40px] rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+        />
 
-        {itensDoPedido.length > 0 && <button type="submit" style={{ ...buttonStyle, alignSelf: "flex-start" }}>Registrar recebimento</button>}
-        {pedidoCompraId && itensDoPedido.length === 0 && <p style={hintStyle}>Este pedido de compra não tem itens.</p>}
+        {itensDoPedido.length > 0 && (
+          <Button type="submit" variant="primary" className="self-start">
+            Registrar recebimento
+          </Button>
+        )}
+        {pedidoCompraId && itensDoPedido.length === 0 && <p className="text-xs text-text-muted">Este pedido de compra não tem itens.</p>}
       </form>
     </section>
   );
@@ -206,17 +222,17 @@ function RecebimentoCard({
   );
 
   return (
-    <div style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", fontSize: "12px" }}>
-        <strong>{recebimento.numero}</strong>
-        <span>{STATUS_RECEBIMENTO_LABEL[recebimento.status]}</span>
-        <span style={{ color: "#6b7a75" }}>PC: {pedidoCompra?.numero ?? recebimento.pedido_compra_id}</span>
-        {recebimento.numero_nf && <span style={{ color: "#6b7a75" }}>NF: {recebimento.numero_nf}</span>}
-        {recebimento.transportadora && <span style={{ color: "#6b7a75" }}>Transp.: {recebimento.transportadora}</span>}
-        <span style={{ color: "#6b7a75" }}>{formatarData(recebimento.data_recebimento)}</span>
+    <Card padding="xs">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <strong className="text-sm text-text">{recebimento.numero}</strong>
+        <StatusPill tone={STATUS_RECEBIMENTO_TONE[recebimento.status]}>{STATUS_RECEBIMENTO_LABEL[recebimento.status]}</StatusPill>
+        <span className="text-text-muted">PC: {pedidoCompra?.numero ?? recebimento.pedido_compra_id}</span>
+        {recebimento.numero_nf && <span className="text-text-muted">NF: {recebimento.numero_nf}</span>}
+        {recebimento.transportadora && <span className="text-text-muted">Transp.: {recebimento.transportadora}</span>}
+        <span className="text-text-muted">{formatarData(recebimento.data_recebimento)}</span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "8px" }}>
+      <div className="mt-2 flex flex-col gap-2.5">
         {itensDoRecebimento.map((ri) => (
           <RecebimentoItemRow
             key={ri.id}
@@ -231,14 +247,19 @@ function RecebimentoCard({
       </div>
 
       {canManage && recebimento.status === "em_conferencia" && (
-        <form action={finalizarConferenciaRecebimentoAction} style={{ marginTop: "8px" }}>
+        <form action={finalizarConferenciaRecebimentoAction} className="mt-2">
           <input type="hidden" name="id" value={recebimento.id} />
-          <button type="submit" style={buttonStyle} disabled={temDivergenciaAberta} title={temDivergenciaAberta ? "Trate todas as divergências abertas antes de finalizar" : undefined}>
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={temDivergenciaAberta}
+            title={temDivergenciaAberta ? "Trate todas as divergências abertas antes de finalizar" : undefined}
+          >
             Finalizar conferência {temDivergenciaAberta ? "(bloqueado — divergência aberta)" : ""}
-          </button>
+          </Button>
         </form>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -264,74 +285,74 @@ function RecebimentoItemRow({
   const podeDevolver = item.status === "conferido" && item.quantidade_aceita !== null && Number(item.quantidade_aceita) - jaDevolvido > 0;
 
   return (
-    <div style={{ borderTop: "1px dashed #eef1ef", paddingTop: "8px" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", fontSize: "12px" }}>
-        <strong>{itemNome}</strong>
-        <span>{STATUS_ITEM_LABEL[item.status]}</span>
-        <span style={{ color: "#6b7a75" }}>Recebido: {item.quantidade_recebida}</span>
-        {item.quantidade_aceita !== null && <span style={{ color: "#6b7a75" }}>Aceito: {item.quantidade_aceita}</span>}
+    <div className="border-t border-dashed border-border-subtle pt-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <strong className="text-text">{itemNome}</strong>
+        <StatusPill tone={STATUS_ITEM_TONE[item.status]}>{STATUS_ITEM_LABEL[item.status]}</StatusPill>
+        <span className="text-text-muted">Recebido: {item.quantidade_recebida}</span>
+        {item.quantidade_aceita !== null && <span className="text-text-muted">Aceito: {item.quantidade_aceita}</span>}
 
         {canManage && item.status !== "conferido" && (
           <>
-            <button type="button" onClick={() => setMostrarLote((v) => !v)} style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #dae2de" }}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setMostrarLote((v) => !v)}>
               Registrar lote
-            </button>
-            <button type="button" onClick={() => setMostrarDivergencia((v) => !v)} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+            </Button>
+            <Button type="button" variant="outlineDanger" size="sm" onClick={() => setMostrarDivergencia((v) => !v)}>
               Registrar divergência
-            </button>
+            </Button>
           </>
         )}
         {canManage && podeDevolver && (
-          <button type="button" onClick={() => setMostrarDevolucao((v) => !v)} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+          <Button type="button" variant="outlineDanger" size="sm" onClick={() => setMostrarDevolucao((v) => !v)}>
             Registrar devolução
-          </button>
+          </Button>
         )}
       </div>
 
       {mostrarLote && (
-        <form action={registrarLoteRecebimentoAction} onSubmit={() => setMostrarLote(false)} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginTop: "6px" }}>
+        <form action={registrarLoteRecebimentoAction} onSubmit={() => setMostrarLote(false)} className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <input type="hidden" name="recebimento_item_id" value={item.id} />
-          <input name="numero_lote" placeholder="número do lote" required style={inputStyle} />
-          <input name="quantidade" type="number" min="0.0001" step="0.0001" placeholder="quantidade" required style={{ ...inputStyle, width: "90px" }} />
-          <label style={labelStyle}>Fabricação <input name="data_fabricacao" type="date" style={inputStyle} /></label>
-          <label style={labelStyle}>Validade <input name="data_validade" type="date" style={inputStyle} /></label>
-          <input name="certificado" placeholder="certificado (opcional)" style={inputStyle} />
-          <button type="submit" style={buttonStyle}>Salvar</button>
+          <Input name="numero_lote" placeholder="número do lote" required />
+          <Input name="quantidade" type="number" min="0.0001" step="0.0001" placeholder="quantidade" required className="w-24" />
+          <label className="flex items-center gap-1 text-xs text-text-muted">Fabricação <Input name="data_fabricacao" type="date" /></label>
+          <label className="flex items-center gap-1 text-xs text-text-muted">Validade <Input name="data_validade" type="date" /></label>
+          <Input name="certificado" placeholder="certificado (opcional)" />
+          <Button type="submit" variant="primary" size="sm">Salvar</Button>
         </form>
       )}
 
       {mostrarDivergencia && (
-        <form action={registrarDivergenciaRecebimentoAction} onSubmit={() => setMostrarDivergencia(false)} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginTop: "6px" }}>
+        <form action={registrarDivergenciaRecebimentoAction} onSubmit={() => setMostrarDivergencia(false)} className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <input type="hidden" name="recebimento_item_id" value={item.id} />
-          <select name="tipo" required style={inputStyle}>
+          <Select name="tipo" required>
             <option value="">tipo…</option>
             {Object.entries(TIPO_DIVERGENCIA_LABEL).map(([v, l]) => (
               <option key={v} value={v}>{l}</option>
             ))}
-          </select>
-          <input name="quantidade_divergente" type="number" min="0" step="0.0001" placeholder="quantidade divergente (opcional)" style={{ ...inputStyle, width: "150px" }} />
-          <input name="descricao" placeholder="descrição" required style={{ ...inputStyle, flex: 1, minWidth: "160px" }} />
-          <button type="submit" style={buttonStyle}>Registrar</button>
+          </Select>
+          <Input name="quantidade_divergente" type="number" min="0" step="0.0001" placeholder="quantidade divergente (opcional)" className="w-48" />
+          <Input name="descricao" placeholder="descrição" required className="min-w-40 flex-1" />
+          <Button type="submit" variant="danger" size="sm">Registrar</Button>
         </form>
       )}
 
       {mostrarDevolucao && (
-        <form action={registrarDevolucaoCompraAction} onSubmit={() => setMostrarDevolucao(false)} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginTop: "6px" }}>
+        <form action={registrarDevolucaoCompraAction} onSubmit={() => setMostrarDevolucao(false)} className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <input type="hidden" name="recebimento_item_id" value={item.id} />
-          <input name="quantidade" type="number" min="0.0001" step="0.0001" placeholder="quantidade" required style={{ ...inputStyle, width: "90px" }} />
-          <input name="motivo" placeholder="motivo" required style={{ ...inputStyle, flex: 1, minWidth: "160px" }} />
-          <button type="submit" style={buttonStyle}>Registrar devolução</button>
+          <Input name="quantidade" type="number" min="0.0001" step="0.0001" placeholder="quantidade" required className="w-24" />
+          <Input name="motivo" placeholder="motivo" required className="min-w-40 flex-1" />
+          <Button type="submit" variant="danger" size="sm">Registrar devolução</Button>
         </form>
       )}
 
       {lotes.length > 0 && (
-        <p style={{ fontSize: "12px", color: "#6b7a75", margin: "6px 0 0" }}>
+        <p className="mt-1.5 text-xs text-text-muted">
           Lotes: {lotes.map((l) => `${l.numero_lote} (${l.quantidade})`).join(", ")}
         </p>
       )}
 
       {divergencias.length > 0 && (
-        <div style={{ marginTop: "6px" }}>
+        <div className="mt-1.5">
           {divergencias.map((d) => (
             <DivergenciaRow key={d.id} divergencia={d} canManage={canManage} />
           ))}
@@ -339,7 +360,7 @@ function RecebimentoItemRow({
       )}
 
       {devolucoes.filter((d) => d.status === "registrada").length > 0 && (
-        <p style={{ fontSize: "12px", color: "#6b7a75", margin: "6px 0 0" }}>
+        <p className="mt-1.5 text-xs text-text-muted">
           Devolvido: {devolucoes.filter((d) => d.status === "registrada").reduce((acc, d) => acc + Number(d.quantidade), 0)}
         </p>
       )}
@@ -351,8 +372,8 @@ function DivergenciaRow({ divergencia, canManage }: { divergencia: Divergencia; 
   const [tratando, setTratando] = useState(false);
 
   return (
-    <div style={{ fontSize: "12px", display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "4px" }}>
-      <span>
+    <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
+      <span className="text-text-muted">
         {TIPO_DIVERGENCIA_LABEL[divergencia.tipo] ?? divergencia.tipo}: {divergencia.descricao}
         {divergencia.quantidade_divergente !== null && ` (qtd. ${divergencia.quantidade_divergente})`}
         {" — "}
@@ -360,17 +381,17 @@ function DivergenciaRow({ divergencia, canManage }: { divergencia: Divergencia; 
       </span>
       {canManage && divergencia.status === "aberta" && (
         !tratando ? (
-          <button type="button" onClick={() => setTratando(true)} style={buttonStyle}>Tratar</button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => setTratando(true)}>Tratar</Button>
         ) : (
-          <form action={tratarDivergenciaAction} onSubmit={() => setTratando(false)} style={{ display: "flex", gap: "4px" }}>
+          <form action={tratarDivergenciaAction} onSubmit={() => setTratando(false)} className="flex items-center gap-1">
             <input type="hidden" name="id" value={divergencia.id} />
-            <select name="decisao" required style={inputStyle}>
+            <Select name="decisao" required>
               <option value="">decisão…</option>
               <option value="aceitar">Aceitar</option>
               <option value="recusar">Recusar</option>
-            </select>
-            <input name="observacao" placeholder="observação (opcional)" style={inputStyle} />
-            <button type="submit" style={buttonStyle}>Confirmar</button>
+            </Select>
+            <Input name="observacao" placeholder="observação (opcional)" />
+            <Button type="submit" variant="primary" size="sm">Confirmar</Button>
           </form>
         )
       )}

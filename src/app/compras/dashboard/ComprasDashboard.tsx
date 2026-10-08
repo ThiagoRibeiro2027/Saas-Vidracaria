@@ -1,4 +1,4 @@
-import { sectionTitleStyle, hintStyle } from "../../configuracoes/styles";
+import { Card } from "@/components/ui/Card";
 
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -20,14 +20,14 @@ type Dashboard = {
 export default function ComprasDashboard({ data }: { data: Dashboard }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Indicadores de Compras</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Indicadores de Compras</h2>
+      <p className="mt-1 text-xs text-text-muted">
         {data.periodo.data_inicio || data.periodo.data_fim
           ? `Período: ${data.periodo.data_inicio ?? "início"} a ${data.periodo.data_fim ?? "hoje"}.`
           : "Sem filtro de período (todo o histórico)."}
       </p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "12px", marginTop: "16px" }}>
+      <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
         <Bloco titulo="Necessidades">
           <PorStatusList porStatus={data.necessidades.por_status} />
           <Metrica label="Abertas (necessidades futuras)" valor={data.necessidades.abertas_total} destaque={data.necessidades.abertas_total > 0} />
@@ -85,24 +85,24 @@ export default function ComprasDashboard({ data }: { data: Dashboard }) {
 
 function Bloco({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #eef1ef", borderRadius: "8px", padding: "14px" }}>
-      <h3 style={{ fontSize: "13px", margin: "0 0 8px", color: "#1f5d57" }}>{titulo}</h3>
+    <Card padding="sm">
+      <h3 className="mb-2 text-xs font-semibold text-primary">{titulo}</h3>
       {children}
-    </div>
+    </Card>
   );
 }
 
 function PorStatusList({ porStatus, vazio = "sem registros" }: { porStatus: PorStatus; vazio?: string }) {
   const entradas = Object.entries(porStatus);
   if (entradas.length === 0) {
-    return <p style={{ fontSize: "12px", color: "#6b7a75", margin: 0 }}>{vazio}</p>;
+    return <p className="text-xs text-text-muted">{vazio}</p>;
   }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+    <div className="flex flex-col gap-0.5">
       {entradas.map(([status, total]) => (
-        <div key={status} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px" }}>
-          <span style={{ color: "#3e4d49" }}>{status}</span>
-          <strong>{total}</strong>
+        <div key={status} className="flex justify-between text-xs">
+          <span className="text-text">{status}</span>
+          <strong className="text-text">{total}</strong>
         </div>
       ))}
     </div>
@@ -111,9 +111,9 @@ function PorStatusList({ porStatus, vazio = "sem registros" }: { porStatus: PorS
 
 function Metrica({ label, valor, destaque }: { label: string; valor: string | number; destaque?: boolean }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginTop: "6px", paddingTop: "6px", borderTop: "1px solid #eef1ef" }}>
-      <span style={{ color: "#3e4d49" }}>{label}</span>
-      <strong style={{ color: destaque ? "#9b2c2c" : undefined }}>{valor}</strong>
+    <div className="mt-1.5 flex justify-between border-t border-border-subtle pt-1.5 text-xs">
+      <span className="text-text">{label}</span>
+      <strong className={destaque ? "text-danger" : "text-text"}>{valor}</strong>
     </div>
   );
 }

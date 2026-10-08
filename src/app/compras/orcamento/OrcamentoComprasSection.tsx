@@ -1,7 +1,10 @@
 "use client";
 
 import { upsertOrcamentoCompraAction } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { formatarData } from "@/lib/formato/data";
 
 type Linha = {
@@ -17,48 +20,52 @@ type Linha = {
 export default function OrcamentoComprasSection({ linhas, canManage }: { linhas: Linha[]; canManage: boolean }) {
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Orçamentos por categoria e período</h2>
+      <h2 className="text-sm font-semibold text-text">Orçamentos por categoria e período</h2>
 
       {canManage && (
-        <form action={upsertOrcamentoCompraAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-          <input name="categoria" placeholder="categoria (classificação do item)" required style={{ ...inputStyle, width: "180px" }} />
-          <input name="periodo_inicio" type="date" required style={inputStyle} />
-          <input name="periodo_fim" type="date" required style={inputStyle} />
-          <input name="valor_orcado" type="number" min="0" step="0.01" placeholder="valor orçado (R$)" required style={{ ...inputStyle, width: "130px" }} />
-          <button type="submit" style={buttonStyle}>Salvar orçamento</button>
+        <form action={upsertOrcamentoCompraAction} className="my-3 flex flex-wrap items-center gap-1.5">
+          <Input name="categoria" placeholder="categoria (classificação do item)" required className="w-44" />
+          <Input name="periodo_inicio" type="date" required />
+          <Input name="periodo_fim" type="date" required />
+          <Input name="valor_orcado" type="number" min="0" step="0.01" placeholder="valor orçado (R$)" required className="w-32" />
+          <Button type="submit" variant="primary">Salvar orçamento</Button>
         </form>
       )}
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-              <th style={thStyle}>Categoria</th>
-              <th style={thStyle}>Período</th>
-              <th style={thStyle}>Orçado</th>
-              <th style={thStyle}>Comprometido</th>
-              <th style={thStyle}>Realizado</th>
-              <th style={thStyle}>Saldo</th>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Categoria</Th>
+            <Th>Período</Th>
+            <Th>Orçado</Th>
+            <Th>Comprometido</Th>
+            <Th>Realizado</Th>
+            <Th>Saldo</Th>
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {linhas.map((l) => {
+            const saldo = Number(l.valor_orcado) - Number(l.comprometido) - Number(l.realizado);
+            return (
+              <tr key={l.id}>
+                <Td>{l.categoria}</Td>
+                <Td>{formatarData(l.periodo_inicio)} — {formatarData(l.periodo_fim)}</Td>
+                <Td>R$ {Number(l.valor_orcado).toFixed(2)}</Td>
+                <Td>R$ {Number(l.comprometido).toFixed(2)}</Td>
+                <Td>R$ {Number(l.realizado).toFixed(2)}</Td>
+                <Td className={`font-semibold ${saldo < 0 ? "text-danger" : "text-primary"}`}>R$ {saldo.toFixed(2)}</Td>
+              </tr>
+            );
+          })}
+          {linhas.length === 0 && (
+            <tr>
+              <Td colSpan={6} className="text-text-muted">
+                Nenhum orçamento configurado ainda.
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {linhas.map((l) => {
-              const saldo = Number(l.valor_orcado) - Number(l.comprometido) - Number(l.realizado);
-              return (
-                <tr key={l.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-                  <td style={tdStyle}>{l.categoria}</td>
-                  <td style={tdStyle}>{formatarData(l.periodo_inicio)} — {formatarData(l.periodo_fim)}</td>
-                  <td style={tdStyle}>R$ {Number(l.valor_orcado).toFixed(2)}</td>
-                  <td style={tdStyle}>R$ {Number(l.comprometido).toFixed(2)}</td>
-                  <td style={tdStyle}>R$ {Number(l.realizado).toFixed(2)}</td>
-                  <td style={{ ...tdStyle, color: saldo < 0 ? "#9b2c2c" : "#1f5d57", fontWeight: 600 }}>R$ {saldo.toFixed(2)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {linhas.length === 0 && <p style={hintStyle}>Nenhum orçamento configurado ainda.</p>}
-      </div>
+          )}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }

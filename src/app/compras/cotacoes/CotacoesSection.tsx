@@ -12,10 +12,18 @@ import {
   desativarAlcadaCompraAction,
   decidirEtapaAprovacaoCompraAction,
 } from "./actions";
-import { sectionTitleStyle, hintStyle, thStyle, tdStyle, inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { Card } from "@/components/ui/Card";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 const STATUS_COT_LABEL: Record<string, string> = { aberta: "Aberta", selecionada: "Selecionada", cancelada: "Cancelada" };
+const STATUS_COT_TONE: Record<string, "neutral" | "success" | "danger"> = { aberta: "neutral", selecionada: "success", cancelada: "danger" };
 const STATUS_APROVACAO_LABEL: Record<string, string> = { pendente: "Pendente", aprovada: "Aprovada", rejeitada: "Rejeitada" };
+const STATUS_APROVACAO_TONE: Record<string, "warning" | "success" | "danger"> = { pendente: "warning", aprovada: "success", rejeitada: "danger" };
 
 type Cotacao = { id: string; numero: string; solicitacao_compra_id: string; status: string; aprovacao_id: string | null; motivo_cancelamento: string | null };
 type CotacaoItem = { id: string; cotacao_id: string; solicitacao_compra_item_id: string };
@@ -78,22 +86,22 @@ export default function CotacoesSection({
   const solicitacoesCotaveis = solicitacoes.filter((s) => s.status === "aberta");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+    <div className="flex flex-col gap-7">
       <section>
-        <h2 style={sectionTitleStyle}>Cotações</h2>
+        <h2 className="text-sm font-semibold text-text">Cotações</h2>
         {canManage && (
-          <form action={criarCotacaoDeSolicitacaoAction} style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-            <select name="solicitacao_compra_id" required style={inputStyle}>
+          <form action={criarCotacaoDeSolicitacaoAction} className="my-3 flex items-center gap-1.5">
+            <Select name="solicitacao_compra_id" required>
               <option value="">cotar solicitação enviada…</option>
               {solicitacoesCotaveis.map((s) => (
                 <option key={s.id} value={s.id}>{s.numero}</option>
               ))}
-            </select>
-            <button type="submit" style={buttonStyle}>Criar cotação</button>
+            </Select>
+            <Button type="submit" variant="primary">Criar cotação</Button>
           </form>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <div className="flex flex-col gap-3">
           {cotacoes.map((cot) => (
             <CotacaoCard
               key={cot.id}
@@ -114,7 +122,7 @@ export default function CotacoesSection({
               canManage={canManage}
             />
           ))}
-          {cotacoes.length === 0 && <p style={hintStyle}>Nenhuma cotação criada ainda.</p>}
+          {cotacoes.length === 0 && <p className="text-xs text-text-muted">Nenhuma cotação criada ainda.</p>}
         </div>
       </section>
 
@@ -160,13 +168,13 @@ function CotacaoCard({
   const emAberto = cot.status === "aberta";
 
   return (
-    <div style={{ border: "1px solid #dae2de", borderRadius: "6px", padding: "10px 12px" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", fontSize: "12px" }}>
-        <strong>{cot.numero}</strong>
-        <span>{STATUS_COT_LABEL[cot.status]}</span>
-        <span style={{ color: "#6b7a75" }}>SC: {scNumero}</span>
+    <Card padding="xs">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <strong className="text-sm text-text">{cot.numero}</strong>
+        <StatusPill tone={STATUS_COT_TONE[cot.status]}>{STATUS_COT_LABEL[cot.status]}</StatusPill>
+        <span className="text-text-muted">SC: {scNumero}</span>
       </div>
-      {cot.status === "cancelada" && cot.motivo_cancelamento && <p style={hintStyle}>Motivo: {cot.motivo_cancelamento}</p>}
+      {cot.status === "cancelada" && cot.motivo_cancelamento && <p className="mt-1 text-xs text-text-muted">Motivo: {cot.motivo_cancelamento}</p>}
 
       {itensCotacao.map((ci) => (
         <CotacaoItemBlock
@@ -185,47 +193,47 @@ function CotacaoCard({
       ))}
 
       {canManage && emAberto && (
-        <div style={{ marginTop: "8px", display: "flex", gap: "6px" }}>
+        <div className="mt-2 flex items-center gap-1.5">
           <form action={concluirSelecaoCotacaoAction}>
             <input type="hidden" name="id" value={cot.id} />
-            <button type="submit" style={buttonStyle}>Concluir seleção</button>
+            <Button type="submit" variant="primary" size="sm">Concluir seleção</Button>
           </form>
           {!cancelando ? (
-            <button type="button" onClick={() => setCancelando(true)} style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+            <Button type="button" variant="outlineDanger" size="sm" onClick={() => setCancelando(true)}>
               Cancelar cotação
-            </button>
+            </Button>
           ) : (
-            <form action={cancelarCotacaoAction} style={{ display: "flex", gap: "4px" }} onSubmit={() => setCancelando(false)}>
+            <form action={cancelarCotacaoAction} className="flex items-center gap-1" onSubmit={() => setCancelando(false)}>
               <input type="hidden" name="id" value={cot.id} />
-              <input name="motivo" placeholder="motivo (opcional)" style={{ ...inputStyle, width: "140px" }} />
-              <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>Confirmar</button>
+              <Input name="motivo" placeholder="motivo (opcional)" className="w-36" />
+              <Button type="submit" variant="danger" size="sm">Confirmar</Button>
             </form>
           )}
         </div>
       )}
 
       {aprovacao && (
-        <div style={{ marginTop: "10px", padding: "8px", background: "#f5f7f5", borderRadius: "6px" }}>
-          <p style={{ fontSize: "12px", margin: "0 0 6px", fontWeight: 600 }}>
+        <div className="mt-2.5 rounded-md bg-page-bg p-2">
+          <p className="mb-1.5 text-xs font-semibold text-text">
             Alçada: {STATUS_APROVACAO_LABEL[aprovacao.status]} — valor R$ {Number(aprovacao.valor).toFixed(2)}
           </p>
           {etapas.map((et) => {
             const podeDecidir = et.status === "pendente" && meusRoleIds.has(et.role_id) && !etapas.some((e2) => e2.ordem < et.ordem && e2.status === "pendente");
             return (
-              <div key={et.id} style={{ fontSize: "12px", display: "flex", gap: "6px", alignItems: "center", marginBottom: "4px" }}>
-                <span>Etapa {et.ordem} ({rolePorId.get(et.role_id)?.name ?? et.role_id}, a partir de R$ {Number(et.valor_minimo).toFixed(2)}):</span>
-                <span>{STATUS_APROVACAO_LABEL[et.status]}</span>
+              <div key={et.id} className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-text-muted">Etapa {et.ordem} ({rolePorId.get(et.role_id)?.name ?? et.role_id}, a partir de R$ {Number(et.valor_minimo).toFixed(2)}):</span>
+                <StatusPill tone={STATUS_APROVACAO_TONE[et.status]}>{STATUS_APROVACAO_LABEL[et.status]}</StatusPill>
                 {podeDecidir && (
                   <>
-                    <form action={decidirEtapaAprovacaoCompraAction} style={{ display: "inline" }}>
+                    <form action={decidirEtapaAprovacaoCompraAction}>
                       <input type="hidden" name="id" value={et.id} />
                       <input type="hidden" name="decisao" value="aprovar" />
-                      <button type="submit" style={buttonStyle}>Aprovar</button>
+                      <Button type="submit" variant="primary" size="sm">Aprovar</Button>
                     </form>
-                    <form action={decidirEtapaAprovacaoCompraAction} style={{ display: "inline" }}>
+                    <form action={decidirEtapaAprovacaoCompraAction}>
                       <input type="hidden" name="id" value={et.id} />
                       <input type="hidden" name="decisao" value="rejeitar" />
-                      <button type="submit" style={{ ...buttonStyle, background: "#9b2c2c" }}>Rejeitar</button>
+                      <Button type="submit" variant="danger" size="sm">Rejeitar</Button>
                     </form>
                   </>
                 )}
@@ -234,7 +242,7 @@ function CotacaoCard({
           })}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -266,22 +274,22 @@ function CotacaoItemBlock({
   const propostasOrdenadas = [...propostas].sort((a, b) => a.custo_unitario - b.custo_unitario);
 
   return (
-    <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #eef1ef" }}>
-      <p style={{ fontSize: "12px", fontWeight: 600, margin: "0 0 4px" }}>
+    <div className="mt-2 border-t border-border-subtle pt-2">
+      <p className="mb-1 text-xs font-semibold text-text">
         {item ? `${item.codigo} — ${item.descricao}` : "item"} ({scItem?.quantidade ?? "—"} {item?.unidade_principal ?? ""}) —{" "}
         {quantidadeSelecionada}/{scItem?.quantidade ?? 0} selecionado
       </p>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <DenseTable>
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #eef1ef" }}>
-            <th style={thStyle}>Fornecedor</th>
-            <th style={thStyle}>Preço</th>
-            <th style={thStyle}>Custo total</th>
-            <th style={thStyle}>Prazo</th>
-            <th style={thStyle}>Condição</th>
-            {canManage && emAberto && <th style={thStyle}></th>}
-          </tr>
+          <DenseTableHeaderRow>
+            <Th>Fornecedor</Th>
+            <Th>Preço</Th>
+            <Th>Custo total</Th>
+            <Th>Prazo</Th>
+            <Th>Condição</Th>
+            {canManage && emAberto && <Th />}
+          </DenseTableHeaderRow>
         </thead>
         <tbody>
           {propostasOrdenadas.map((p) => (
@@ -295,33 +303,39 @@ function CotacaoItemBlock({
               canManage={canManage}
             />
           ))}
+          {propostas.length === 0 && (
+            <tr>
+              <Td colSpan={canManage && emAberto ? 6 : 5} className="text-text-muted">
+                Nenhuma proposta registrada ainda.
+              </Td>
+            </tr>
+          )}
         </tbody>
-      </table>
-      {propostas.length === 0 && <p style={hintStyle}>Nenhuma proposta registrada ainda.</p>}
+      </DenseTable>
 
       {canManage && emAberto && (
-        <div style={{ marginTop: "4px" }}>
+        <div className="mt-1">
           {!mostrarProposta ? (
-            <button type="button" onClick={() => setMostrarProposta(true)} style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #dae2de" }}>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setMostrarProposta(true)}>
               Registrar proposta
-            </button>
+            </Button>
           ) : (
-            <form action={registrarPropostaCotacaoAction} onSubmit={() => setMostrarProposta(false)} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+            <form action={registrarPropostaCotacaoAction} onSubmit={() => setMostrarProposta(false)} className="flex flex-wrap items-center gap-1.5">
               <input type="hidden" name="cotacao_item_id" value={cotacaoItem.id} />
-              <select name="pessoa_id" required style={inputStyle}>
+              <Select name="pessoa_id" required>
                 <option value="">fornecedor…</option>
                 {fornecedores.map((f) => (
                   <option key={f.id} value={f.id}>{f.nome_fantasia || f.nome}</option>
                 ))}
-              </select>
-              <input name="preco_unitario" type="number" min="0" step="0.0001" placeholder="preço" required style={{ ...inputStyle, width: "80px" }} />
-              <input name="desconto" type="number" min="0" step="0.0001" placeholder="desconto" style={{ ...inputStyle, width: "80px" }} />
-              <input name="impostos" type="number" min="0" step="0.0001" placeholder="impostos" style={{ ...inputStyle, width: "80px" }} />
-              <input name="frete" type="number" min="0" step="0.0001" placeholder="frete" style={{ ...inputStyle, width: "70px" }} />
-              <input name="prazo_entrega_dias" type="number" min="0" step="1" placeholder="prazo (d)" style={{ ...inputStyle, width: "80px" }} />
-              <input name="condicao_pagamento" placeholder="condição" style={{ ...inputStyle, width: "100px" }} />
-              <input name="validade" type="date" style={inputStyle} />
-              <button type="submit" style={buttonStyle}>Salvar</button>
+              </Select>
+              <Input name="preco_unitario" type="number" min="0" step="0.0001" placeholder="preço" required className="w-20" />
+              <Input name="desconto" type="number" min="0" step="0.0001" placeholder="desconto" className="w-20" />
+              <Input name="impostos" type="number" min="0" step="0.0001" placeholder="impostos" className="w-20" />
+              <Input name="frete" type="number" min="0" step="0.0001" placeholder="frete" className="w-[70px]" />
+              <Input name="prazo_entrega_dias" type="number" min="0" step="1" placeholder="prazo (d)" className="w-20" />
+              <Input name="condicao_pagamento" placeholder="condição" className="w-24" />
+              <Input name="validade" type="date" />
+              <Button type="submit" variant="primary">Salvar</Button>
             </form>
           )}
         </div>
@@ -350,47 +364,47 @@ function PropostaRow({
 
   return (
     <>
-      <tr style={{ borderBottom: "1px solid #eef1ef" }}>
-        <td style={tdStyle}>{pessoaNome} {rodadas > 0 && <span style={{ color: "#6b7a75" }}>({rodadas}x negociado)</span>}</td>
-        <td style={tdStyle}>{proposta.preco_unitario}</td>
-        <td style={tdStyle}>{proposta.custo_unitario}</td>
-        <td style={tdStyle}>{proposta.prazo_entrega_dias ?? "—"}d</td>
-        <td style={tdStyle}>{proposta.condicao_pagamento ?? "—"}</td>
+      <tr>
+        <Td>{pessoaNome} {rodadas > 0 && <span className="text-text-muted">({rodadas}x negociado)</span>}</Td>
+        <Td>{proposta.preco_unitario}</Td>
+        <Td>{proposta.custo_unitario}</Td>
+        <Td>{proposta.prazo_entrega_dias ?? "—"}d</Td>
+        <Td>{proposta.condicao_pagamento ?? "—"}</Td>
         {canManage && emAberto && (
-          <td style={tdStyle}>
-            <button type="button" onClick={() => setNegociando((v) => !v)} style={{ ...buttonStyle, background: "#fff", color: "#1f5d57", border: "1px solid #dae2de", marginRight: "4px" }}>
+          <Td className="flex gap-1">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setNegociando((v) => !v)}>
               Negociar
-            </button>
-            <button type="button" onClick={() => setSelecionando((v) => !v)} style={buttonStyle}>
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setSelecionando((v) => !v)}>
               Selecionar
-            </button>
-          </td>
+            </Button>
+          </Td>
         )}
       </tr>
       {negociando && (
         <tr>
-          <td colSpan={6} style={tdStyle}>
-            <form action={registrarNegociacaoCotacaoAction} onSubmit={() => setNegociando(false)} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          <Td colSpan={6}>
+            <form action={registrarNegociacaoCotacaoAction} onSubmit={() => setNegociando(false)} className="flex items-center gap-1.5">
               <input type="hidden" name="cotacao_proposta_id" value={proposta.id} />
-              <input name="preco_novo" type="number" min="0" step="0.0001" placeholder="novo preço" required style={{ ...inputStyle, width: "90px" }} />
-              <input name="condicao_nova" placeholder="nova condição (opcional)" style={{ ...inputStyle, width: "120px" }} />
-              <input name="observacao" placeholder="observação (opcional)" style={{ ...inputStyle, width: "160px" }} />
-              <button type="submit" style={buttonStyle}>Registrar negociação</button>
+              <Input name="preco_novo" type="number" min="0" step="0.0001" placeholder="novo preço" required className="w-24" />
+              <Input name="condicao_nova" placeholder="nova condição (opcional)" className="w-32" />
+              <Input name="observacao" placeholder="observação (opcional)" className="w-40" />
+              <Button type="submit" variant="primary">Registrar negociação</Button>
             </form>
-          </td>
+          </Td>
         </tr>
       )}
       {selecionando && (
         <tr>
-          <td colSpan={6} style={tdStyle}>
-            <form action={selecionarFornecedorCotacaoAction} onSubmit={() => setSelecionando(false)} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          <Td colSpan={6}>
+            <form action={selecionarFornecedorCotacaoAction} onSubmit={() => setSelecionando(false)} className="flex items-center gap-1.5">
               <input type="hidden" name="cotacao_item_id" value={cotacaoItemId} />
               <input type="hidden" name="cotacao_proposta_id" value={proposta.id} />
-              <input name="quantidade" type="number" min="0.0001" step="0.0001" placeholder="quantidade" required style={{ ...inputStyle, width: "90px" }} />
-              <input name="justificativa" placeholder="justificativa (obrigatória)" required style={{ ...inputStyle, width: "220px" }} />
-              <button type="submit" style={buttonStyle}>Confirmar seleção</button>
+              <Input name="quantidade" type="number" min="0.0001" step="0.0001" placeholder="quantidade" required className="w-24" />
+              <Input name="justificativa" placeholder="justificativa (obrigatória)" required className="w-56" />
+              <Button type="submit" variant="primary">Confirmar seleção</Button>
             </form>
-          </td>
+          </Td>
         </tr>
       )}
     </>
@@ -402,63 +416,71 @@ function AlcadaSection({ alcadas, roles, canManage }: { alcadas: Alcada[]; roles
 
   return (
     <section>
-      <h2 style={sectionTitleStyle}>Alçada de compras</h2>
-      <p style={hintStyle}>
+      <h2 className="text-sm font-semibold text-text">Alçada de compras</h2>
+      <p className="mt-1 text-xs text-text-muted">
         Etapas por valor mínimo e perfil aprovador, dentro de um processo (hoje só &quot;cotacao&quot;).
         Decididas em ordem — a etapa 2 só fica decidível depois da 1 ser aprovada.
       </p>
 
       {canManage && (
-        <form action={upsertAlcadaCompraAction} style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", marginBottom: "10px" }}>
-          <input name="processo" defaultValue="cotacao" style={{ ...inputStyle, width: "90px" }} />
-          <input name="ordem" type="number" min="1" step="1" placeholder="ordem" required style={{ ...inputStyle, width: "70px" }} />
-          <input name="valor_minimo" type="number" min="0" step="0.01" placeholder="valor mín. (R$)" required style={{ ...inputStyle, width: "110px" }} />
-          <select name="role_id" required style={inputStyle}>
+        <form action={upsertAlcadaCompraAction} className="my-3 flex flex-wrap items-center gap-1.5">
+          <Input name="processo" defaultValue="cotacao" className="w-24" />
+          <Input name="ordem" type="number" min="1" step="1" placeholder="ordem" required className="w-16" />
+          <Input name="valor_minimo" type="number" min="0" step="0.01" placeholder="valor mín. (R$)" required className="w-28" />
+          <Select name="role_id" required>
             <option value="">perfil aprovador…</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
-          </select>
-          <button type="submit" style={buttonStyle}>Salvar etapa</button>
+          </Select>
+          <Button type="submit" variant="primary">Salvar etapa</Button>
         </form>
       )}
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+      <DenseTable>
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #dae2de" }}>
-            <th style={thStyle}>Processo</th>
-            <th style={thStyle}>Ordem</th>
-            <th style={thStyle}>A partir de</th>
-            <th style={thStyle}>Perfil</th>
-            <th style={thStyle}>Ativa</th>
-            {canManage && <th style={thStyle}></th>}
-          </tr>
+          <DenseTableHeaderRow>
+            <Th>Processo</Th>
+            <Th>Ordem</Th>
+            <Th>A partir de</Th>
+            <Th>Perfil</Th>
+            <Th>Ativa</Th>
+            {canManage && <Th />}
+          </DenseTableHeaderRow>
         </thead>
         <tbody>
           {alcadas.map((a) => (
-            <tr key={a.id} style={{ borderBottom: "1px solid #eef1ef" }}>
-              <td style={tdStyle}>{a.processo}</td>
-              <td style={tdStyle}>{a.ordem}</td>
-              <td style={tdStyle}>R$ {Number(a.valor_minimo).toFixed(2)}</td>
-              <td style={tdStyle}>{rolePorId.get(a.role_id)?.name ?? a.role_id}</td>
-              <td style={tdStyle}>{a.ativo ? "Sim" : "Não"}</td>
+            <tr key={a.id}>
+              <Td>{a.processo}</Td>
+              <Td>{a.ordem}</Td>
+              <Td>R$ {Number(a.valor_minimo).toFixed(2)}</Td>
+              <Td>{rolePorId.get(a.role_id)?.name ?? a.role_id}</Td>
+              <Td>
+                <StatusPill tone={a.ativo ? "success" : "neutral"}>{a.ativo ? "Sim" : "Não"}</StatusPill>
+              </Td>
               {canManage && (
-                <td style={tdStyle}>
+                <Td>
                   {a.ativo && (
                     <form action={desativarAlcadaCompraAction}>
                       <input type="hidden" name="id" value={a.id} />
-                      <button type="submit" style={{ ...buttonStyle, background: "#fff", color: "#9b2c2c", border: "1px solid #dae2de" }}>
+                      <Button type="submit" variant="danger" size="sm">
                         Desativar
-                      </button>
+                      </Button>
                     </form>
                   )}
-                </td>
+                </Td>
               )}
             </tr>
           ))}
+          {alcadas.length === 0 && (
+            <tr>
+              <Td colSpan={canManage ? 6 : 5} className="text-text-muted">
+                Nenhuma etapa de alçada configurada — cotações são aprovadas automaticamente.
+              </Td>
+            </tr>
+          )}
         </tbody>
-      </table>
-      {alcadas.length === 0 && <p style={hintStyle}>Nenhuma etapa de alçada configurada — cotações são aprovadas automaticamente.</p>}
+      </DenseTable>
     </section>
   );
 }

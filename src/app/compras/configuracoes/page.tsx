@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
 
 // TÓPICO 7 — Compras, Fase 9 da ADR-011 (docs/ADR-011 — Compras v1.0.md):
 // configuração consolidada (§38 + fechamento). Hub de navegação só —
@@ -13,13 +16,9 @@ export default async function ComprasConfiguracoesPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar as configurações de compras desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar as configurações de compras desta empresa." />
+      </div>
     );
   }
 
@@ -55,56 +54,26 @@ export default async function ComprasConfiguracoesPage() {
   ];
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 9 da ADR-011)</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Configurações do módulo de Compras</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
+    <>
+      <PageHeader breadcrumb={["Compras"]} title="Configurações" />
+      <div className="mx-auto max-w-7xl p-6">
+        <p className="text-sm text-text">
           Painel de navegação — cada parâmetro já tem sua própria tela de edição; aqui só um resumo
           de quanto está configurado em cada área. <Link href="/compras/dashboard">← Voltar para o Dashboard</Link>
         </p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
+        <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
           {areas.map((a) => (
-            <Link key={a.titulo} href={a.href} style={{ textDecoration: "none", color: "inherit" }}>
-              <div style={{ background: "#fff", border: "1px solid #eef1ef", borderRadius: "8px", padding: "14px", height: "100%" }}>
-                <h3 style={{ fontSize: "13px", margin: "0 0 6px", color: "#1f5d57" }}>{a.titulo}</h3>
-                <p style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 4px" }}>{a.contagem ?? 0}</p>
-                <p style={{ fontSize: "11px", color: "#6b7a75", margin: 0 }}>{a.unidade}</p>
-              </div>
+            <Link key={a.titulo} href={a.href} className="no-underline">
+              <Card padding="sm" className="h-full transition-colors hover:border-primary">
+                <h3 className="mb-1.5 text-xs font-semibold text-primary">{a.titulo}</h3>
+                <p className="mb-1 text-xl font-bold text-text">{a.contagem ?? 0}</p>
+                <p className="text-[11px] text-text-muted">{a.unidade}</p>
+              </Card>
             </Link>
           ))}
         </div>
       </div>
-    </main>
+    </>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "1080px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

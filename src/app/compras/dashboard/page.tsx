@@ -1,7 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import ComprasDashboard from "./ComprasDashboard";
-import { inputStyle, buttonStyle } from "../../configuracoes/styles";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 // TÓPICO 7 — Compras, Fase 9 da ADR-011 (docs/ADR-011 — Compras v1.0.md):
 // dashboard (§38), mesmo padrão de /bi (dashboard_operacional()) — filtro
@@ -24,13 +27,9 @@ export default async function ComprasDashboardPage({
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar o dashboard de compras desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o dashboard de compras desta empresa." />
+      </div>
     );
   }
 
@@ -40,62 +39,36 @@ export default async function ComprasDashboardPage({
   });
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 7 — Compras (Fase 9 da ADR-011)</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Dashboard de Compras</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
+    <>
+      <PageHeader breadcrumb={["Compras"]} title="Dashboard" />
+      <div className="mx-auto max-w-7xl p-6">
+        <p className="text-sm text-text">
           Indicadores consolidados de necessidades, solicitações, cotações, aprovações, pedidos,
           recebimentos, financeiro, fornecedores e lead time. Necessidades futuras/risco de ruptura
           detalhado ficam em <Link href="/compras/mapa">/compras/mapa</Link>.{" "}
           <Link href="/compras/configuracoes">Configurações do módulo →</Link>
         </p>
 
-        <form method="get" style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center", background: "#f5f7f5", padding: "12px", borderRadius: "6px" }}>
-          <label style={{ fontSize: "12px", color: "#3e4d49" }}>
-            De <input name="data_inicio" type="date" defaultValue={dataInicio ?? ""} style={inputStyle} />
+        <form method="get" className="mt-4 flex flex-wrap items-center gap-1.5 rounded-md bg-page-bg p-3">
+          <label className="flex items-center gap-1 text-xs text-text">
+            De <Input name="data_inicio" type="date" defaultValue={dataInicio ?? ""} />
           </label>
-          <label style={{ fontSize: "12px", color: "#3e4d49" }}>
-            Até <input name="data_fim" type="date" defaultValue={dataFim ?? ""} style={inputStyle} />
+          <label className="flex items-center gap-1 text-xs text-text">
+            Até <Input name="data_fim" type="date" defaultValue={dataFim ?? ""} />
           </label>
-          <button type="submit" style={buttonStyle}>Filtrar</button>
+          <Button type="submit" variant="primary">Filtrar</Button>
           {(dataInicio || dataFim) && (
-            <a href="/compras/dashboard" style={{ fontSize: "12px", color: "#3e4d49" }}>Limpar período</a>
+            <a href="/compras/dashboard" className="text-xs text-text">Limpar período</a>
           )}
         </form>
 
-        {error && <p style={{ fontSize: "13px", color: "#9b2c2c" }}>Não foi possível carregar o dashboard: {error.message}</p>}
-        {!error && data && <ComprasDashboard data={data} />}
+        {error && <p className="mt-3 text-sm text-danger">Não foi possível carregar o dashboard: {error.message}</p>}
+        {!error && data && (
+          <div className="mt-4">
+            <ComprasDashboard data={data} />
+          </div>
+        )}
       </div>
-    </main>
+    </>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "1080px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;

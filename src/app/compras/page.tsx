@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import ComprasSection from "./ComprasSection";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 // TÓPICO 7 — Compras, Fase 1 da ADR-011 (docs/ADR-011 — Compras v1.0.md,
 // aprovada 23/09/2026): escopo literal completo do módulo de Compras,
@@ -24,13 +26,9 @@ export default async function ComprasPage() {
 
   if (!canView) {
     return (
-      <main style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ fontSize: "13px", color: "#9b2c2c", margin: 0 }}>
-            Você não tem permissão para visualizar o módulo Compras desta empresa.
-          </p>
-        </div>
-      </main>
+      <div className="mx-auto max-w-3xl p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o módulo Compras desta empresa." />
+      </div>
     );
   }
 
@@ -63,11 +61,10 @@ export default async function ComprasPage() {
   const fornecedores = (pessoas ?? []).filter((p) => fornecedorIds.has(p.id));
 
   return (
-    <main style={pageStyle}>
-      <div style={cardStyle}>
-        <p style={eyebrowStyle}>TÓPICO 7 — Compras (escopo completo, ADR-011, 9 fases)</p>
-        <h1 style={{ fontSize: "18px", margin: "0 0 4px" }}>Fornecedores e políticas de abastecimento</h1>
-        <p style={{ fontSize: "13px", color: "#3e4d49", marginTop: 0 }}>
+    <>
+      <PageHeader breadcrumb={["Compras"]} title="Fornecedores e Políticas" />
+      <div className="mx-auto max-w-7xl p-6">
+        <p className="text-sm text-text">
           Módulo completo de Compras (ADR-011, escopo aprovado em 23/09/2026): cadastro comercial do
           fornecedor, fornecedor principal/alternativo por item, material alternativo e política de
           abastecimento (Fase 1, esta página). Recebimento leve continua em <code>/suprimentos</code>,
@@ -88,46 +85,19 @@ export default async function ComprasPage() {
           <Link href="/compras/configuracoes">/compras/configuracoes</Link>.
         </p>
 
-        <ComprasSection
-          fornecedores={fornecedores}
-          fornecedorDados={fornecedorDados ?? []}
-          itens={itens ?? []}
-          itemFornecedores={itemFornecedores ?? []}
-          materiaisAlternativos={materiaisAlternativos ?? []}
-          politicas={politicas ?? []}
-          canManage={!!canManage}
-          canManagePessoas={!!canManagePessoas}
-        />
+        <div className="mt-6">
+          <ComprasSection
+            fornecedores={fornecedores}
+            fornecedorDados={fornecedorDados ?? []}
+            itens={itens ?? []}
+            itemFornecedores={itemFornecedores ?? []}
+            materiaisAlternativos={materiaisAlternativos ?? []}
+            politicas={politicas ?? []}
+            canManage={!!canManage}
+            canManagePessoas={!!canManagePessoas}
+          />
+        </div>
       </div>
-    </main>
+    </>
   );
 }
-
-const pageStyle = {
-  minHeight: "100dvh",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  fontFamily: "system-ui, sans-serif",
-  background: "#f5f7f5",
-  padding: "48px 16px",
-} as const;
-
-const cardStyle = {
-  background: "#fff",
-  padding: "32px",
-  borderRadius: "8px",
-  width: "960px",
-  maxWidth: "100%",
-  display: "flex",
-  flexDirection: "column",
-  gap: "24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-} as const;
-
-const eyebrowStyle = {
-  fontFamily: "monospace",
-  fontSize: "11px",
-  color: "#1f5d57",
-  margin: 0,
-} as const;
