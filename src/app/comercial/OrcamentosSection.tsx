@@ -36,6 +36,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Modal } from "@/components/ui/Modal";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
@@ -245,10 +247,9 @@ export default function OrcamentosSection({
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <Table>
+      <DenseTable>
           <thead>
-            <tr>
+            <DenseTableHeaderRow>
               <Th>Número</Th>
               <Th>Cliente</Th>
               <Th>Obra</Th>
@@ -256,7 +257,7 @@ export default function OrcamentosSection({
               <Th>Status</Th>
               <Th className="text-right">Total</Th>
               <Th className="w-6" />
-            </tr>
+            </DenseTableHeaderRow>
           </thead>
           <tbody>
             {orcamentos.map((orc) => {
@@ -273,14 +274,14 @@ export default function OrcamentosSection({
                     }
                     className="cursor-pointer hover:bg-page-bg"
                   >
-                    <Td className="font-medium text-text">{orc.numero}</Td>
-                    <Td>{pessoaNome(orc.pessoa_id)}</Td>
+                    <Td className="font-mono text-xs text-text-muted">{orc.numero}</Td>
+                    <Td className="font-medium text-text">{pessoaNome(orc.pessoa_id)}</Td>
                     <Td className="text-text-muted">{obraNome(orc.obra_id)}</Td>
                     <Td className="text-text-muted">{orc.data_orcamento}</Td>
                     <Td>
-                      <Badge variant={STATUS_TONE[orc.status]}>
+                      <StatusPill tone={STATUS_TONE[orc.status]}>
                         {STATUS_LABEL[orc.status]}
-                      </Badge>
+                      </StatusPill>
                     </Td>
                     <Td className="text-right font-semibold text-text">
                       {currency(totais.get(orc.id) ?? 0)}
@@ -332,9 +333,8 @@ export default function OrcamentosSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} />
 
       <Modal
         open={criandoOpen}

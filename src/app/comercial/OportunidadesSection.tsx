@@ -3,11 +3,12 @@
 import { useState, type FormEvent } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { upsertOportunidadeAction, mudarEstagioOportunidadeAction } from "./actions";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
@@ -120,10 +121,9 @@ export default function OportunidadesSection({
         cliente é feito em Comercial → Clientes. Clique numa linha para abrir, revisar e mudar o estágio.
       </p>
 
-      <div className="overflow-x-auto">
-        <Table>
+      <DenseTable>
           <thead>
-            <tr>
+            <DenseTableHeaderRow>
               <Th>Cliente/prospect</Th>
               <Th>Descrição</Th>
               <Th>Origem</Th>
@@ -131,7 +131,7 @@ export default function OportunidadesSection({
               <Th className="text-right">Valor potencial</Th>
               <Th className="text-right">Prob.</Th>
               <Th className="w-6" />
-            </tr>
+            </DenseTableHeaderRow>
           </thead>
           <tbody>
             {oportunidades.map((op) => (
@@ -161,9 +161,8 @@ export default function OportunidadesSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} paramPagina="op_pagina" paramPorPagina="op_por_pagina" />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} paramPagina="op_pagina" paramPorPagina="op_por_pagina" />
     </section>
   );
 }
@@ -189,7 +188,7 @@ function OportunidadeLinha({
       <Td className="max-w-[220px] truncate text-text-muted">{oportunidade.descricao ?? "—"}</Td>
       <Td className="text-text-muted">{oportunidade.origem ?? "—"}</Td>
       <Td>
-        <Badge variant={ESTAGIO_TONE[oportunidade.estagio]}>{ESTAGIO_LABEL[oportunidade.estagio]}</Badge>
+        <StatusPill tone={ESTAGIO_TONE[oportunidade.estagio]}>{ESTAGIO_LABEL[oportunidade.estagio]}</StatusPill>
       </Td>
       <Td className="text-right">
         {oportunidade.valor_potencial != null ? currency(oportunidade.valor_potencial) : "—"}

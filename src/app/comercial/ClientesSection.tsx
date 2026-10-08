@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
@@ -84,16 +86,15 @@ export default function ClientesSection({
         </div>
       )}
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
+      <DenseTable>
           <thead>
-            <tr>
+            <DenseTableHeaderRow>
               <Th>Nome</Th>
               <Th>Documento</Th>
               <Th>Contato</Th>
               <Th>Situação</Th>
               <Th className="w-6" />
-            </tr>
+            </DenseTableHeaderRow>
           </thead>
           <tbody>
             {rows.map((row) => {
@@ -103,16 +104,16 @@ export default function ClientesSection({
               return (
                 <Fragment key={row.id}>
                   <tr onClick={() => setExpandido((atual) => (atual === row.id ? null : row.id))} className="cursor-pointer hover:bg-page-bg">
-                    <Td>
+                    <Td className="font-medium text-text">
                       {row.nome}
                       {ehFornecedor && <span className="ml-1.5 text-[11px] text-text-muted">(também fornecedor)</span>}
                     </Td>
-                    <Td>{row.documento ?? "—"}</Td>
-                    <Td>{row.telefone ?? row.email ?? "—"}</Td>
+                    <Td className="font-mono text-xs text-text-muted">{row.documento ?? "—"}</Td>
+                    <Td className="text-text-muted">{row.telefone ?? row.email ?? "—"}</Td>
                     <Td>
-                      <Badge variant={row.situacao === "ativo" ? "success" : row.situacao === "bloqueado" ? "danger" : "neutral"}>
+                      <StatusPill tone={row.situacao === "ativo" ? "success" : row.situacao === "bloqueado" ? "danger" : "neutral"}>
                         {row.situacao === "ativo" ? "Ativo" : row.situacao === "bloqueado" ? "Bloqueado" : "Inativo"}
-                      </Badge>
+                      </StatusPill>
                     </Td>
                     <Td className="text-text-muted">{aberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
                   </tr>
@@ -139,9 +140,8 @@ export default function ClientesSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} paramPagina="cli_pagina" paramPorPagina="cli_por_pagina" />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} paramPagina="cli_pagina" paramPorPagina="cli_por_pagina" />
     </section>
   );
 }

@@ -4,9 +4,18 @@ import OportunidadesSection from "./OportunidadesSection";
 import ClientesSection from "./ClientesSection";
 import VisaoGeralSection from "./VisaoGeralSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 type TabSlug = "geral" | "orcamentos" | "oportunidades" | "clientes";
+
+// ADR-013 (Identidade D), Fase 2 — tela piloto da migração visual.
+const TAB_TITLE: Record<TabSlug, string> = {
+  geral: "Visão geral",
+  orcamentos: "Orçamentos",
+  oportunidades: "Oportunidades e funil comercial",
+  clientes: "Clientes",
+};
 
 // TÓPICO 10 — orçamento simples (cabeçalho + itens + decisão), recorte
 // mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0). Oportunidades e
@@ -355,12 +364,9 @@ export default async function ComercialPage({
     : "geral";
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">
-        TÓPICO 10 — Comercial
-      </p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Comercial</h1>
-
+    <>
+      <PageHeader breadcrumb={["Comercial"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
       {activeTab === "geral" && (
         <div className="mt-6">
           <VisaoGeralSection
@@ -431,6 +437,7 @@ export default async function ComercialPage({
           />
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
