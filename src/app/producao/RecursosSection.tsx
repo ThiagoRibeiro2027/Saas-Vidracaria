@@ -14,11 +14,12 @@ import {
   trocarRecursoOperacaoAction,
 } from "./actions";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { formatarData } from "@/lib/formato/data";
 
 type RecursoProdutivo = {
@@ -167,17 +168,17 @@ export default function RecursosSection({
           <strong className="text-xs text-danger">
             Gargalos (TÓPICO 4 §37) — {gargalos.length} recurso(s) com necessidade acima da capacidade disponível
           </strong>
-          <div className="mt-1.5 overflow-x-auto">
-            <Table>
+          <div className="mt-1.5">
+            <DenseTable>
               <thead>
-                <tr>
+                <DenseTableHeaderRow>
                   <Th>Recurso</Th>
                   <Th>Tipo</Th>
                   <Th>Disponível (h)</Th>
                   <Th>Necessário (h)</Th>
                   <Th>Déficit (h)</Th>
                   <Th>Operações em risco</Th>
-                </tr>
+                </DenseTableHeaderRow>
               </thead>
               <tbody>
                 {gargalos.map((g) => {
@@ -200,7 +201,7 @@ export default function RecursosSection({
                   );
                 })}
               </tbody>
-            </Table>
+            </DenseTable>
           </div>
         </Card>
       )}
@@ -250,10 +251,10 @@ export default function RecursosSection({
         </form>
       )}
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
+      <div className="mt-3">
+        <DenseTable>
           <thead>
-            <tr>
+            <DenseTableHeaderRow>
               <Th>Recurso</Th>
               <Th>Tipo</Th>
               <Th>Situação</Th>
@@ -262,7 +263,7 @@ export default function RecursosSection({
               <Th>Saldo</Th>
               <Th>Classificação</Th>
               {canManage && <Th />}
-            </tr>
+            </DenseTableHeaderRow>
           </thead>
           <tbody>
             {recursos.map((r) => {
@@ -301,7 +302,7 @@ export default function RecursosSection({
                   </Td>
                   <Td>{TIPO_LABEL[r.tipo] ?? r.tipo}</Td>
                   <Td>
-                    <Badge variant={SITUACAO_TONE[r.situacao] ?? "neutral"}>{SITUACAO_LABEL[r.situacao] ?? r.situacao}</Badge>
+                    <StatusPill tone={SITUACAO_TONE[r.situacao] ?? "neutral"}>{SITUACAO_LABEL[r.situacao] ?? r.situacao}</StatusPill>
                     {r.motivo_situacao && <div className="mt-0.5 text-xs text-text-muted">{r.motivo_situacao}</div>}
                     {canManage && (
                       <form action={atualizarSituacaoRecursoAction} className="mt-1 flex flex-wrap items-center gap-1">
@@ -323,7 +324,7 @@ export default function RecursosSection({
                   <Td>{cap ? num(cap.capacidade_disponivel_horas) : "—"}</Td>
                   <Td>{cap ? num(cap.capacidade_necessaria_horas) : "—"}</Td>
                   <Td>{cap ? num(cap.saldo_horas) : "—"}</Td>
-                  <Td>{cap && <Badge variant={CLASSIFICACAO_TONE[cap.classificacao]}>{CLASSIFICACAO_LABEL[cap.classificacao]}</Badge>}</Td>
+                  <Td>{cap && <StatusPill tone={CLASSIFICACAO_TONE[cap.classificacao]}>{CLASSIFICACAO_LABEL[cap.classificacao]}</StatusPill>}</Td>
                   {canManage && (
                     <Td>
                       <form action={desativarRecursoProdutivoAction}>
@@ -345,7 +346,7 @@ export default function RecursosSection({
               </tr>
             )}
           </tbody>
-        </Table>
+        </DenseTable>
       </div>
 
       <h3 className="mt-5 text-sm font-semibold text-text">Manutenção e impacto no PCP (TÓPICO 4 §33-36)</h3>

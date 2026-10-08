@@ -4,9 +4,18 @@ import ItensSection from "./ItensSection";
 import PecasSection from "../pecas/PecasSection";
 import VisaoGeralSection from "./VisaoGeralSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 type TabSlug = "geral" | "fabricar" | "itens" | "pre-engenharia";
+
+// ADR-013 (Identidade D), Fase 4.
+const TAB_TITLE: Record<TabSlug, string> = {
+  geral: "Visão geral",
+  fabricar: "Itens a fabricar",
+  itens: "Cadastro de itens",
+  "pre-engenharia": "Pré-engenharia",
+};
 
 // TÓPICO 5 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // novembro: "o que a fábrica faz"): vínculo pedido_item → medida de obra
@@ -95,10 +104,10 @@ export default async function EngenhariaPage({
       : [{ count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }];
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 5 — Engenharia</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Engenharia</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Engenharia"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Itens a fabricar (medição em obra e BOM do pedido liberado), cadastro de itens (produtos e
         materiais) e pré-engenharia (peças configuráveis: composição, características e regras do
         configurador).
@@ -125,7 +134,8 @@ export default async function EngenhariaPage({
           <PreEngenhariaTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManagePecas} />
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

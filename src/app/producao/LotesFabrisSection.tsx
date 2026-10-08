@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 type LoteFabril = {
   id: string;
@@ -97,14 +98,14 @@ export default function LotesFabrisSection({
               </div>
               {lf.observacoes && <p className="mt-1 text-xs text-text-muted">{lf.observacoes}</p>}
 
-              <div className="mt-2 overflow-x-auto">
-                <Table>
+              <div className="mt-2">
+                <DenseTable>
                   <thead>
-                    <tr>
+                    <DenseTableHeaderRow>
                       <Th>Lote de liberação</Th>
                       <Th>Quantidade agrupada</Th>
                       {canManage && lf.situacao === "aberto" && <Th />}
-                    </tr>
+                    </DenseTableHeaderRow>
                   </thead>
                   <tbody>
                     {itens.map((it) => (
@@ -131,7 +132,7 @@ export default function LotesFabrisSection({
                       </tr>
                     )}
                   </tbody>
-                </Table>
+                </DenseTable>
               </div>
 
               {canManage && lf.situacao === "aberto" && (

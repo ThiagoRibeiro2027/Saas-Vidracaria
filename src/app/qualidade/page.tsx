@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import QualidadeSection from "./QualidadeSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 8 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
@@ -92,10 +93,10 @@ export default async function QualidadePage({
   );
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 8 — Qualidade</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Inspeção de ordens de produção</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Produção"]} title="Inspeção de ordens de produção" />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Recorte mínimo do M1: inspeção simples de OP concluída (aprovação/reprovação cobrindo a
         quantidade produzida), retrabalho e reinspeção. Sem plano de amostragem nem gestão de
         instrumentos.
@@ -116,6 +117,7 @@ export default async function QualidadePage({
           canManage={!!canManage}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

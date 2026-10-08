@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import ExpedicaoSection from "./ExpedicaoSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 9 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
@@ -113,10 +114,10 @@ export default async function ExpedicaoPage({
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 9 — Expedição</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Separação, conferência e saída</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Produção"]} title="Separação, conferência e saída" />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Recorte mínimo do M1: separação, conferência, romaneio e saída, com suporte a expedição
         parcial. Item só pode ser expedido depois de produzido e aprovado pela qualidade.
       </p>
@@ -137,6 +138,7 @@ export default async function ExpedicaoPage({
           canManage={!!canManage}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

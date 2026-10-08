@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import PedidosSection from "./PedidosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 3 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
@@ -101,10 +102,10 @@ export default async function PedidosPage({
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 3 — Pedidos</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Pedidos</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Comercial"]} title="Pedidos" />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Recorte mínimo do M1: conversão de orçamento aprovado, conferência, pendências e
         liberação. Sem cadastro direto de pedido, importação ou acompanhamento de produção
         (TÓPICO 4).
@@ -125,6 +126,7 @@ export default async function PedidosPage({
           pedidoInicialId={pedidoInicialId ?? null}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

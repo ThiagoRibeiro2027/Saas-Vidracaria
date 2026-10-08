@@ -1,7 +1,8 @@
 "use client";
 
-import { Badge } from "@/components/ui/Badge";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 
 export type EventoReplanejamento = {
   id: string;
@@ -71,22 +72,22 @@ export default function ReplanejamentoSection({
         atual, sem nenhum recálculo automático nem alteração da programação aqui.
       </p>
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
+      <div className="mt-3">
+        <DenseTable>
           <thead>
-            <tr>
+            <DenseTableHeaderRow>
               <Th>Evento</Th>
               <Th>Referência</Th>
               <Th>Descrição</Th>
               <Th>Quem</Th>
               <Th>Quando</Th>
-            </tr>
+            </DenseTableHeaderRow>
           </thead>
           <tbody>
             {eventos.map((e) => (
               <tr key={e.id} className="align-top">
                 <Td>
-                  <Badge variant={CATEGORIA_TONE[e.categoria]}>{CATEGORIA_LABEL[e.categoria]}</Badge>
+                  <StatusPill tone={CATEGORIA_TONE[e.categoria]}>{CATEGORIA_LABEL[e.categoria]}</StatusPill>
                 </Td>
                 <Td>{referencia(e)}</Td>
                 <Td>{e.description ?? "—"}</Td>
@@ -102,7 +103,7 @@ export default function ReplanejamentoSection({
               </tr>
             )}
           </tbody>
-        </Table>
+        </DenseTable>
       </div>
     </section>
   );

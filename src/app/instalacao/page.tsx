@@ -3,9 +3,18 @@ import { createClient } from "@/lib/supabase/server";
 import InstalacaoSection, { type DanoExibicao } from "./InstalacaoSection";
 import VisaoGeralSection from "./VisaoGeralSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 type TabSlug = "geral" | "equipes" | "agenda" | "danos";
+
+// ADR-013 (Identidade D), Fase 4.
+const TAB_TITLE: Record<TabSlug, string> = {
+  geral: "Visão geral",
+  equipes: "Equipes",
+  agenda: "Agenda de instalação",
+  danos: "Danos em obra",
+};
 
 // TÓPICO 16 — lado ESCRITÓRIO do recorte mínimo do M1. A execução em campo
 // (iniciar/registrar execução, concluir, dano, ocorrência, aceite) já tem
@@ -242,10 +251,10 @@ export default async function InstalacaoPage({
   });
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 16 — Instalação (escritório)</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Equipes, agenda e nova fabricação</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Instalação"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Recorte mínimo do M1: equipes, agendamento e montagem dos itens de instalação, e a
         decisão sobre solicitação de nova fabricação por dano. A execução em campo (início,
         apontamento, conclusão, ocorrência, dano, aceite) fica na PWA de{" "}
@@ -289,6 +298,7 @@ export default async function InstalacaoPage({
           canDecidirDano={!!canDecidirDano}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

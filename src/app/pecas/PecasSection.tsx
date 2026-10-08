@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Modal } from "@/components/ui/Modal";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
@@ -169,42 +171,40 @@ export default function PecasSection({
         </form>
       )}
 
-      <div className="mt-4 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Peça</Th>
-              <Th>Situação</Th>
-              <Th>Revisão</Th>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Peça</Th>
+            <Th>Situação</Th>
+            <Th>Revisão</Th>
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {pecas.map((p) => (
+            <tr
+              key={p.id}
+              onClick={() => setViewId(p.id)}
+              className={`cursor-pointer hover:bg-page-bg ${p.situacao === "ativo" ? "" : "opacity-55"}`}
+            >
+              <Td className="font-medium text-text">{itemLabel(p.item_id)}</Td>
+              <Td>
+                <StatusPill tone={p.situacao === "ativo" ? "success" : "neutral"}>
+                  {p.situacao === "ativo" ? "Ativa" : "Inativa"}
+                </StatusPill>
+              </Td>
+              <Td className="text-text-muted">rev. {p.revisao_atual}</Td>
             </tr>
-          </thead>
-          <tbody>
-            {pecas.map((p) => (
-              <tr
-                key={p.id}
-                onClick={() => setViewId(p.id)}
-                className={`cursor-pointer hover:bg-page-bg ${p.situacao === "ativo" ? "" : "opacity-55"}`}
-              >
-                <Td className="font-medium text-text">{itemLabel(p.item_id)}</Td>
-                <Td>
-                  <Badge variant={p.situacao === "ativo" ? "success" : "neutral"}>
-                    {p.situacao === "ativo" ? "Ativa" : "Inativa"}
-                  </Badge>
-                </Td>
-                <Td className="text-text-muted">rev. {p.revisao_atual}</Td>
-              </tr>
-            ))}
-            {pecas.length === 0 && (
-              <tr>
-                <Td colSpan={3} className="text-text-muted">
-                  Nenhuma peça cadastrada ainda.
-                </Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+          ))}
+          {pecas.length === 0 && (
+            <tr>
+              <Td colSpan={3} className="text-text-muted">
+                Nenhuma peça cadastrada ainda.
+              </Td>
+            </tr>
+          )}
+        </tbody>
+      </DenseTable>
+      <Paginacao {...paginacao} />
 
       <Modal
         open={viewing !== null}

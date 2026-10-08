@@ -7,10 +7,11 @@ import {
   reinspecionarRetrabalhoAction,
 } from "./actions";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
@@ -111,21 +112,20 @@ export default function QualidadeSection({
       <h2 className="text-sm font-semibold text-text">Ordens de produção concluídas</h2>
       <p className="mt-1 text-xs text-text-muted">Clique numa OP para ver histórico e registrar inspeção/retrabalho.</p>
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>OP</Th>
-              <Th>Pedido</Th>
-              <Th>Cliente</Th>
-              <Th>Obra</Th>
-              <Th>Item</Th>
-              <Th>Produzida</Th>
-              <Th>Status</Th>
-              <Th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>OP</Th>
+            <Th>Pedido</Th>
+            <Th>Cliente</Th>
+            <Th>Obra</Th>
+            <Th>Item</Th>
+            <Th>Produzida</Th>
+            <Th>Status</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
             {ordens.map((op) => {
               const pedido = pedidoDe(op.pedido_id);
               const aberto = expandido === op.id;
@@ -139,9 +139,9 @@ export default function QualidadeSection({
                     <Td>{itemLabelDoPedidoItem(op.pedido_item_id)}</Td>
                     <Td className="text-text-muted">{num(op.quantidade_produzida)}</Td>
                     <Td>
-                      <Badge variant={STATUS_QUALIDADE_TONE[op.status_qualidade]}>
+                      <StatusPill tone={STATUS_QUALIDADE_TONE[op.status_qualidade]}>
                         {statusQualidadeLabels?.get(op.status_qualidade) ?? STATUS_QUALIDADE_LABEL[op.status_qualidade]}
-                      </Badge>
+                      </StatusPill>
                     </Td>
                     <Td className="text-text-muted">{aberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
                   </tr>
@@ -168,9 +168,8 @@ export default function QualidadeSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} />
     </section>
   );
 }

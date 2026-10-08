@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -309,16 +310,16 @@ export default function ProducaoSection({
                 )}
               </div>
 
-              <div className="mt-2 overflow-x-auto">
-                <Table>
+              <div className="mt-2">
+                <DenseTable>
                   <thead>
-                    <tr>
+                    <DenseTableHeaderRow>
                       <Th>Item</Th>
                       <Th>Qtd. pedido</Th>
                       <Th>Engenharia</Th>
                       <Th>Saldo p/ planejar</Th>
                       <Th>Ordens de produção</Th>
-                    </tr>
+                    </DenseTableHeaderRow>
                   </thead>
                   <tbody>
                     {itensDoPedido.map((pi) => {
@@ -571,7 +572,7 @@ export default function ProducaoSection({
                       </tr>
                     )}
                   </tbody>
-                </Table>
+                </DenseTable>
               </div>
 
               {itensComOP.length > 0 && (

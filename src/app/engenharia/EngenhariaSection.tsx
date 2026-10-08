@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { Modal } from "@/components/ui/Modal";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
@@ -110,18 +111,17 @@ export default function EngenhariaSection({
         Clique num pedido para ver os itens; clique num item para abrir a conferência.
       </p>
 
-      <div className="overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Pedido</Th>
-              <Th>Cliente</Th>
-              <Th>Obra</Th>
-              <Th className="text-right">Itens</Th>
-              <Th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Pedido</Th>
+            <Th>Cliente</Th>
+            <Th>Obra</Th>
+            <Th className="text-right">Itens</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
             {pedidos.map((ped) => {
               const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
               const expandido = expandedId === ped.id;
@@ -167,9 +167,8 @@ export default function EngenhariaSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} />
 
       <Modal
         open={itemViewing !== null}

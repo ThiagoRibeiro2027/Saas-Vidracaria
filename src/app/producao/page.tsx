@@ -20,6 +20,7 @@ import HorizontesSection, { type HorizonteProgramacao } from "./HorizontesSectio
 import ReplanejamentoSection, { type EventoReplanejamento } from "./ReplanejamentoSection";
 import RotulosStatusSection, { type RotuloStatusRow } from "./RotulosStatusSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -33,6 +34,19 @@ type TabSlug =
   | "replanejamento"
   | "sequenciamento"
   | "rotulos";
+
+// ADR-013 (Identidade D), Fase 4.
+const TAB_TITLE: Record<TabSlug, string> = {
+  ordens: "Ordens de produção",
+  roteiros: "Roteiros",
+  "lotes-fabris": "Lotes fabris",
+  recursos: "Recursos e capacidade",
+  programacao: "Programação",
+  horizontes: "Horizontes",
+  replanejamento: "Replanejamento",
+  sequenciamento: "Sequenciamento",
+  rotulos: "Rótulos de status",
+};
 
 // TÓPICO 4 — Fase 1 (ADR-002 v2.2, 2026-09-16): OP parcial (um pedido_item
 // pode ter várias OPs, desde que a soma não ultrapasse a quantidade do
@@ -151,10 +165,10 @@ export default async function ProducaoPage({
   const canManageBool = !!canManage;
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 4 — Produção</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Ordens de produção</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Produção"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Ordens de produção por item de pedido liberado, com produção parcial (uma ou várias OPs
         por item), engenharia liberada versionada, roteiro produtivo configurável com
         acompanhamento por operação, produção em lotes, lote fabril, recursos produtivos,
@@ -174,7 +188,8 @@ export default async function ProducaoPage({
         {activeTab === "sequenciamento" && <SequenciamentoTab supabase={supabase} canManage={canManageBool} />}
         {activeTab === "rotulos" && <RotulosTab supabase={supabase} canManage={canManageBool} />}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

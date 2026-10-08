@@ -19,6 +19,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { formatarData } from "@/lib/formato/data";
@@ -155,42 +157,40 @@ export default function InstalacaoSection({
           </form>
         )}
 
-        <div className="mt-2 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Nome</Th>
-                <Th>Status</Th>
-                <Th>Membros</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {equipes.map((eq) => {
-                const membros = equipeMembrosPorEquipe.get(eq.id) ?? [];
-                return (
-                  <tr
-                    key={eq.id}
-                    onClick={() => setSelectedEquipeId((prev) => (prev === eq.id ? null : eq.id))}
-                    className={`cursor-pointer ${selectedEquipeId === eq.id ? "bg-primary-soft" : "hover:bg-page-bg"}`}
-                  >
-                    <Td className="font-medium text-text">{eq.nome}</Td>
-                    <Td>
-                      <Badge variant={eq.ativo ? "success" : "danger"}>{eq.ativo ? "Ativa" : "Inativa"}</Badge>
-                    </Td>
-                    <Td className="text-text-muted">{membros.length}</Td>
-                  </tr>
-                );
-              })}
-              {equipes.length === 0 && (
-                <tr>
-                  <Td colSpan={3} className="text-text-muted">
-                    Nenhuma equipe cadastrada ainda.
+        <DenseTable>
+          <thead>
+            <DenseTableHeaderRow>
+              <Th>Nome</Th>
+              <Th>Status</Th>
+              <Th>Membros</Th>
+            </DenseTableHeaderRow>
+          </thead>
+          <tbody>
+            {equipes.map((eq) => {
+              const membros = equipeMembrosPorEquipe.get(eq.id) ?? [];
+              return (
+                <tr
+                  key={eq.id}
+                  onClick={() => setSelectedEquipeId((prev) => (prev === eq.id ? null : eq.id))}
+                  className={`cursor-pointer ${selectedEquipeId === eq.id ? "bg-primary-soft" : "hover:bg-page-bg"}`}
+                >
+                  <Td className="font-medium text-text">{eq.nome}</Td>
+                  <Td>
+                    <StatusPill tone={eq.ativo ? "success" : "danger"}>{eq.ativo ? "Ativa" : "Inativa"}</StatusPill>
                   </Td>
+                  <Td className="text-text-muted">{membros.length}</Td>
                 </tr>
-              )}
-            </tbody>
-          </Table>
-        </div>
+              );
+            })}
+            {equipes.length === 0 && (
+              <tr>
+                <Td colSpan={3} className="text-text-muted">
+                  Nenhuma equipe cadastrada ainda.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </DenseTable>
 
         {equipeSelecionada && (
           <EquipeDetalhe
@@ -209,44 +209,42 @@ export default function InstalacaoSection({
         <h2 className="text-sm font-semibold text-text">Pedidos liberados — agenda de instalação</h2>
         <p className="mt-1 text-xs text-text-muted">Clique num pedido para ver e agendar instalações.</p>
 
-        <div className="mt-2 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Número</Th>
-                <Th>Cliente</Th>
-                <Th>Obra</Th>
-                <Th>Instalações</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {pedidos.map((ped) => {
-                const obra = obraNome(ped.obra_id);
-                const instalacoes = instalacoesPorPedido.get(ped.id) ?? [];
-                return (
-                  <tr
-                    key={ped.id}
-                    onClick={() => setSelectedPedidoId((prev) => (prev === ped.id ? null : ped.id))}
-                    className={`cursor-pointer ${selectedPedidoId === ped.id ? "bg-primary-soft" : "hover:bg-page-bg"}`}
-                  >
-                    <Td className="font-medium text-text">{ped.numero}</Td>
-                    <Td>{pessoaNome(ped.pessoa_id)}</Td>
-                    <Td className="text-text-muted">{obra ?? "sem obra associada"}</Td>
-                    <Td className="text-text-muted">{instalacoes.length}</Td>
-                  </tr>
-                );
-              })}
-              {pedidos.length === 0 && (
-                <tr>
-                  <Td colSpan={4} className="text-text-muted">
-                    Nenhum pedido liberado ainda — a instalação só entra depois da liberação (TÓPICO 3).
-                  </Td>
+        <DenseTable>
+          <thead>
+            <DenseTableHeaderRow>
+              <Th>Número</Th>
+              <Th>Cliente</Th>
+              <Th>Obra</Th>
+              <Th>Instalações</Th>
+            </DenseTableHeaderRow>
+          </thead>
+          <tbody>
+            {pedidos.map((ped) => {
+              const obra = obraNome(ped.obra_id);
+              const instalacoes = instalacoesPorPedido.get(ped.id) ?? [];
+              return (
+                <tr
+                  key={ped.id}
+                  onClick={() => setSelectedPedidoId((prev) => (prev === ped.id ? null : ped.id))}
+                  className={`cursor-pointer ${selectedPedidoId === ped.id ? "bg-primary-soft" : "hover:bg-page-bg"}`}
+                >
+                  <Td className="font-medium text-text">{ped.numero}</Td>
+                  <Td>{pessoaNome(ped.pessoa_id)}</Td>
+                  <Td className="text-text-muted">{obra ?? "sem obra associada"}</Td>
+                  <Td className="text-text-muted">{instalacoes.length}</Td>
                 </tr>
-              )}
-            </tbody>
-          </Table>
-          <Paginacao {...agPaginacao} paramPagina="ag_pagina" paramPorPagina="ag_por_pagina" />
-        </div>
+              );
+            })}
+            {pedidos.length === 0 && (
+              <tr>
+                <Td colSpan={4} className="text-text-muted">
+                  Nenhum pedido liberado ainda — a instalação só entra depois da liberação (TÓPICO 3).
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </DenseTable>
+        <Paginacao {...agPaginacao} paramPagina="ag_pagina" paramPorPagina="ag_por_pagina" />
 
         {pedidoSelecionado && (
           <PedidoInstalacoesDetalhe
@@ -270,19 +268,18 @@ export default function InstalacaoSection({
       {activeTab === "danos" && (
       <section>
         <h2 className="text-sm font-semibold text-text">Danos em obra — solicitações de nova fabricação pendentes</h2>
-        <div className="mt-2 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Instalação</Th>
-                <Th>Item</Th>
-                <Th>Qtd.</Th>
-                <Th>Causa</Th>
-                <Th>Descrição</Th>
-                {canDecidirDano && <Th />}
-              </tr>
-            </thead>
-            <tbody>
+        <DenseTable>
+          <thead>
+            <DenseTableHeaderRow>
+              <Th>Instalação</Th>
+              <Th>Item</Th>
+              <Th>Qtd.</Th>
+              <Th>Causa</Th>
+              <Th>Descrição</Th>
+              {canDecidirDano && <Th />}
+            </DenseTableHeaderRow>
+          </thead>
+          <tbody>
               {danos.map((d) => (
                 <tr key={d.solicitacaoId}>
                   <Td>{d.instalacaoNumero}</Td>
@@ -320,9 +317,8 @@ export default function InstalacaoSection({
                 </tr>
               )}
             </tbody>
-          </Table>
-          <Paginacao {...dnPaginacao} paramPagina="dn_pagina" paramPorPagina="dn_por_pagina" />
-        </div>
+        </DenseTable>
+        <Paginacao {...dnPaginacao} paramPagina="dn_pagina" paramPorPagina="dn_por_pagina" />
       </section>
       )}
     </>

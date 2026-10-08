@@ -14,7 +14,9 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Modal } from "@/components/ui/Modal";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
@@ -130,21 +132,20 @@ export default function PedidosSection({
         Clique num pedido para ver ações e itens; clique num item para conferir o preço.
       </p>
 
-      <div className="overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Número</Th>
-              <Th>Cliente</Th>
-              <Th>Obra</Th>
-              <Th>Data</Th>
-              <Th>Origem</Th>
-              <Th>Status</Th>
-              <Th>Pendências</Th>
-              <Th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Número</Th>
+            <Th>Cliente</Th>
+            <Th>Obra</Th>
+            <Th>Data</Th>
+            <Th>Origem</Th>
+            <Th>Status</Th>
+            <Th>Pendências</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
             {pedidos.map((ped) => {
               const pendenciasAbertas = (pendenciasPorPedido.get(ped.id) ?? []).filter((p) => !p.resolvida);
               const expandido = expandedId === ped.id;
@@ -160,7 +161,7 @@ export default function PedidosSection({
                     <Td className="text-text-muted">{ped.data_pedido}</Td>
                     <Td className="text-text-muted">{numeroOrcamentoPorId.get(ped.orcamento_id) ?? "(orçamento removido)"}</Td>
                     <Td>
-                      <Badge variant={STATUS_TONE[ped.status]}>{STATUS_LABEL[ped.status]}</Badge>
+                      <StatusPill tone={STATUS_TONE[ped.status]}>{STATUS_LABEL[ped.status]}</StatusPill>
                     </Td>
                     <Td>{pendenciasAbertas.length > 0 ? <span className="text-warning">{pendenciasAbertas.length} aberta(s)</span> : "—"}</Td>
                     <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
@@ -191,9 +192,8 @@ export default function PedidosSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} />
 
       <Modal
         open={itemViewing !== null}

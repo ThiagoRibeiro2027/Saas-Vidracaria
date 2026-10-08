@@ -2,11 +2,12 @@
 
 import { useState, type FormEvent } from "react";
 import { upsertItemAction, definirPropriedadesDimensionaisItemAction } from "./actions";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Modal } from "@/components/ui/Modal";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
@@ -79,42 +80,40 @@ export default function ItensSection({
         </div>
       )}
 
-      <div className="mt-1 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Código</Th>
-              <Th>Descrição</Th>
-              <Th>Tipo</Th>
-              <Th>Unidade</Th>
-              <Th>Situação</Th>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Código</Th>
+            <Th>Descrição</Th>
+            <Th>Tipo</Th>
+            <Th>Unidade</Th>
+            <Th>Situação</Th>
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} onClick={() => setViewId(row.id)} className="cursor-pointer hover:bg-page-bg">
+              <Td className="font-medium text-text">{row.codigo}</Td>
+              <Td>{row.descricao}</Td>
+              <Td className="text-text-muted">{TIPO_LABEL[row.tipo] ?? row.tipo}</Td>
+              <Td className="text-text-muted">{row.unidade_principal}</Td>
+              <Td>
+                <StatusPill tone={row.situacao === "ativo" ? "success" : "neutral"}>
+                  {row.situacao === "ativo" ? "Ativo" : "Inativo"}
+                </StatusPill>
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} onClick={() => setViewId(row.id)} className="cursor-pointer hover:bg-page-bg">
-                <Td className="font-medium text-text">{row.codigo}</Td>
-                <Td>{row.descricao}</Td>
-                <Td className="text-text-muted">{TIPO_LABEL[row.tipo] ?? row.tipo}</Td>
-                <Td className="text-text-muted">{row.unidade_principal}</Td>
-                <Td>
-                  <Badge variant={row.situacao === "ativo" ? "success" : "neutral"}>
-                    {row.situacao === "ativo" ? "Ativo" : "Inativo"}
-                  </Badge>
-                </Td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <Td colSpan={5} className="text-text-muted">
-                  Nenhum item cadastrado ainda.
-                </Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <Td colSpan={5} className="text-text-muted">
+                Nenhum item cadastrado ainda.
+              </Td>
+            </tr>
+          )}
+        </tbody>
+      </DenseTable>
+      <Paginacao {...paginacao} />
 
       <Modal
         open={criando || viewing !== null}

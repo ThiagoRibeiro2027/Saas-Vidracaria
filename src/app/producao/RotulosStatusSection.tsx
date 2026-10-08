@@ -3,7 +3,8 @@
 import { definirRotuloStatusProducaoAction } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 export type RotuloStatusRow = {
   campo: "status" | "situacao" | "status_qualidade";
@@ -34,15 +35,15 @@ export default function RotulosStatusSection({
         com motivo (fora deste recorte).
       </p>
 
-      <div className="mt-2 overflow-x-auto">
-        <Table>
+      <div className="mt-2">
+        <DenseTable>
           <thead>
-            <tr>
+            <DenseTableHeaderRow>
               <Th>Campo</Th>
               <Th>Valor interno</Th>
               <Th>Rótulo</Th>
               {canManage && <Th />}
-            </tr>
+            </DenseTableHeaderRow>
           </thead>
           <tbody>
             {rotulos.map((r) => (
@@ -67,7 +68,7 @@ export default function RotulosStatusSection({
               </tr>
             ))}
           </tbody>
-        </Table>
+        </DenseTable>
       </div>
     </section>
   );

@@ -4,8 +4,9 @@ import { criarHorizonteProgramacaoAction, removerHorizonteProgramacaoAction } fr
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Badge } from "@/components/ui/Badge";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { formatarData } from "@/lib/formato/data";
 
 export type HorizonteProgramacao = {
@@ -64,21 +65,21 @@ export default function HorizontesSection({
         </form>
       )}
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
+      <div className="mt-3">
+        <DenseTable>
           <thead>
-            <tr>
+            <DenseTableHeaderRow>
               <Th>Tipo</Th>
               <Th>Período</Th>
               <Th>Motivo</Th>
               {canManage && <Th />}
-            </tr>
+            </DenseTableHeaderRow>
           </thead>
           <tbody>
             {horizontes.map((h) => (
               <tr key={h.id}>
                 <Td>
-                  <Badge variant={TIPO_TONE[h.tipo]}>{TIPO_LABEL[h.tipo]}</Badge>
+                  <StatusPill tone={TIPO_TONE[h.tipo]}>{TIPO_LABEL[h.tipo]}</StatusPill>
                 </Td>
                 <Td>
                   {formatarData(h.data_inicio)} – {formatarData(h.data_fim)}
@@ -104,7 +105,7 @@ export default function HorizontesSection({
               </tr>
             )}
           </tbody>
-        </Table>
+        </DenseTable>
       </div>
     </section>
   );

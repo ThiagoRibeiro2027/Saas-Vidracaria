@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
@@ -112,18 +113,17 @@ export default function ExpedicaoSection({
       <h2 className="text-sm font-semibold text-text">Pedidos liberados — expedições</h2>
       <p className="mt-1 text-xs text-text-muted">Clique num pedido para ver e gerenciar as expedições.</p>
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Pedido</Th>
-              <Th>Cliente</Th>
-              <Th>Obra</Th>
-              <Th>Expedições</Th>
-              <Th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Pedido</Th>
+            <Th>Cliente</Th>
+            <Th>Obra</Th>
+            <Th>Expedições</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
             {pedidos.map((ped) => {
               const itensDoPedido = pedidoItensPorPedido.get(ped.id) ?? [];
               const expedicoes = expedicoesPorPedido.get(ped.id) ?? [];
@@ -195,9 +195,8 @@ export default function ExpedicaoSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} />
     </section>
   );
 }

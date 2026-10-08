@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 type Item = { id: string; codigo: string; descricao: string; tipo: string };
 type Roteiro = { id: string; item_id: string; nome: string; ativo: boolean };
@@ -110,17 +111,17 @@ export default function RoteirosSection({
                     )}
                   </div>
 
-                  <div className="mt-1.5 overflow-x-auto">
-                    <Table>
+                  <div className="mt-1.5">
+                    <DenseTable>
                       <thead>
-                        <tr>
+                        <DenseTableHeaderRow>
                           <Th>Seq.</Th>
                           <Th>Operação</Th>
                           <Th>Recurso</Th>
                           <Th>Tempo prev. (min)</Th>
                           <Th>Setup (perfil/ferramenta/processo)</Th>
                           {canManage && <Th />}
-                        </tr>
+                        </DenseTableHeaderRow>
                       </thead>
                       <tbody>
                         {operacoes.map((op) => (
@@ -154,7 +155,7 @@ export default function RoteirosSection({
                           </tr>
                         )}
                       </tbody>
-                    </Table>
+                    </DenseTable>
                   </div>
 
                   {canManage && r.ativo && (

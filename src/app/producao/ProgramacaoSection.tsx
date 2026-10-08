@@ -5,7 +5,8 @@ import { definirPrioridadeOpAction, programarOperacaoAction } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { formatarData } from "@/lib/formato/data";
 
 export type ProgramacaoRow = {
@@ -93,10 +94,10 @@ export default function ProgramacaoSection({
         </Select>
       </div>
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
+      <div className="mt-3">
+        <DenseTable>
           <thead>
-            <tr>
+            <DenseTableHeaderRow>
               <Th>OP / Item</Th>
               <Th>Prazo</Th>
               <Th>Prioridade</Th>
@@ -104,7 +105,7 @@ export default function ProgramacaoSection({
               <Th>Recurso</Th>
               <Th>Planejado / saldo</Th>
               <Th>Datas planejadas</Th>
-            </tr>
+            </DenseTableHeaderRow>
           </thead>
           <tbody>
             {linhasFiltradas.map((l) => (
@@ -184,7 +185,7 @@ export default function ProgramacaoSection({
               </tr>
             )}
           </tbody>
-        </Table>
+        </DenseTable>
       </div>
     </section>
   );
