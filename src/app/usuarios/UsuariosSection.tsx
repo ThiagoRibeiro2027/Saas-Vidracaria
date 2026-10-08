@@ -10,11 +10,12 @@ import {
   resetarSenhaAction,
 } from "./actions";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
@@ -77,19 +78,18 @@ export default function UsuariosSection({
         </form>
       )}
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Matrícula</Th>
-              <Th>Nome</Th>
-              <Th>Situação</Th>
-              <Th>Papéis</Th>
-              <Th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
-            {profiles.map((p) => {
+      <DenseTable className="mt-3">
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Matrícula</Th>
+            <Th>Nome</Th>
+            <Th>Situação</Th>
+            <Th>Papéis</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {profiles.map((p) => {
               const userRoles = userRolesPorProfile.get(p.id) ?? [];
               const aberto = expandido === p.id;
               return (
@@ -105,7 +105,7 @@ export default function UsuariosSection({
                       )}
                     </Td>
                     <Td>
-                      <Badge variant={p.active ? "success" : "danger"}>{p.active ? "Ativo" : "Inativo"}</Badge>
+                      <StatusPill tone={p.active ? "success" : "danger"}>{p.active ? "Ativo" : "Inativo"}</StatusPill>
                     </Td>
                     <Td>{userRoles.length === 0 ? "nenhum" : userRoles.map((ur) => roleNome(ur.role_id)).join(", ")}</Td>
                     <Td className="text-text-muted">{aberto ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
@@ -179,17 +179,16 @@ export default function UsuariosSection({
                 </Fragment>
               );
             })}
-            {profiles.length === 0 && (
-              <tr>
-                <Td colSpan={5}>
-                  <span className="text-text-muted">Nenhum usuário cadastrado ainda.</span>
-                </Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-        <Paginacao {...paginacao} paramPagina="us_pagina" paramPorPagina="us_por_pagina" />
-      </div>
+          {profiles.length === 0 && (
+            <tr>
+              <Td colSpan={5}>
+                <span className="text-text-muted">Nenhum usuário cadastrado ainda.</span>
+              </Td>
+            </tr>
+          )}
+        </tbody>
+      </DenseTable>
+      <Paginacao {...paginacao} paramPagina="us_pagina" paramPorPagina="us_por_pagina" />
     </section>
   );
 }

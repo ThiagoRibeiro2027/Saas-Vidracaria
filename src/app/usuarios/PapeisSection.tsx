@@ -6,7 +6,8 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 export type Permission = { id: string; resource: string; action: string; description: string | null };
 type Role = { id: string; key: string; name: string; company_id: string | null };
@@ -51,17 +52,16 @@ export default function PapeisSection({
       )}
 
       <p className="mt-3 text-xs text-text-muted">Papéis da empresa:</p>
-      <div className="overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Papel</Th>
-              <Th>Permissões concedidas</Th>
-              <Th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
-            {papeisDaEmpresa.map((r) => {
+      <DenseTable>
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Papel</Th>
+            <Th>Permissões concedidas</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {papeisDaEmpresa.map((r) => {
               const concedidas = permissoesPorPapel.get(r.id) ?? new Set<string>();
               const aberto = expandido === r.id;
               return (
@@ -119,16 +119,15 @@ export default function PapeisSection({
                 </Fragment>
               );
             })}
-            {papeisDaEmpresa.length === 0 && (
-              <tr>
-                <Td colSpan={3}>
-                  <span className="text-text-muted">Nenhum papel próprio criado ainda.</span>
-                </Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-      </div>
+          {papeisDaEmpresa.length === 0 && (
+            <tr>
+              <Td colSpan={3}>
+                <span className="text-text-muted">Nenhum papel próprio criado ainda.</span>
+              </Td>
+            </tr>
+          )}
+        </tbody>
+      </DenseTable>
 
       <p className="mt-3 text-xs text-text-muted">Papéis-modelo do sistema (referência, sem permissão própria por padrão):</p>
       <ul className="text-xs text-text">

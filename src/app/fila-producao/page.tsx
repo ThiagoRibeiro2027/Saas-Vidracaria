@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import FilaProducaoSection, { type FilaProducaoRow } from "./FilaProducaoSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 // Fila de Produção — Fase B do plano de 23/09/2026 (fila por pedido de
 // cliente, peças fabricadas reutilizáveis e necessidades automáticas de
@@ -41,10 +42,10 @@ export default async function FilaProducaoPage() {
   });
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">PRODUÇÃO — FILA POR PEDIDO</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Fila de Produção</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Produção"]} title="Fila de Produção" />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Painel de leitura agregando ordens de produção de todos os pedidos, agrupadas por
         cliente/obra/pedido — pensado pro chão de fábrica ver de uma vez só o que está em fila,
         sem abrir cada pedido individualmente. Gestão de OP/lote/roteiro continua em Produção.
@@ -53,6 +54,7 @@ export default async function FilaProducaoPage() {
       <div className="mt-6">
         <FilaProducaoSection linhas={(fila as FilaProducaoRow[]) ?? []} />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

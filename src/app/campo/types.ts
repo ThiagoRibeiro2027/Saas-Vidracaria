@@ -49,3 +49,10 @@ export const STATUS_LABEL: Record<PacoteInstalacao["status"], string> = {
   em_execucao: "Em execução",
   concluida: "Concluída — aguardando aceite",
 };
+
+// ADR-013 (Identidade D), Fase 4.
+export const STATUS_TONE: Record<PacoteInstalacao["status"], "neutral" | "warning" | "success"> = {
+  agendada: "neutral",
+  em_execucao: "warning",
+  concluida: "success",
+};

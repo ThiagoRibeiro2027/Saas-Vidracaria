@@ -1,9 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
 import FinanceiroSection from "./FinanceiroSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 type TabSlug = "geral" | "receber" | "contas" | "alcada" | "confirm" | "pagar" | "cobranca" | "mov";
+
+// ADR-013 (Identidade D), Fase 4.
+const TAB_TITLE: Record<TabSlug, string> = {
+  geral: "Visão geral",
+  receber: "Títulos a receber",
+  contas: "Contas bancárias",
+  alcada: "Alçada",
+  confirm: "Confirmações",
+  pagar: "Títulos a pagar",
+  cobranca: "Cobranças",
+  mov: "Movimentação",
+};
 
 // TÓPICO 11 — Financeiro, recorte mínimo do MVP (ADR-002 §4.14, que
 // prevalece sobre a seção 34 do prompt completo do tópico — ver cabeçalho
@@ -170,10 +183,10 @@ export default async function FinanceiroPage({
       : { data: [] as never[] };
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 11 — Financeiro</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Financeiro</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Financeiro"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Títulos a receber (vinculados a pedido) e a pagar (vinculados a pedido de compra), conta
         bancária, alçada de pagamento, cobrança (boleto/PIX) e conciliação manual de movimentação
         bancária. Nenhum provedor bancário real conectado; sem plano de contas ou DRE.
@@ -209,6 +222,7 @@ export default async function FinanceiroPage({
           canAprovar={!!canAprovar}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

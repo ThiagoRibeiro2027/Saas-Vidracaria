@@ -6,8 +6,19 @@ import ApprovalThresholdsSection from "./ApprovalThresholdsSection";
 import MargemPrecoSection from "./MargemPrecoSection";
 import VariaveisConfiguradorSection from "./VariaveisConfiguradorSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada" | "preco" | "variaveis";
+
+// ADR-013 (Identidade D), Fase 4.
+const TAB_TITLE: Record<TabSlug, string> = {
+  numeracao: "Numeração",
+  quebra: "Margem de quebra",
+  medicao: "Regra de medição",
+  alcada: "Alçada de aprovação",
+  preco: "Margem de preço",
+  variaveis: "Variáveis do configurador",
+};
 
 // TÓPICO 15 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
 // seção 4): numeração, margem de quebra, regra de medição e alçadas de
@@ -85,10 +96,10 @@ export default async function ConfiguracoesPage({
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "numeracao";
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 15 — Configurações</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Configurações da empresa</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Configurações"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Recorte mínimo do M1: numeração, margem de quebra, regra de medição e alçada de
         aprovação, mais a margem de preço do orçamento (ADR-012). Não substitui os cadastros dos módulos operacionais (item 1 do TÓPICO 15).
       </p>
@@ -121,6 +132,7 @@ export default async function ConfiguracoesPage({
           />
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

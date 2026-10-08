@@ -2,9 +2,16 @@ import { createClient } from "@/lib/supabase/server";
 import UsuariosSection, { type Profile, type Role, type UserRoleRow } from "./UsuariosSection";
 import PapeisSection, { type Permission } from "./PapeisSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 type TabSlug = "usuarios" | "papeis";
+
+// ADR-013 (Identidade D), Fase 4.
+const TAB_TITLE: Record<TabSlug, string> = {
+  usuarios: "Usuários",
+  papeis: "Papéis e permissões",
+};
 
 // TÓPICO 14 — Usuários / Permissões, recorte mínimo (ADR-002 §4.10,
 // decisão do responsável do produto em 2026-09-19, pré-requisito antes
@@ -111,10 +118,10 @@ export default async function UsuariosPage({
   }
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 14 — Usuários / Permissões</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Usuários e papéis</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Usuários e Permissões"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Recorte mínimo: convite administrativo, atribuição/revogação de papel, desativação e
         reset de senha; papéis próprios da empresa com permissão configurável. Sem alçadas de
         aprovação, SSO, integrações de identidade ou acesso emergencial (fase futura).
@@ -140,6 +147,7 @@ export default async function UsuariosPage({
           />
         )}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

@@ -14,11 +14,13 @@ import {
   upsertFuncionarioAction,
 } from "./actions";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { FieldBox } from "@/components/ui/FieldBox";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
@@ -183,19 +185,18 @@ export default function RHSection({
           </div>
         )}
 
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Nome</Th>
-                <Th>Cargo/Função</Th>
-                <Th>Unidade</Th>
-                <Th>Status</Th>
-                <Th className="w-6" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
+        <DenseTable className="mt-3">
+          <thead>
+            <DenseTableHeaderRow>
+              <Th>Nome</Th>
+              <Th>Cargo/Função</Th>
+              <Th>Unidade</Th>
+              <Th>Status</Th>
+              <Th className="w-6" />
+            </DenseTableHeaderRow>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
                 const expandido = expandidoFuncionario === row.id;
                 const linhaCompacta = (
                   <tr
@@ -206,10 +207,10 @@ export default function RHSection({
                     <Td>{[row.cargo, row.funcao].filter(Boolean).join(" — ") || "—"}</Td>
                     <Td>{row.unidade_id ? unidadePorId.get(row.unidade_id) ?? "—" : "—"}</Td>
                     <Td>
-                      <Badge variant={STATUS_TONE[row.status]}>
+                      <StatusPill tone={STATUS_TONE[row.status]}>
                         {STATUS_LABEL[row.status]}
                         {row.status === "desligado" && row.motivo_desligamento && ` — ${row.motivo_desligamento}`}
-                      </Badge>
+                      </StatusPill>
                     </Td>
                     <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
                   </tr>
@@ -259,17 +260,16 @@ export default function RHSection({
                   </Fragment>
                 );
               })}
-              {rows.length === 0 && (
-                <tr>
-                  <Td colSpan={5} className="text-text-muted">
-                    Nenhum funcionário cadastrado ainda.
-                  </Td>
-                </tr>
-              )}
-            </tbody>
-          </Table>
-          <Paginacao {...fuPaginacao} paramPagina="fu_pagina" paramPorPagina="fu_por_pagina" />
-        </div>
+            {rows.length === 0 && (
+              <tr>
+                <Td colSpan={5} className="text-text-muted">
+                  Nenhum funcionário cadastrado ainda.
+                </Td>
+              </tr>
+            )}
+          </tbody>
+        </DenseTable>
+        <Paginacao {...fuPaginacao} paramPagina="fu_pagina" paramPorPagina="fu_por_pagina" />
       </section>
       )}
 
@@ -290,16 +290,15 @@ export default function RHSection({
           </div>
         )}
 
-        <div className="mt-3 overflow-x-auto">
-          <Table>
+        <DenseTable className="mt-3">
             <thead>
-              <tr>
+              <DenseTableHeaderRow>
                 <Th>Funcionário</Th>
                 <Th>Tipo</Th>
                 <Th>Nome</Th>
                 <Th>Status</Th>
                 <Th className="w-6" />
-              </tr>
+              </DenseTableHeaderRow>
             </thead>
             <tbody>
               {documentos.map((doc) => {
@@ -317,9 +316,9 @@ export default function RHSection({
                       </Td>
                       <Td>{doc.nome}</Td>
                       <Td>
-                        <Badge variant={doc.status === "ativo" ? "success" : "danger"}>
+                        <StatusPill tone={doc.status === "ativo" ? "success" : "danger"}>
                           {doc.status === "ativo" ? "Ativo" : `Cancelado${doc.motivo_cancelamento ? ` — ${doc.motivo_cancelamento}` : ""}`}
-                        </Badge>
+                        </StatusPill>
                       </Td>
                       <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
                     </tr>
@@ -369,9 +368,8 @@ export default function RHSection({
                 </tr>
               )}
             </tbody>
-          </Table>
-          <Paginacao {...docPaginacao} paramPagina="doc_pagina" paramPorPagina="doc_por_pagina" />
-        </div>
+        </DenseTable>
+        <Paginacao {...docPaginacao} paramPagina="doc_pagina" paramPorPagina="doc_por_pagina" />
       </section>
       )}
 
@@ -389,19 +387,18 @@ export default function RHSection({
           </div>
         )}
 
-        <div className="mt-3 overflow-x-auto">
-          <Table>
-            <thead>
-              <tr>
-                <Th>Funcionário</Th>
-                <Th>Tipo</Th>
-                <Th>Início</Th>
-                <Th>Fim</Th>
-                <Th>Status</Th>
-                <Th className="w-6" />
-              </tr>
-            </thead>
-            <tbody>
+        <DenseTable className="mt-3">
+          <thead>
+            <DenseTableHeaderRow>
+              <Th>Funcionário</Th>
+              <Th>Tipo</Th>
+              <Th>Início</Th>
+              <Th>Fim</Th>
+              <Th>Status</Th>
+              <Th className="w-6" />
+            </DenseTableHeaderRow>
+          </thead>
+          <tbody>
               {afastamentos.map((af) => {
                 const expandido = expandidoAfastamento === af.id;
                 return (
@@ -415,9 +412,9 @@ export default function RHSection({
                       <Td>{af.data_inicio}</Td>
                       <Td>{af.data_fim ?? "em aberto"}</Td>
                       <Td>
-                        <Badge variant={af.status === "ativo" ? "success" : "danger"}>
+                        <StatusPill tone={af.status === "ativo" ? "success" : "danger"}>
                           {af.status === "ativo" ? "Ativo" : `Cancelado${af.motivo_cancelamento ? ` — ${af.motivo_cancelamento}` : ""}`}
-                        </Badge>
+                        </StatusPill>
                       </Td>
                       <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
                     </tr>
@@ -454,10 +451,9 @@ export default function RHSection({
                   </Td>
                 </tr>
               )}
-            </tbody>
-          </Table>
-          <Paginacao {...afPaginacao} paramPagina="af_pagina" paramPorPagina="af_por_pagina" />
-        </div>
+          </tbody>
+        </DenseTable>
+        <Paginacao {...afPaginacao} paramPagina="af_pagina" paramPorPagina="af_por_pagina" />
       </section>
       )}
     </>
@@ -481,12 +477,9 @@ function VisaoGeral({ indicadores }: { indicadores: Indicadores }) {
         Indicadores do módulo RH — funcionários por status, documentos/EPI/habilitações ativos (e
         vencendo em 30 dias) e afastamentos ainda em aberto.
       </p>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="mt-3 flex flex-wrap gap-3">
         {cartoes.map((c) => (
-          <div key={c.label} className="rounded-md bg-page-bg p-4">
-            <p className="text-xs text-text-muted">{c.label}</p>
-            <p className={`mt-1 text-2xl font-semibold ${c.tone === "warning" ? "text-warning" : "text-text"}`}>{c.valor}</p>
-          </div>
+          <FieldBox key={c.label} label={c.label} value={String(c.valor)} tone={c.tone === "warning" ? "amber" : "teal"} />
         ))}
       </div>
     </section>

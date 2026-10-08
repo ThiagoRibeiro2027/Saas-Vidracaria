@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import RHSection from "./RHSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 17 — RH completo: cadastro de funcionários, vínculo com usuário,
@@ -18,6 +19,14 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // sempre buscados (sem paginação) por serem usados como lookup/opção em
 // mais de uma aba.
 type TabSlug = "geral" | "funcionarios" | "documentos" | "afastamentos";
+
+// ADR-013 (Identidade D), Fase 4.
+const TAB_TITLE: Record<TabSlug, string> = {
+  geral: "Visão geral",
+  funcionarios: "Funcionários",
+  documentos: "Documentos, EPI e habilitações",
+  afastamentos: "Afastamentos e férias",
+};
 
 export default async function RHPage({
   searchParams,
@@ -147,10 +156,10 @@ export default async function RHPage({
       : { data: [] as never[] };
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 17 — RH</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">RH</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["RH"]} title={TAB_TITLE[activeTab]} />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Cadastro de funcionários, vínculo com usuário, desligamento, documentos de admissão,
         certificações/treinamentos (incl. segurança), EPI, habilitações para operar equipamento
         (com vínculo opcional a um recurso produtivo cadastrado) e afastamentos/férias. Dados
@@ -183,6 +192,7 @@ export default async function RHPage({
           canManage={!!canManage}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

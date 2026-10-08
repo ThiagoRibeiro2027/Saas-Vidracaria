@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import ContratosSection from "./ContratosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // TÓPICO 18 — Contratos completo (§4-7, §10): estrutura genérica única com
@@ -79,10 +80,10 @@ export default async function ContratosPage({
       : { data: [] as never[] };
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 18 — Contratos</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Contratos</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Contratos"]} title="Contratos" />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Estrutura genérica para contratos com cliente, fornecedor e funcionário/prestador. Ciclo
         de vida completo com alçada de aprovação, garantia (só cliente) e vínculo financeiro
         detalhado (título financeiro gerado a partir de contrato vigente com cliente).
@@ -105,6 +106,7 @@ export default async function ContratosPage({
           canGerarTitulos={!!canGerarTitulos}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

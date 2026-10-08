@@ -3,7 +3,8 @@
 import { upsertCuttingMarginAction } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 type Row = {
   id: string;
@@ -21,25 +22,23 @@ export default function CuttingMarginsSection({ rows, canManage }: { rows: Row[]
         Quantidade técnica planejada por material (linha com processo em branco = valor padrão),
         sobreposta pela combinação específica material + processo quando houver.
       </p>
-      <div className="mt-2 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Material</Th>
-              <Th>Processo</Th>
-              <Th>Percentual (%)</Th>
-              <Th>Ativo</Th>
-              {canManage && <Th />}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <RowForm key={row.id} row={row} canManage={canManage} />
-            ))}
-            {canManage && <RowForm row={null} canManage={canManage} />}
-          </tbody>
-        </Table>
-      </div>
+      <DenseTable className="mt-2">
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Material</Th>
+            <Th>Processo</Th>
+            <Th>Percentual (%)</Th>
+            <Th>Ativo</Th>
+            {canManage && <Th />}
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <RowForm key={row.id} row={row} canManage={canManage} />
+          ))}
+          {canManage && <RowForm row={null} canManage={canManage} />}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }

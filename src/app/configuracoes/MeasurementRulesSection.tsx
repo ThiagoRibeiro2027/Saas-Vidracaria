@@ -3,7 +3,8 @@
 import { upsertMeasurementRuleAction } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 type Row = {
   id: string;
@@ -20,23 +21,21 @@ export default function MeasurementRulesSection({ rows, canManage }: { rows: Row
         Itens sob medida: liberação para produção fica impedida sem medida confirmada. Itens
         padrão/catálogo: o sistema apenas sinaliza, sem impedir (TÓPICO 15 §31.5).
       </p>
-      <div className="mt-2 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Tipo de item</Th>
-              <Th>Exige medição confirmada</Th>
-              <Th>Ativo</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <RowForm key={row.id} row={row} canManage={canManage} />
-            ))}
-            {canManage && <RowForm row={null} canManage={canManage} />}
-          </tbody>
-        </Table>
-      </div>
+      <DenseTable className="mt-2">
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Tipo de item</Th>
+            <Th>Exige medição confirmada</Th>
+            <Th>Ativo</Th>
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <RowForm key={row.id} row={row} canManage={canManage} />
+          ))}
+          {canManage && <RowForm row={null} canManage={canManage} />}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }

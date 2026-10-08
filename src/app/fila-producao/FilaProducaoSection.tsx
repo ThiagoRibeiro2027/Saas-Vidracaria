@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { formatarData } from "@/lib/formato/data";
 
 export type FilaProducaoRow = {
@@ -127,20 +128,19 @@ export default function FilaProducaoSection({ linhas }: { linhas: FilaProducaoRo
         </Select>
       </div>
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Pedido</Th>
-              <Th>Cliente</Th>
-              <Th>Obra</Th>
-              <Th>Previsão de entrega</Th>
-              <Th>OPs</Th>
-              <Th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
-            {pedidosAgrupados.map((grupo) => {
+      <DenseTable className="mt-3">
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Pedido</Th>
+            <Th>Cliente</Th>
+            <Th>Obra</Th>
+            <Th>Previsão de entrega</Th>
+            <Th>OPs</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {pedidosAgrupados.map((grupo) => {
               const primeira = grupo[0];
               const aberto = expandido === primeira.pedido_id;
               return (
@@ -199,16 +199,15 @@ export default function FilaProducaoSection({ linhas }: { linhas: FilaProducaoRo
                 </Fragment>
               );
             })}
-            {pedidosAgrupados.length === 0 && (
-              <tr>
-                <Td colSpan={6} className="text-text-muted">
-                  Nenhuma ordem de produção encontrada com esses filtros.
-                </Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-      </div>
+          {pedidosAgrupados.length === 0 && (
+            <tr>
+              <Td colSpan={6} className="text-text-muted">
+                Nenhuma ordem de produção encontrada com esses filtros.
+              </Td>
+            </tr>
+          )}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }

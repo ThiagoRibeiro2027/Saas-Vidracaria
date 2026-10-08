@@ -17,11 +17,12 @@ import {
 } from "./actions";
 import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
@@ -174,19 +175,18 @@ export default function ContratosSection({
         </div>
       )}
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Número</Th>
-              <Th>Tipo</Th>
-              <Th>Vínculo</Th>
-              <Th>Status</Th>
-              <Th className="w-6" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
+      <DenseTable className="mt-3">
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Número</Th>
+            <Th>Tipo</Th>
+            <Th>Vínculo</Th>
+            <Th>Status</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
               const expandido = expandidoId === row.id;
               return (
                 <Fragment key={row.id}>
@@ -198,10 +198,10 @@ export default function ContratosSection({
                     <Td>{TIPO_LABEL[row.tipo]}</Td>
                     <Td className="text-text-muted">{vinculo(row)}</Td>
                     <Td>
-                      <Badge variant={STATUS_TONE[row.status]}>
+                      <StatusPill tone={STATUS_TONE[row.status]}>
                         {STATUS_LABEL[row.status]}
                         {motivoAtual(row) && ` — ${motivoAtual(row)}`}
-                      </Badge>
+                      </StatusPill>
                     </Td>
                     <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
                   </tr>
@@ -285,9 +285,8 @@ export default function ContratosSection({
               </tr>
             )}
           </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+      </DenseTable>
+      <Paginacao {...paginacao} />
     </section>
   );
 }

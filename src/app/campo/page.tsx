@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import CampoAgenda from "./CampoAgenda";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
 
 // TÓPICO 16 — agenda da PWA de campo. Gate de permissão igual aos demais
 // módulos (só se aplica quando a navegação realmente chega ao servidor —
@@ -12,10 +13,8 @@ export default async function CampoPage() {
 
   if (!canView) {
     return (
-      <main style={{ padding: "24px", fontFamily: "system-ui, sans-serif" }}>
-        <p style={{ fontSize: "13px", color: "#9b2c2c" }}>
-          Você não tem permissão para visualizar o módulo Instalação desta empresa.
-        </p>
+      <main className="p-6">
+        <PermissionDenied message="Você não tem permissão para visualizar o módulo Instalação desta empresa." />
       </main>
     );
   }

@@ -4,8 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useCampo } from "../CampoProvider";
 import { uploadEvidenciaAction } from "../actions";
-import { CAUSAS_DANO, STATUS_LABEL, type PacoteInstalacao } from "../types";
+import { CAUSAS_DANO, STATUS_LABEL, STATUS_TONE, type PacoteInstalacao } from "../types";
 import { formatarData } from "@/lib/formato/data";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { StatusPill } from "@/components/ui/StatusPill";
 
 export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId: string }) {
   const { pacote, fila, online, validade, canManage, canAceite, enfileirarAcao, retentar } = useCampo();
@@ -14,37 +19,37 @@ export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId:
   const filaDaInstalacao = fila.filter((f) => f.instalacaoId === instalacaoId);
   const bloqueadoParaNovoRegistro = !online && validade.bloqueadoParaCriar;
 
-  if (!pacote) return <main style={{ padding: "16px" }}>Carregando…</main>;
+  if (!pacote) return <main className="p-4">Carregando…</main>;
   if (!inst) {
     return (
-      <main style={{ padding: "16px" }}>
-        <p style={{ fontSize: "13px", color: "#9b2c2c" }}>
+      <main className="p-4">
+        <p className="text-sm text-danger">
           Instalação não encontrada nos dados locais. Sincronize (se estiver online) ou volte à agenda.
         </p>
-        <Link href="/campo" style={{ fontSize: "13px", color: "#1f5d57" }}>← Agenda</Link>
+        <Link href="/campo" className="text-sm text-primary">← Agenda</Link>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: "16px", maxWidth: "640px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "16px" }}>
+    <main className="mx-auto flex max-w-xl flex-col gap-4 p-4">
       <div>
-        <Link href="/campo" style={{ fontSize: "12px", color: "#1f5d57" }}>← Agenda</Link>
-        <h1 style={{ fontSize: "18px", margin: "4px 0" }}>{inst.numero}</h1>
-        <p style={{ fontSize: "13px", color: "#1f5d57", margin: 0 }}>{STATUS_LABEL[inst.status]}</p>
-        <p style={{ fontSize: "12px", color: "#3e4d49", marginTop: "4px" }}>
+        <Link href="/campo" className="text-xs text-primary">← Agenda</Link>
+        <h1 className="my-1 text-lg font-semibold text-text">{inst.numero}</h1>
+        <StatusPill tone={STATUS_TONE[inst.status]}>{STATUS_LABEL[inst.status]}</StatusPill>
+        <p className="mt-1 text-xs text-text">
           {inst.obra?.nome ?? "Obra não definida"}
           {inst.obra?.logradouro ? ` — ${inst.obra.logradouro}, ${inst.obra.cidade ?? ""}/${inst.obra.uf ?? ""}` : ""}
         </p>
-        <p style={{ fontSize: "12px", color: "#6b7a75" }}>
+        <p className="text-xs text-text-muted">
           Cliente: {inst.pessoa.nome} · Pedido {inst.pedido.numero} · Agendada para{" "}
           {formatarData(inst.data_agendada)}
         </p>
-        {inst.observacoes && <p style={{ fontSize: "12px", color: "#6b7a75" }}>Obs.: {inst.observacoes}</p>}
+        {inst.observacoes && <p className="text-xs text-text-muted">Obs.: {inst.observacoes}</p>}
       </div>
 
       {bloqueadoParaNovoRegistro && (
-        <p style={{ fontSize: "12px", color: "#9b2c2c", background: "#fde8e8", padding: "8px", borderRadius: "6px" }}>
+        <p className="rounded-md bg-danger/10 p-2 text-xs text-danger">
           Sem sincronizar há 3+ dias — novos registros offline estão bloqueados (ADR-005 §9). Conecte-se à internet.
         </p>
       )}
@@ -58,8 +63,8 @@ export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId:
       )}
 
       <section>
-        <h2 style={{ fontSize: "14px", margin: "0 0 8px" }}>Itens</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <h2 className="mb-2 text-sm font-semibold text-text">Itens</h2>
+        <div className="flex flex-col gap-2">
           {inst.itens.map((item) => (
             <ItemCard key={item.id} item={item} instalacaoId={inst.id} podeExecutar={inst.status === "em_execucao" && canManage} bloqueado={bloqueadoParaNovoRegistro} canManage={canManage} />
           ))}
@@ -84,16 +89,16 @@ export default function CampoInstalacaoDetalhe({ instalacaoId }: { instalacaoId:
 
       {filaDaInstalacao.length > 0 && (
         <section>
-          <h2 style={{ fontSize: "14px", margin: "0 0 8px" }}>Ações locais</h2>
-          <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+          <h2 className="mb-2 text-sm font-semibold text-text">Ações locais</h2>
+          <ul className="flex list-none flex-col gap-1.5 p-0">
             {filaDaInstalacao.map((op) => (
-              <li key={op.id} style={{ fontSize: "12px", background: op.status === "erro" ? "#fde8e8" : "#fff", padding: "8px", borderRadius: "6px" }}>
-                <div>{op.label}</div>
-                <div style={{ color: "#6b7a75" }}>{op.status === "erro" ? `Erro: ${op.erro}` : "Aguardando envio"}</div>
+              <li key={op.id} className={`rounded-md p-2 text-xs ${op.status === "erro" ? "bg-danger/10" : "bg-surface"}`}>
+                <div className="text-text">{op.label}</div>
+                <div className="text-text-muted">{op.status === "erro" ? `Erro: ${op.erro}` : "Aguardando envio"}</div>
                 {op.status === "erro" && (
-                  <button onClick={() => retentar(op.id)} style={{ marginTop: "4px", fontSize: "11px", border: "1px solid #c7d3cd", borderRadius: "4px", background: "#fff", padding: "2px 8px", cursor: "pointer" }}>
+                  <Button type="button" variant="secondary" size="sm" className="mt-1" onClick={() => retentar(op.id)}>
                     Tentar de novo
-                  </button>
+                  </Button>
                 )}
               </li>
             ))}
@@ -112,16 +117,17 @@ function AcaoSimples({ label, onClick, disabled }: { label: string; onClick: () 
   // ação já tendo sido aplicada pela primeira.
   const [pending, setPending] = useState(false);
   return (
-    <button
+    <Button
+      type="button"
+      variant="primary"
+      disabled={disabled || pending}
       onClick={() => {
         setPending(true);
         onClick();
       }}
-      disabled={disabled || pending}
-      style={{ background: "#1f5d57", color: "#fff", border: "none", borderRadius: "6px", padding: "10px", fontSize: "14px", cursor: disabled || pending ? "not-allowed" : "pointer", opacity: disabled || pending ? 0.6 : 1 }}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -143,16 +149,16 @@ function ItemCard({
   const [mostrarDano, setMostrarDano] = useState(false);
 
   return (
-    <div style={{ background: "#fff", borderRadius: "8px", padding: "12px", fontSize: "13px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+    <Card padding="sm" className="text-sm">
+      <div className="flex justify-between">
         <strong>{item.item_codigo}</strong>
         <span>{item.quantidade_instalada}/{item.quantidade}</span>
       </div>
-      <div style={{ color: "#6b7a75", fontSize: "12px" }}>{item.item_descricao}</div>
+      <div className="text-xs text-text-muted">{item.item_descricao}</div>
 
       {podeExecutar && item.quantidade_pendente > 0 && (
-        <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
-          <input
+        <div className="mt-2 flex gap-1.5">
+          <Input
             type="number"
             min="0"
             step="0.001"
@@ -160,9 +166,11 @@ function ItemCard({
             value={quantidade}
             onChange={(e) => setQuantidade(e.target.value)}
             placeholder={`até ${item.quantidade_pendente}`}
-            style={{ flex: 1, border: "1px solid #c7d3cd", borderRadius: "4px", padding: "6px" }}
+            className="flex-1"
           />
-          <button
+          <Button
+            type="button"
+            variant="primary"
             disabled={bloqueado || !quantidade || Number(quantidade) <= 0}
             onClick={() => {
               enfileirarAcao({
@@ -173,20 +181,19 @@ function ItemCard({
               });
               setQuantidade("");
             }}
-            style={{ border: "none", borderRadius: "4px", background: "#1f5d57", color: "#fff", padding: "6px 12px", cursor: "pointer" }}
           >
             Registrar
-          </button>
+          </Button>
         </div>
       )}
 
       {canManage && (
-        <button onClick={() => setMostrarDano((v) => !v)} style={{ marginTop: "8px", fontSize: "11px", background: "none", border: "none", color: "#9b2c2c", cursor: "pointer", padding: 0 }}>
+        <button type="button" onClick={() => setMostrarDano((v) => !v)} className="mt-2 cursor-pointer border-none bg-transparent p-0 text-[11px] text-danger">
           {mostrarDano ? "Cancelar" : "Registrar dano/quebra"}
         </button>
       )}
       {canManage && mostrarDano && <DanoForm item={item} instalacaoId={instalacaoId} bloqueado={bloqueado} onDone={() => setMostrarDano(false)} />}
-    </div>
+    </Card>
   );
 }
 
@@ -197,15 +204,23 @@ function DanoForm({ item, instalacaoId, bloqueado, onDone }: { item: PacoteInsta
   const [descricao, setDescricao] = useState("");
 
   return (
-    <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "6px", background: "#fde8e8", padding: "8px", borderRadius: "6px" }}>
-      <input type="number" min="0" step="0.001" placeholder="Quantidade danificada" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} style={{ border: "1px solid #c7d3cd", borderRadius: "4px", padding: "6px" }} />
-      <select value={causa} onChange={(e) => setCausa(e.target.value as typeof causa)} style={{ border: "1px solid #c7d3cd", borderRadius: "4px", padding: "6px" }}>
+    <div className="mt-2 flex flex-col gap-1.5 rounded-md bg-danger/10 p-2">
+      <Input type="number" min="0" step="0.001" placeholder="Quantidade danificada" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+      <Select value={causa} onChange={(e) => setCausa(e.target.value as typeof causa)}>
         {CAUSAS_DANO.map((c) => (
           <option key={c.value} value={c.value}>{c.label}</option>
         ))}
-      </select>
-      <textarea placeholder="Descrição (opcional)" value={descricao} onChange={(e) => setDescricao(e.target.value)} style={{ border: "1px solid #c7d3cd", borderRadius: "4px", padding: "6px" }} />
-      <button
+      </Select>
+      <textarea
+        placeholder="Descrição (opcional)"
+        value={descricao}
+        onChange={(e) => setDescricao(e.target.value)}
+        className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+      />
+      <Button
+        type="button"
+        variant="danger"
+        className="w-fit"
         disabled={bloqueado || !quantidade || Number(quantidade) <= 0}
         onClick={() => {
           enfileirarAcao({
@@ -216,10 +231,9 @@ function DanoForm({ item, instalacaoId, bloqueado, onDone }: { item: PacoteInsta
           });
           onDone();
         }}
-        style={{ border: "none", borderRadius: "4px", background: "#9b2c2c", color: "#fff", padding: "6px 12px", cursor: "pointer", width: "fit-content" }}
       >
         Registrar dano
-      </button>
+      </Button>
     </div>
   );
 }
@@ -230,33 +244,34 @@ function OcorrenciasSection({ instalacaoId, ocorrencias, bloqueado, canManage }:
 
   return (
     <section>
-      <h2 style={{ fontSize: "14px", margin: "0 0 8px" }}>Ocorrências</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "8px" }}>
+      <h2 className="mb-2 text-sm font-semibold text-text">Ocorrências</h2>
+      <div className="mb-2 flex flex-col gap-1.5">
         {ocorrencias.map((o) => (
-          <div key={o.id} style={{ fontSize: "12px", background: "#fff", padding: "8px", borderRadius: "6px" }}>
-            <div>{o.descricao}</div>
-            <div style={{ color: "#6b7a75" }}>{new Date(o.registrado_em).toLocaleString("pt-BR")}</div>
-          </div>
+          <Card key={o.id} padding="sm" className="text-xs">
+            <div className="text-text">{o.descricao}</div>
+            <div className="text-text-muted">{new Date(o.registrado_em).toLocaleString("pt-BR")}</div>
+          </Card>
         ))}
       </div>
       {canManage && (
-        <div style={{ display: "flex", gap: "6px" }}>
-          <input
+        <div className="flex gap-1.5">
+          <Input
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
             placeholder="Descrever ocorrência"
-            style={{ flex: 1, border: "1px solid #c7d3cd", borderRadius: "4px", padding: "6px" }}
+            className="flex-1"
           />
-          <button
+          <Button
+            type="button"
+            variant="primary"
             disabled={bloqueado || !descricao.trim()}
             onClick={() => {
               enfileirarAcao({ rpc: "registrar_ocorrencia_instalacao", params: { p_instalacao_id: instalacaoId, p_descricao: descricao }, label: `Ocorrência — ${descricao.slice(0, 30)}`, instalacaoId });
               setDescricao("");
             }}
-            style={{ border: "none", borderRadius: "4px", background: "#1f5d57", color: "#fff", padding: "6px 12px", cursor: "pointer" }}
           >
             Registrar
-          </button>
+          </Button>
         </div>
       )}
     </section>
@@ -279,24 +294,27 @@ function DanosSection({
   const { enfileirarAcao } = useCampo();
   return (
     <section>
-      <h2 style={{ fontSize: "14px", margin: "0 0 8px" }}>Danos registrados</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      <h2 className="mb-2 text-sm font-semibold text-text">Danos registrados</h2>
+      <div className="flex flex-col gap-1.5">
         {danos.map((d) => {
           const item = itens.find((i) => i.id === d.instalacao_item_id);
           return (
-            <div key={d.id} style={{ fontSize: "12px", background: "#fff", padding: "8px", borderRadius: "6px" }}>
-              <div>{item?.item_codigo ?? "item"} — {d.quantidade} un. ({d.causa})</div>
-              {d.descricao && <div style={{ color: "#6b7a75" }}>{d.descricao}</div>}
+            <Card key={d.id} padding="sm" className="text-xs">
+              <div className="text-text">{item?.item_codigo ?? "item"} — {d.quantidade} un. ({d.causa})</div>
+              {d.descricao && <div className="text-text-muted">{d.descricao}</div>}
               {canManage && (
-                <button
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="mt-1"
                   disabled={bloqueado}
                   onClick={() => enfileirarAcao({ rpc: "solicitar_nova_fabricacao", params: { p_dano_id: d.id, p_motivo: null }, label: `Solicitar nova fabricação — ${item?.item_codigo ?? ""}`, instalacaoId })}
-                  style={{ marginTop: "4px", fontSize: "11px", border: "1px solid #c7d3cd", borderRadius: "4px", background: "#fff", padding: "2px 8px", cursor: "pointer" }}
                 >
                   Solicitar nova fabricação
-                </button>
+                </Button>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>
@@ -309,20 +327,21 @@ function AceiteForm({ instalacaoId, bloqueado }: { instalacaoId: string; bloquea
   const [nome, setNome] = useState("");
 
   return (
-    <section style={{ background: "#e6f4ea", padding: "12px", borderRadius: "8px" }}>
-      <h2 style={{ fontSize: "14px", margin: "0 0 8px" }}>Aceite do cliente</h2>
-      <div style={{ display: "flex", gap: "6px" }}>
-        <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome de quem aceitou" style={{ flex: 1, border: "1px solid #c7d3cd", borderRadius: "4px", padding: "6px" }} />
-        <button
+    <section className="rounded-lg bg-success/10 p-3">
+      <h2 className="mb-2 text-sm font-semibold text-text">Aceite do cliente</h2>
+      <div className="flex gap-1.5">
+        <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome de quem aceitou" className="flex-1" />
+        <Button
+          type="button"
+          variant="primary"
           disabled={bloqueado || !nome.trim()}
           onClick={() => {
             enfileirarAcao({ rpc: "registrar_aceite_instalacao", params: { p_instalacao_id: instalacaoId, p_nome_cliente: nome }, label: `Aceite — ${nome}`, instalacaoId });
             setNome("");
           }}
-          style={{ border: "none", borderRadius: "4px", background: "#1f5d57", color: "#fff", padding: "6px 12px", cursor: "pointer" }}
         >
           Registrar aceite
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -334,9 +353,9 @@ function EvidenciasSection({ instalacaoId, online }: { instalacaoId: string; onl
 
   return (
     <section>
-      <h2 style={{ fontSize: "14px", margin: "0 0 8px" }}>Evidências fotográficas</h2>
+      <h2 className="mb-2 text-sm font-semibold text-text">Evidências fotográficas</h2>
       {!online && (
-        <p style={{ fontSize: "12px", color: "#6b7a75" }}>
+        <p className="text-xs text-text-muted">
           Envio de fotos exige conexão neste recorte — a fila offline de evidências ainda não foi implementada.
         </p>
       )}
@@ -357,7 +376,7 @@ function EvidenciasSection({ instalacaoId, online }: { instalacaoId: string; onl
           e.target.value = "";
         }}
       />
-      {mensagem && <p style={{ fontSize: "12px", color: mensagem.startsWith("Falha") ? "#9b2c2c" : "#1f5d57" }}>{mensagem}</p>}
+      {mensagem && <p className={`text-xs ${mensagem.startsWith("Falha") ? "text-danger" : "text-primary"}`}>{mensagem}</p>}
     </section>
   );
 }

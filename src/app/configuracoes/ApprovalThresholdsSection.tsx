@@ -4,7 +4,8 @@ import { upsertApprovalThresholdAction } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 
 type Row = {
   id: string;
@@ -32,24 +33,22 @@ export default function ApprovalThresholdsSection({
         Valor mínimo que exige aprovação e o perfil que aprova, por processo. Recorte de M1 — sem
         aprovação sequencial/paralela, delegação ou escalonamento (TÓPICO 15 §8).
       </p>
-      <div className="mt-2 overflow-x-auto">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Processo</Th>
-              <Th>Valor mínimo</Th>
-              <Th>Perfil aprovador</Th>
-              <Th>Ativo</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <RowForm key={row.id} row={row} roles={roles} canManage={canManage} />
-            ))}
-            {canManage && <RowForm row={null} roles={roles} canManage={canManage} />}
-          </tbody>
-        </Table>
-      </div>
+      <DenseTable className="mt-2">
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Processo</Th>
+            <Th>Valor mínimo</Th>
+            <Th>Perfil aprovador</Th>
+            <Th>Ativo</Th>
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <RowForm key={row.id} row={row} roles={roles} canManage={canManage} />
+          ))}
+          {canManage && <RowForm row={null} roles={roles} canManage={canManage} />}
+        </tbody>
+      </DenseTable>
     </section>
   );
 }

@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import BIDashboard from "./BIDashboard";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { inputStyle, buttonStyle } from "../configuracoes/styles";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 // TÓPICO 12 — BI, Fases 2 e 3 (ADR-002 v2.14 §4.16): indicadores
 // operacionais básicos + filtro de período + quatro indicadores
@@ -77,30 +79,27 @@ export default async function BIPage({
   });
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">TÓPICO 12 — BI</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Indicadores</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["BI"]} title="Indicadores" />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Indicadores operacionais e dashboards por área, com filtro de período. Sem KPI versionado,
         drill-down, análise preditiva, rentabilidade, metas, alertas ou assistente analítico.
       </p>
 
       <form method="get" className="mt-3 flex flex-wrap items-center gap-1.5 rounded-md bg-page-bg p-3">
-        <label className="text-xs text-text">
-          De{" "}
-          <input name="data_inicio" type="date" defaultValue={dataInicio ?? ""} style={inputStyle} />
+        <label className="flex items-center gap-1 text-xs text-text">
+          De <Input name="data_inicio" type="date" defaultValue={dataInicio ?? ""} />
         </label>
-        <label className="text-xs text-text">
-          Até{" "}
-          <input name="data_fim" type="date" defaultValue={dataFim ?? ""} style={inputStyle} />
+        <label className="flex items-center gap-1 text-xs text-text">
+          Até <Input name="data_fim" type="date" defaultValue={dataFim ?? ""} />
         </label>
-        <label className="text-xs text-text">
-          Estoque parado (dias){" "}
-          <input name="dias_estoque_parado" type="number" min={1} defaultValue={diasEstoqueParado} style={{ ...inputStyle, width: "64px" }} />
+        <label className="flex items-center gap-1 text-xs text-text">
+          Estoque parado (dias) <Input name="dias_estoque_parado" type="number" min={1} defaultValue={diasEstoqueParado} className="w-16" />
         </label>
-        <button type="submit" style={buttonStyle}>
+        <Button type="submit" variant="primary">
           Filtrar
-        </button>
+        </Button>
         {(dataInicio || dataFim) && (
           <a href="/bi" className="text-xs text-text">
             Limpar período
@@ -127,6 +126,7 @@ export default async function BIPage({
           <BIDashboard data={data} />
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import FiscalSection from "./FiscalSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
 // ADR-004 — Estratégia Fiscal, completo: estrutura de registro/
@@ -55,10 +56,10 @@ export default async function FiscalPage({
       : { data: [] as never[] };
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <p className="font-mono text-[11px] text-primary">ADR-004 — Fiscal</p>
-      <h1 className="mt-1 text-lg font-semibold text-text">Fiscal</h1>
-      <p className="mt-1 text-sm text-text">
+    <>
+      <PageHeader breadcrumb={["Fiscal"]} title="Documentos fiscais" />
+      <div className="mx-auto max-w-7xl p-6">
+      <p className="text-sm text-text">
         Registro, rastreabilidade e avaliação (conferência/aprovação/rejeição/pendência, §6) de
         documentos fiscais, com histórico de tentativas de processamento e reprocessamento
         controlado (§7-8). Sem emissão real, cancelamento fiscal real, inutilização ou transmissão
@@ -73,6 +74,7 @@ export default async function FiscalPage({
           canManage={!!canManage}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }

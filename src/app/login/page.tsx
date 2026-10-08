@@ -1,80 +1,42 @@
 "use client";
 
-import { useActionState, type CSSProperties } from "react";
+import { useActionState } from "react";
 import { signInAction } from "./actions";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(signInAction, undefined);
 
   return (
-    <main
-      style={{
-        minHeight: "100dvh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: "system-ui, sans-serif",
-        background: "#f5f7f5",
-      }}
-    >
-      <form
-        action={formAction}
-        style={{
-          background: "#fff",
-          padding: "32px",
-          borderRadius: "8px",
-          width: "320px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          boxShadow: "0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18)",
-        }}
-      >
-        <h1 style={{ fontSize: "18px", margin: 0 }}>Entrar</h1>
+    <main className="flex min-h-dvh items-center justify-center bg-page-bg p-6">
+      <Card className="w-80">
+        <form action={formAction} className="flex flex-col gap-3">
+          <h1 className="text-lg font-semibold text-text">Entrar</h1>
 
-        <label style={{ fontSize: "13px", display: "flex", flexDirection: "column", gap: "4px" }}>
-          Empresa <span style={{ color: "#6b7a75" }}>(deixe em branco se for administrador de plataforma)</span>
-          <input name="company" placeholder="jrbox" style={inputStyle} />
-        </label>
+          <label className="flex flex-col gap-1 text-sm text-text">
+            Empresa <span className="text-xs text-text-muted">(deixe em branco se for administrador de plataforma)</span>
+            <Input name="company" placeholder="jrbox" />
+          </label>
 
-        <label style={{ fontSize: "13px", display: "flex", flexDirection: "column", gap: "4px" }}>
-          Matrícula ou e-mail
-          <input name="identifier" required style={inputStyle} />
-        </label>
+          <label className="flex flex-col gap-1 text-sm text-text">
+            Matrícula ou e-mail
+            <Input name="identifier" required />
+          </label>
 
-        <label style={{ fontSize: "13px", display: "flex", flexDirection: "column", gap: "4px" }}>
-          Senha
-          <input name="password" type="password" required style={inputStyle} />
-        </label>
+          <label className="flex flex-col gap-1 text-sm text-text">
+            Senha
+            <Input name="password" type="password" required />
+          </label>
 
-        {state?.error && (
-          <p style={{ color: "#9b2c2c", fontSize: "13px", margin: 0 }}>{state.error}</p>
-        )}
+          {state?.error && <p className="text-sm text-danger">{state.error}</p>}
 
-        <button
-          type="submit"
-          disabled={pending}
-          style={{
-            marginTop: "8px",
-            background: "#1f5d57",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
-            padding: "10px",
-            fontSize: "14px",
-            cursor: "pointer",
-          }}
-        >
-          {pending ? "Entrando..." : "Entrar"}
-        </button>
-      </form>
+          <Button type="submit" variant="primary" disabled={pending} className="mt-2">
+            {pending ? "Entrando..." : "Entrar"}
+          </Button>
+        </form>
+      </Card>
     </main>
   );
 }
-
-const inputStyle: CSSProperties = {
-  padding: "8px 10px",
-  borderRadius: "6px",
-  border: "1px solid #dae2de",
-  fontSize: "14px",
-};

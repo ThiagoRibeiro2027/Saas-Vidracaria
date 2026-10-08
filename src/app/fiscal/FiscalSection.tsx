@@ -12,11 +12,12 @@ import {
   vincularDocumentoFiscalAction,
 } from "./actions";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
@@ -131,40 +132,38 @@ export default function FiscalSection({
         </div>
       )}
 
-      <div className="mt-3 overflow-x-auto">
-        <Table>
-          <thead>
+      <DenseTable className="mt-3">
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Tipo</Th>
+            <Th>Número</Th>
+            <Th>Vínculo</Th>
+            <Th>Status</Th>
+            <Th>Processamento</Th>
+            <Th className="w-6" />
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <LinhaDocumento
+              key={row.id}
+              row={row}
+              tentativas={tentativasPorDocumento.get(row.id) ?? []}
+              canManage={canManage}
+              expandido={expandidoId === row.id}
+              onToggle={() => setExpandidoId((atual) => (atual === row.id ? null : row.id))}
+            />
+          ))}
+          {rows.length === 0 && (
             <tr>
-              <Th>Tipo</Th>
-              <Th>Número</Th>
-              <Th>Vínculo</Th>
-              <Th>Status</Th>
-              <Th>Processamento</Th>
-              <Th className="w-6" />
+              <Td colSpan={6} className="text-text-muted">
+                Nenhum documento fiscal ainda.
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <LinhaDocumento
-                key={row.id}
-                row={row}
-                tentativas={tentativasPorDocumento.get(row.id) ?? []}
-                canManage={canManage}
-                expandido={expandidoId === row.id}
-                onToggle={() => setExpandidoId((atual) => (atual === row.id ? null : row.id))}
-              />
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <Td colSpan={6} className="text-text-muted">
-                  Nenhum documento fiscal ainda.
-                </Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-        <Paginacao {...paginacao} />
-      </div>
+          )}
+        </tbody>
+      </DenseTable>
+      <Paginacao {...paginacao} />
     </section>
   );
 }
@@ -188,12 +187,12 @@ function LinhaDocumento({
       <Td>{row.numero ?? "—"}</Td>
       <Td>{row.entity_type ? `${row.entity_type} (${row.entity_id?.slice(0, 8)}…)` : "sem vínculo"}</Td>
       <Td>
-        <Badge variant={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Badge>
+        <StatusPill tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</StatusPill>
       </Td>
       <Td>
-        <Badge variant={STATUS_PROCESSAMENTO_TONE[row.status_processamento]}>
+        <StatusPill tone={STATUS_PROCESSAMENTO_TONE[row.status_processamento]}>
           {STATUS_PROCESSAMENTO_LABEL[row.status_processamento]}
-        </Badge>
+        </StatusPill>
       </Td>
       <Td className="text-text-muted">{expandido ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</Td>
     </tr>

@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { criarVariavelCategoriaAction, criarVariavelTemplateAction, atualizarVariavelTemplateAction } from "./actions";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { Table, Th, Td } from "@/components/ui/Table";
+import { Th, Td } from "@/components/ui/Table";
+import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import { StatusPill } from "@/components/ui/StatusPill";
 
 type Categoria = { id: string; nome: string };
 type Template = {
@@ -100,33 +101,31 @@ function CategoriaCard({
     <Card padding="xs">
       <strong className="text-sm text-text">{categoria.nome}</strong>
 
-      <div className="mt-1.5 overflow-x-auto">
-        <Table>
-          <thead>
+      <DenseTable className="mt-1.5">
+        <thead>
+          <DenseTableHeaderRow>
+            <Th>Variável</Th>
+            <Th>Tipo</Th>
+            <Th>Unidade</Th>
+            <Th>Opções</Th>
+            <Th>Obrigatória (padrão)</Th>
+            <Th>Ativa</Th>
+            {canManage && <Th />}
+          </DenseTableHeaderRow>
+        </thead>
+        <tbody>
+          {templates.map((t) => (
+            <TemplateRow key={t.id} template={t} canManage={canManage} />
+          ))}
+          {templates.length === 0 && (
             <tr>
-              <Th>Variável</Th>
-              <Th>Tipo</Th>
-              <Th>Unidade</Th>
-              <Th>Opções</Th>
-              <Th>Obrigatória (padrão)</Th>
-              <Th>Ativa</Th>
-              {canManage && <Th />}
+              <Td colSpan={canManage ? 7 : 6} className="text-text-muted">
+                Nenhuma variável nesta categoria ainda.
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {templates.map((t) => (
-              <TemplateRow key={t.id} template={t} canManage={canManage} />
-            ))}
-            {templates.length === 0 && (
-              <tr>
-                <Td colSpan={canManage ? 7 : 6} className="text-text-muted">
-                  Nenhuma variável nesta categoria ainda.
-                </Td>
-              </tr>
-            )}
-          </tbody>
-        </Table>
-      </div>
+          )}
+        </tbody>
+      </DenseTable>
 
       {canManage && <NovaVariavelForm categoriaId={categoria.id} />}
     </Card>
@@ -145,7 +144,7 @@ function TemplateRow({ template, canManage }: { template: Template; canManage: b
         <Td className="text-text-muted">{template.opcoes?.join(", ") ?? "—"}</Td>
         <Td>{template.obrigatoria_padrao ? "Sim" : "Não"}</Td>
         <Td>
-          <Badge variant={template.ativo ? "success" : "neutral"}>{template.ativo ? "Ativa" : "Inativa"}</Badge>
+          <StatusPill tone={template.ativo ? "success" : "neutral"}>{template.ativo ? "Ativa" : "Inativa"}</StatusPill>
         </Td>
       </tr>
     );
@@ -160,7 +159,7 @@ function TemplateRow({ template, canManage }: { template: Template; canManage: b
         <Td className="text-text-muted">{template.opcoes?.join(", ") ?? "—"}</Td>
         <Td>{template.obrigatoria_padrao ? "Sim" : "Não"}</Td>
         <Td>
-          <Badge variant={template.ativo ? "success" : "neutral"}>{template.ativo ? "Ativa" : "Inativa"}</Badge>
+          <StatusPill tone={template.ativo ? "success" : "neutral"}>{template.ativo ? "Ativa" : "Inativa"}</StatusPill>
         </Td>
         <Td>
           <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(true)}>

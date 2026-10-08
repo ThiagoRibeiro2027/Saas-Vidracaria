@@ -20,9 +20,9 @@ export default function CampoLayout({ children }: { children: React.ReactNode })
   return (
     <CampoProvider>
       <CampoServiceWorker />
-      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "#f5f7f5", fontFamily: "system-ui, sans-serif" }}>
+      <div className="flex min-h-dvh flex-col bg-page-bg">
         <StatusBar />
-        <div style={{ flex: 1 }}>{children}</div>
+        <div className="flex-1">{children}</div>
       </div>
     </CampoProvider>
   );
