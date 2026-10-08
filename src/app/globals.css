@@ -46,6 +46,18 @@
   --color-text-muted: #6b7a75;
   --color-danger: #9b2c2c;
   --color-warning: #b7791f;
+
+  /* ADR-013 (Identidade D) — tons de ação/alerta usados em FieldBox,
+     tabela densa e grade de botões. Não reaproveitam --color-danger/
+     --color-warning: o tom visual pedido é deliberadamente diferente
+     (mais vivo) dos já usados em Badge/outras telas hoje — trocar o
+     valor existente mudaria telas que já funcionam, fora do escopo da
+     Fase 1 (só fundação + componentes novos, nenhuma tela migrada ainda). */
+  --color-tone-amber: #d97706;
+  --color-tone-amber-soft: #fffbeb;
+  --color-tone-rose: #e11d48;
+  --color-action-nav: #2f6fed;
+  --color-action-create: #059669;
 }
 
 /* Todas as telas do app (login, home, arquivos, auditoria, MFA) são cards
