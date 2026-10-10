@@ -2,7 +2,7 @@
 // vida completo com alçada de aprovação (rascunho → em_aprovação → vigente
 // → suspenso → encerrado, com cancelamento possível antes de vigorar),
 // garantia (só cliente) e vínculo financeiro detalhado (contrato → título
-// financeiro, só cliente vigente). A partir de 20261209000000: campo de
+// financeiro, só cliente vigente). A partir de 20261010005400: campo de
 // referência externa de assinatura (§10, só o gancho — nenhum provedor
 // integrado) e anexos de documento (§8), reaproveitando files/register_file()
 // com o mesmo gate de permissão específica (contratos.manage/view) que T17
@@ -770,7 +770,7 @@ async function main() {
     check("ADMIN (com contratos.view) lê metadado do anexo de contrato", (readAdm ?? []).length === 1);
 
     // Mesmo conhecendo o caminho, o binário segue o RBAC da linha de files
-    // (policy company_files_select, 20261210000000) — antes bastava files.read.
+    // (policy company_files_select, 20261010005500) — antes bastava files.read.
     const { data: signedSemContratos } = await filesOnlyClient.storage.from("company-files").createSignedUrl(path, 30);
     check("papel só com files.read (sem contratos.view) não gera signed URL do binário de contrato", !signedSemContratos?.signedUrl);
     const { error: eDownloadSemContratos } = await filesOnlyClient.storage.from("company-files").download(path);

@@ -1,7 +1,7 @@
 -- Necessidades automáticas de Suprimentos — Fase C do plano aprovado em
 -- 23/09/2026 (fila de produção, peças fabricadas e necessidades
 -- automáticas de suprimentos). Depende da Fase A (pecas/peca_composicao,
--- migration 20261012000000) já commitada.
+-- migration 20261010000200) já commitada.
 --
 -- necessidades_compra continua exatamente como está (ADR-002 §4.18 —
 -- só o registro/acompanhamento da necessidade, sem cotação/pedido de

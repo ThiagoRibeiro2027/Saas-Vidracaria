@@ -7,7 +7,7 @@
 -- Causa raiz: a convenção documentada nas próprias migrations que
 -- introduziram essas permissões ("permissão nova vai em
 -- supabase/seed.sql — catálogo de permissões vive lá, não em migration
--- nova", ver cabeçalho de 20261101000000) só funciona em banco LOCAL,
+-- nova", ver cabeçalho de 20261010002200) só funciona em banco LOCAL,
 -- onde `supabase db reset` roda o seed a cada setup. Desde que este
 -- projeto passou a usar um único banco compartilhado na nuvem (26/09/
 -- 2026, CLAUDE.md "Banco e ambiente de trabalho"), `db push` nunca

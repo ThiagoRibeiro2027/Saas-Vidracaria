@@ -9,7 +9,7 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // 20260916050000), mais documentos/EPI/habilitações e afastamentos/
 // férias (§6-7, migration 20261006000000), com vínculo opcional de
 // habilitação a um recurso produtivo cadastrado (complemento,
-// 20261029000000). "Cadastro de equipes" já foi antecipado no TÓPICO 16
+// 20261010001900). "Cadastro de equipes" já foi antecipado no TÓPICO 16
 // (equipes_instalacao).
 //
 // 2026-10-04: mesmo tratamento de Financeiro — as 3 seções (funcionários,

@@ -20,7 +20,7 @@ export type EntidadeImportacao = {
   chave: string;
   /**
    * Recurso de permissão exigido (<recurso>.manage). Espelha o mapa
-   * recurso_permissao_importacao() da migration 20261202000000, e serve
+   * recurso_permissao_importacao() da migration 20261010004300, e serve
    * só para a tela não oferecer um bloco que o usuário não pode usar.
    * Quem decide de fato é o banco: a função de importação carrega o gate
    * de verdade, então divergir aqui esconde ou mostra um bloco, nunca

@@ -1,5 +1,5 @@
 -- FIX (27/09/2026, achado ao construir a tela da Fase 4): a migration
--- 20261105040000 recriou criar_recurso_produtivo()/editar_recurso_
+-- 20261010004000 recriou criar_recurso_produtivo()/editar_recurso_
 -- produtivo() a partir da assinatura de 17/09 (sem localizacao), sem ver
 -- que 20260917040000 já tinha adicionado p_localizacao, e que
 -- 20260925000000 (permissões granulares) já tinha trocado o gate pra

@@ -28,7 +28,7 @@ Ao corrigir `orcamento_item_caracteristicas` (ADR-012 Fase 1) para chamar
 `assert_company_not_suspended()`, o comentário da migration registrou a
 suspeita de que **o módulo de Orçamentos como um todo** tinha funções de
 mutação mais antigas sem essa checagem. Feito o levantamento função a
-função (migration `20261105020000_fix_orcamento_suspensao_gaps.sql`):
+função (migration `20261010003800_fix_orcamento_suspensao_gaps.sql`):
 a suspeita era só parcialmente verdadeira — das 9 funções de mutação do
 módulo, 7 já estavam corretas (5 delas retrofitadas com
 `assert_tenant_write()` em 15/09, antes mesmo do comentário que levantou a
@@ -75,4 +75,4 @@ mais antiga (sem `localizacao`) e criou uma segunda sobrecarga em
 paralelo em vez de substituir a função real, deixando `p_localizacao`
 inacessível junto de `p_custo_hora` e regredindo o gate pra só 'manage'
 nessa sobrecarga nova. Corrigido na mesma sessão
-(`20261105050000_fix_recurso_produtivo_custo_hora_localizacao.sql`).
+(`20261010004100_fix_recurso_produtivo_custo_hora_localizacao.sql`).

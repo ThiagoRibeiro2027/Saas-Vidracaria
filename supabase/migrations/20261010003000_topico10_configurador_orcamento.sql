@@ -1,7 +1,7 @@
 -- TÓPICO 10 §9 — captura de características de peça configurável durante
 -- o orçamento (decisão do responsável do produto em 26/09/2026). Até
 -- aqui o configurador (peca_caracteristicas/pedido_item_caracteristicas,
--- Fase F da BOM leve, 20261016000000) só existia do lado do Pedido, gate
+-- Fase F da BOM leve, 20261010000600) só existia do lado do Pedido, gate
 -- engenharia.manage — a justificativa original do ADR-002 §4.3 (19/09)
 -- pra deixar "produtos configuráveis" fora do MVP era que a Engenharia
 -- ainda não tinha BOM madura; isso deixou de ser verdade com as Fases

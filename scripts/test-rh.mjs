@@ -4,7 +4,7 @@
 // (admissão/certificação/EPI/habilitação) e afastamentos/férias (recorte
 // completo, 20261006000000_topico17_rh_completo.sql), com vínculo
 // opcional de habilitação a um recurso produtivo (complemento,
-// 20261029000000). Sem folha/encargos/rescisão/escala/ponto (§8, fora de
+// 20261010001900). Sem folha/encargos/rescisão/escala/ponto (§8, fora de
 // escopo do módulo).
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-rh.mjs
@@ -543,7 +543,7 @@ async function main() {
     check("ADMIN (com rh.view) lê metadado do arquivo de RH", (readAdm ?? []).length === 1);
 
     // Mesmo conhecendo o caminho, o binário segue o RBAC da linha de files
-    // (policy company_files_select, 20261210000000) — antes bastava files.read.
+    // (policy company_files_select, 20261010005500) — antes bastava files.read.
     const { data: signedSemRh } = await filesOnlyClient.storage.from("company-files").createSignedUrl(path, 30);
     check("papel só com files.read (sem rh.view) não gera signed URL do binário de RH", !signedSemRh?.signedUrl);
     const { error: eDownloadSemRh } = await filesOnlyClient.storage.from("company-files").download(path);

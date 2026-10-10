@@ -44,7 +44,7 @@ suítes de teste executadas contra o banco real) é:
   Contratos ainda usa estilos inline.
 - **Segurança (03/10):** a policy de SELECT do Storage passou a impor o
   mesmo RBAC por entidade que a tabela `files` (migration
-  `20261210000000`).
+  `20261010005500`).
 
 **Pendências reais hoje:** itens de go-live da seção 4 e do ROTEIRO de
 Fechamento da Fase 1 (upgrade Supabase Pro e Vercel, região da Vercel,

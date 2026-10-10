@@ -19,7 +19,7 @@
 -- peca_revisoes, só INSERT).
 --
 -- Efeito colateral necessário: gerar_necessidades_de_pedido()/
--- gerar_necessidades_de_ordem_producao() (Fase C, 20261013000000) hoje
+-- gerar_necessidades_de_ordem_producao() (Fase C, 20261010000300) hoje
 -- só juntam peca_composicao em 1 nível — com hierarquia, uma peça que
 -- contém subconjunto teria material subestimado (a função nunca desceria
 -- ao nível do subconjunto). Reescritas aqui para expandir a árvore

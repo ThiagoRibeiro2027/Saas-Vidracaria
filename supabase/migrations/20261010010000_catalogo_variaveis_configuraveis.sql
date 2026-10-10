@@ -1,7 +1,7 @@
 -- Catálogo de variáveis configuráveis — pedido do usuário, 2026-10-04.
 --
 -- Hoje cada peça (Pré-engenharia) cadastra suas próprias "Características
--- (configurador)" do zero (ver peca_caracteristicas, 20261016000000). Isso
+-- (configurador)" do zero (ver peca_caracteristicas, 20261010000600). Isso
 -- obriga redigitar a mesma variável (ex.: "Cor do perfil: Branco/Preto
 -- fosco") em toda peça que a usa. Este catálogo deixa a empresa cadastrar
 -- a variável uma vez (agrupada por categoria, ex.: "Perfil", "Vidro") e
@@ -299,7 +299,7 @@ grant execute on function public.anexar_variavel_peca(uuid, uuid, boolean) to au
 -- =========================================================================
 -- listar_caracteristicas_peca() ganha template_id na saída (mudança de
 -- formato de retorno — precisa do drop antes do create or replace, mesmo
--- padrão já usado em 20261104010000 pra acrescentar papel_dimensional).
+-- padrão já usado em 20261010003500 pra acrescentar papel_dimensional).
 -- =========================================================================
 
 drop function if exists public.listar_caracteristicas_peca(uuid);

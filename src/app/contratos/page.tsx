@@ -9,7 +9,7 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // (rascunho → em aprovação → vigente → suspenso → encerrado/cancelado)
 // com alçada de aprovação, garantia (só cliente), vínculo financeiro
 // detalhado (contrato → título financeiro, só cliente vigente), alertas de
-// vencimento (ADR-007) e documentos anexos (§8, migration 20261209000000).
+// vencimento (ADR-007) e documentos anexos (§8, migration 20261010005400).
 // Só a integração real de assinatura eletrônica (§10, DocuSign/Clicksign)
 // segue fora, por decisão consciente do próprio doc — o campo de
 // referência externa já existe.
@@ -68,7 +68,7 @@ export default async function ContratosPage({
   const contratoIds = (contratos ?? []).map((c) => c.id);
   // §8 — anexos por contrato (agrupados no client, mesmo padrão dos outros
   // mapas desta página). files_select já filtra por entity_type/
-  // contratos.view (migration 20261209000000).
+  // contratos.view (migration 20261010005400).
   const { data: anexos } =
     contratoIds.length > 0
       ? await supabase

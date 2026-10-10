@@ -1,5 +1,5 @@
 -- FIX (26/09/2026, achado pelo /code-review): definir_valor_
--- caracteristica_orcamento_item() (20261103040000) nunca chama
+-- caracteristica_orcamento_item() (20261010003000) nunca chama
 -- assert_company_not_suspended() — uma empresa suspensa por pendência
 -- comercial ainda conseguia gravar característica de peça no orçamento,
 -- violando a regra 2 da auditoria de segurança do CLAUDE.md ("toda
@@ -13,7 +13,7 @@
 -- suspended() existirem (introduzidas em 15/09 pro restante do sistema,
 -- nunca retroaplicadas em Orçamentos) — o mesmo padrão de "convenção
 -- nova não retroaplicada" já visto no achado de permissões ausentes
--- (20261103030000). Corrigir o módulo inteiro é uma auditoria maior,
+-- (20261010002900). Corrigir o módulo inteiro é uma auditoria maior,
 -- decisão separada pro responsável do produto.
 create or replace function public.definir_valor_caracteristica_orcamento_item(
   p_orcamento_item_id uuid, p_peca_caracteristica_id uuid,

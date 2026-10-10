@@ -450,7 +450,7 @@ async function main() {
 
   console.log("\n29b. atualizar_caracteristica_peca() — editar sem apagar e recriar");
   {
-    // A função existia desde 20261016000000 e nunca tinha sido coberta:
+    // A função existia desde 20261010000600 e nunca tinha sido coberta:
     // a tela só oferecia "Remover", então ninguém a exercitava. Coberta
     // junto da tela de edição (Bloco A da auditoria de 27/09/2026).
     const { error: semPermErr } = await noPermTenant.client.rpc("atualizar_caracteristica_peca", {

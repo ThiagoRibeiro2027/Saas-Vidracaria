@@ -315,7 +315,7 @@ async function main() {
   {
     // Sem `grant ... to authenticated` de propósito: só é chamável de
     // dentro de outra função SECURITY DEFINER já autorizada (ver comentário
-    // na migration 20261208000000). Direto via RPC, mesmo ADMIN com
+    // na migration 20261010005100). Direto via RPC, mesmo ADMIN com
     // integracoes.manage tem que falhar.
     const { error: e1 } = await admTenant.client.rpc("registrar_evento_integracao_interno", {
       p_company_id: admTenant.company.id, p_modulo_origem: "pedidos", p_modulo_destino: "producao", p_tipo_evento: "teste",

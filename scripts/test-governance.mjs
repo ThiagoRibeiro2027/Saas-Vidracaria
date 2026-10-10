@@ -235,7 +235,7 @@ async function main() {
     });
     check("empresa suspensa não consegue cadastrar pessoa (SEC-007)", !!pessoaError);
 
-    // FIX (27/09/2026, 20261105020000): upsert_orcamento_item() regrediu em
+    // FIX (27/09/2026, 20261010003800): upsert_orcamento_item() regrediu em
     // 02/10 e vincular_oportunidade_orcamento() nunca teve a checagem —
     // assert_tenant_write() lança a exceção de suspensão antes de tocar
     // qualquer linha, então IDs inexistentes bastam pra provar o bloqueio.

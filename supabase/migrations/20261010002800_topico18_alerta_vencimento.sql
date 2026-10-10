@@ -1,6 +1,6 @@
 -- TÓPICO 18 — Contratos, §7: alerta de vencimento de vigência/garantia
 -- (ADR-002, decisão do responsável do produto em 26/09/2026 — 30 dias de
--- antecedência). A migration 20261029000000 (Contratos completo) deixou
+-- antecedência). A migration 20261010001900 (Contratos completo) deixou
 -- isto deliberadamente fora: "estender o gatilho pra vigência/garantia de
 -- contrato é uma peça nova (primeiro 'scan' periódico por data, em vez de
 -- evento síncrono de mutação)". O restante do ADR-007 dispara notificação
@@ -10,7 +10,7 @@
 -- gatilho em upsert_contrato().
 --
 -- Desenho, mesmo padrão dos webhooks de saída (Fase 4 do T13,
--- 20261031000000): o cron (service_role, sem sessão de usuário) faz a
+-- 20261010002100): o cron (service_role, sem sessão de usuário) faz a
 -- varredura cross-tenant com o client admin (bypassa RLS de propósito,
 -- só pra achar QUAIS contratos vencem — nenhum dado é exposto fora do
 -- próprio backend) e chama, por contrato encontrado, uma função de

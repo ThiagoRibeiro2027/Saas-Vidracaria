@@ -15,7 +15,7 @@
 -- princípio do ADR-012 de nunca assumir em silêncio.
 --
 -- Só são recriadas as 3 funções afetadas, com a mesma assinatura (grants e
--- revokes da 20261211000000 permanecem).
+-- revokes da 20261010005600 permanecem).
 
 create or replace function public._calcular_custo_peca(p_company_id uuid, p_peca_id uuid, p_valores jsonb)
 returns jsonb

@@ -1,10 +1,10 @@
--- FIX (achado pelo teste automatizado da própria 20261211000000): em
+-- FIX (achado pelo teste automatizado da própria 20261010005600): em
 -- listar_caracteristicas_configurador(), `RETURNS TABLE (id, ...)` cria
 -- uma variável de saída chamada `id`, e a checagem
 -- `select 1 from public.itens where id = p_item_id` ficava ambígua entre
 -- essa variável e a coluna (erro 42702, "column reference id is
 -- ambiguous"). Qualificar a coluna resolve. Mesmo problema já visto e
--- corrigido em 20261202010000_fix_importar_obras_ambiguidade.sql.
+-- corrigido em 20261010004400_fix_importar_obras_ambiguidade.sql.
 -- Mesma assinatura e mesmo retorno; só muda a qualificação.
 
 create or replace function public.listar_caracteristicas_configurador(p_item_id uuid)

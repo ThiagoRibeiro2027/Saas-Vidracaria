@@ -9,7 +9,7 @@ import { entidadePorChave, type EntidadeImportacao } from "./importacao-entidade
 // nesta fase (decisão de escopo registrada na migration
 // 20260929000000_topico2_importacao_inicial.sql). Histórico,
 // reprocessamento e mapeamento de colunas vieram depois, na Fase 7 do
-// TÓPICO 13 §29 (migration 20261201000000).
+// TÓPICO 13 §29 (migration 20261010004200).
 export type { ImportacaoLinha };
 export type ImportacaoResultadoLinha = {
   linha: number;

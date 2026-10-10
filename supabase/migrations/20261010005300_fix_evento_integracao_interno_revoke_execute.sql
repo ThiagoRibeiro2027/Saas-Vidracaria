@@ -1,6 +1,6 @@
 -- Corrige achado do próprio teste automatizado desta fase: Postgres concede
 -- EXECUTE a PUBLIC por padrão em toda função nova (diferente de tabelas),
--- e a migration 20261208000000 não revogou isso pra
+-- e a migration 20261010005100 não revogou isso pra
 -- registrar_evento_integracao_interno() — a suposição de que "sem grant
 -- explícito = ninguém chama" (comentário daquela migration) estava errada.
 -- O reset global de 20260914090000 (revoke + alter default privileges)

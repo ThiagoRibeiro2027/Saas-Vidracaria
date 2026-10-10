@@ -307,11 +307,11 @@ sozinho e só é recalculado quando um item em rascunho é reaberto e
 salvo (a Fase 3 continua cuidando do preço congelado depois da
 aprovação, §5).
 
-**8.4 Implementação.** Migrations `20261211000000_adr012_calculo_
+**8.4 Implementação.** Migrations `20261010005600_adr012_calculo_
 automatico_orcamento.sql` (margem, núcleo de cálculo reaproveitável,
 pré-cálculo `calcular_preco_configurador`, gravação atômica
 `upsert_orcamento_item_configurado`, listagem de características para o
-vendedor) e `20261211010000_fix_listar_caracteristicas_configurador_
+vendedor) e `20261010005700_fix_listar_caracteristicas_configurador_
 ambiguidade.sql`. As funções públicas antigas
 (`calcular_custo_orcamento_item`, `calcular_mao_obra_orcamento_item`)
 viram wrappers do mesmo núcleo, com resultado idêntico (teste de
@@ -355,7 +355,7 @@ responsável do produto em 03/10/2026):
   cadastradas sem unidade (ou com unidade fora de mm/cm/m) passam a avisar
   em vez de calcular errado.
 
-Implementação: migration `20261212000000_adr012_unidade_dimensoes.sql`
+Implementação: migration `20261010005800_adr012_unidade_dimensoes.sql`
 (recria `_calcular_custo_peca`, `_calcular_preco_configurador` e
 `upsert_orcamento_item_configurado`).
 
@@ -383,6 +383,6 @@ barra que já valiam para "Linear". Migração aditiva, sem mudar o tipo de
 nenhuma composição já cadastrada.
 
 Implementação: migration
-`20261213000000_adr012_tipo_calculo_largura_altura.sql` (recria
+`20261010005900_adr012_tipo_calculo_largura_altura.sql` (recria
 `_calcular_custo_peca` e `definir_tipo_calculo_composicao`, amplia a
 constraint de `tipo_calculo`).

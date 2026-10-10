@@ -7,7 +7,7 @@
 --
 -- Decisões de recorte (responsável do produto, via chat):
 --   - Título a pagar JÁ EXISTIA (Compras, ADR-011 Fase 6,
---     20261024000000_compras_pedido_orcamento.sql — public.titulos_pagar,
+--     20261010001400_compras_pedido_orcamento.sql — public.titulos_pagar,
 --     registrar_pagamento_titulo_compra()). Esta fase NÃO recria o
 --     conceito — adiciona o fluxo de aprovação por cima dele.
 --   - §6.2 (Título → Solicitação → Aprovação → Envio ao banco →

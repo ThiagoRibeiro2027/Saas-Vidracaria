@@ -64,7 +64,7 @@ pontas andarem juntas.
    `supabase/migrations/`, rodar `npx supabase db push` antes de encerrar a
    sessão — no mesmo fôlego do commit, não depois. Migration commitada e
    não aplicada quebra a outra máquina, e isso já aconteceu duas vezes
-   (a `20261028000000`, um fix de RLS, e as quatro do TÓPICO 13/18).
+   (a `20261010001800`, um fix de RLS, e as quatro do TÓPICO 13/18).
 2. **Ao começar a trabalhar**, rodar `npx supabase migration list` e avisar
    se houver pendência antes de escrever qualquer código — o banco pode ter
    ficado atrás do que a outra máquina commitou.
@@ -86,7 +86,7 @@ pontas andarem juntas.
    mundo, incluindo ADMIN. Achado em 26/09/2026: `contratos.aprovar` e
    `financeiro.aprovar` ficaram só em `seed.sql` por semanas sem ninguém notar,
    quebrando os dois fluxos de alçada em produção (corrigido em
-   `20261103030000_fix_permissoes_ausentes_aprovar.sql`). Ao adicionar
+   `20261010002900_fix_permissoes_ausentes_aprovar.sql`). Ao adicionar
    permissão nova, conferir se ela já existe no banco (`select * from
    permissions where resource=... and action=...` via `psql`/`db push` de
    uma migration, nunca supondo que `seed.sql` sozinho basta).

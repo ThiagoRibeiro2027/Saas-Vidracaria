@@ -418,7 +418,7 @@ async function main() {
   // Papel de empresa com só suprimentos.manage — prova que registrar_
   // recebimento_necessidade() reaproveita o gate de estoque.manage do
   // ajustar_saldo() em vez de contorná-lo (decisão registrada no
-  // cabeçalho da migration 20261014000000).
+  // cabeçalho da migration 20261010000400).
   const { data: papelSoSuprId } = await admTenant.client.rpc("criar_papel_empresa", { p_key: "SO_SUPRIMENTOS", p_name: "Só Suprimentos" });
   const { data: permSuprimentosManage } = await admin
     .from("permissions").select("id").eq("resource", "suprimentos").eq("action", "manage").single();

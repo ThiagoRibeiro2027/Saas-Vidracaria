@@ -5,7 +5,7 @@
 -- PROBLEMA. company_files_select (20260914090000) exige só o prefixo do
 -- tenant + has_permission('files','read'). Já files_select (public.files)
 -- exige, além disso, rh.view pra entity_type='funcionario_documento' e
--- contratos.view pra entity_type='contrato' (20261010000000, 20261209000000).
+-- contratos.view pra entity_type='contrato' (20261010000000, 20261010005400).
 -- Resultado: quem tem files.read mas não rh.view não enxerga a LINHA do
 -- documento de RH, mas, se souber o storage_path, o Storage Data API entrega
 -- o binário (download/createSignedUrl) — a barreira real do binário era só o

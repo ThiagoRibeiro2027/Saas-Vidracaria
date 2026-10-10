@@ -160,7 +160,7 @@ async function main() {
     const { error: adminUploadBError } = await adminUpload(pathB);
     check("(fixture) service role consegue escrever pathB", !adminUploadBError);
 
-    // Desde 20261210000000 o binário só é visível se a linha de public.files
+    // Desde 20261010005500 o binário só é visível se a linha de public.files
     // correspondente também é — então pathA precisa estar registrado pra os
     // testes de leitura abaixo continuarem exercitando o que dizem.
     const { error: registerPathAError } = await tenantA.client.rpc("register_file", {
@@ -348,7 +348,7 @@ async function main() {
       .from(BUCKET)
       .download(deletedPath);
     check(
-      "após soft-delete o dono deixa de conseguir baixar o binário (20261210000000)",
+      "após soft-delete o dono deixa de conseguir baixar o binário (20261010005500)",
       !!stillDownloadableError,
     );
 

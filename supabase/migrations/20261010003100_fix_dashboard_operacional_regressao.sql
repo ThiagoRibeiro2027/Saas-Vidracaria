@@ -1,5 +1,5 @@
 -- FIX (26/09/2026, achado pelo /code-review): a migration da Fase 3 do
--- T12 (20261102020000) foi escrita a partir do corpo de
+-- T12 (20261010002500) foi escrita a partir do corpo de
 -- dashboard_operacional() ainda em 20261008000000 (Fase 2) — sem checar
 -- se a função já tinha sido corrigida depois disso. Ela tinha: em
 -- 20261009000000_code_review_fixes.sql, que:

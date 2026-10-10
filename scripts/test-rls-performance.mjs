@@ -199,7 +199,7 @@ async function main() {
       .upload(path, new Blob(["conteudo"], { type: "application/pdf" }));
     check("(fixture) service role consegue escrever no prefixo de A", !adminUploadError);
 
-    // Desde 20261210000000 o binário só é legível se a linha de public.files
+    // Desde 20261010005500 o binário só é legível se a linha de public.files
     // existe e é visível ao chamador — a fixture precisa ser registrada.
     const { error: registerError } = await tenantA.client.rpc("register_file", {
       p_entity_type: "geral", p_entity_id: null, p_storage_path: path,

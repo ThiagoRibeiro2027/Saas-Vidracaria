@@ -1,5 +1,5 @@
 -- FIX (27/09/2026, levantamento pedido após o audit que reabriu a Fase 8):
--- a migration 20261103070000 corrigiu definir_valor_caracteristica_
+-- a migration 20261010003300 corrigiu definir_valor_caracteristica_
 -- orcamento_item() e registrou que o resto do módulo de Orçamentos
 -- precisava de um levantamento função a função antes de generalizar a
 -- correção. Feito o levantamento nas 9 funções de mutação do módulo:

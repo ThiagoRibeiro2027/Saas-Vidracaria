@@ -40,7 +40,7 @@
 -- grant a anon. Teste negativo em scripts/test-importacao.mjs.
 --
 -- ATENÇÃO à armadilha que já mordeu este projeto em 27/09
--- (20261105050000_fix_recurso_produtivo_custo_hora_localizacao.sql): ao
+-- (20261010004100_fix_recurso_produtivo_custo_hora_localizacao.sql): ao
 -- acrescentar parâmetro a uma função existente, "create or replace" com
 -- assinatura diferente NÃO substitui — cria uma sobrecarga paralela, e a
 -- função antiga continua sendo escolhida. Por isso o drop explícito da

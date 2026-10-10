@@ -1,5 +1,5 @@
 -- TÓPICO 18 — Contratos, fecha as duas lacunas que o recorte mínimo
--- (20261005000000) e o "completo" (20261029000000/20261103020000)
+-- (20261005000000) e o "completo" (20261010001900/20261010002800)
 -- deixaram de propósito pra depois, conforme o próprio comentário de
 -- 20261005000000: §8 (documentos anexos) e o gancho de §10 (referência
 -- externa de assinatura — nunca a integração real com provedor, que

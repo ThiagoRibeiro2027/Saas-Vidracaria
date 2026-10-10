@@ -1,4 +1,4 @@
--- Corrige achado da própria migration anterior (20261208000000): mesmo
+-- Corrige achado da própria migration anterior (20261010005100): mesmo
 -- padrão do incidente já registrado no BACKLOG (criar_recurso_produtivo/
 -- editar_recurso_produtivo, 27/09/2026) — criar_ordem_producao() teve a
 -- assinatura trocada 3 vezes por "drop function" + "create function" desde

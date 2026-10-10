@@ -60,7 +60,7 @@ begin
 end;
 $$;
 
--- 3. _calcular_custo_peca — mesma função da 20261212000000, só com
+-- 3. _calcular_custo_peca — mesma função da 20261010005800, só com
 --    'largura' e 'altura' entrando no mesmo grupo de 'linear' (dimensão
 --    única em vez de perímetro) e saindo do grupo de 'area' (que
 --    continua sem combinação de barra, por não fazer sentido pra m²).

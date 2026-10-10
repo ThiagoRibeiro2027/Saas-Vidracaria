@@ -1,20 +1,15 @@
--- TÓPICO 13 — Integrações, Fase 6, correção pós-implementação
--- (26/09/2026): exportar_dados_csv() (20261103000000) não registrava
--- auditoria. A tentativa original era a Server Action
--- (src/app/integracoes/actions.ts) chamar log_client_event() depois do
--- RPC — corrigido antes de chegar a produção porque log_client_event()
--- só aceita uma lista fechada de eventos (auth.mfa_enrolled/verified,
--- auth.login_success/logout, governance.data_exported, test.%), e
--- "integracoes.dados_exportados" não está nela por design (item 8 das
--- regras de segurança do CLAUDE.md — evento de auditoria de negócio não
--- é reportado livremente pelo cliente). O padrão correto, já usado em
--- toda função de negócio deste schema, é a própria função SECURITY
--- DEFINER chamar log_activity() internamente — é o que esta migration
--- adiciona, sem mudar nenhuma regra de autorização ou consulta já
--- existente.
+-- FIX (26/09/2026, achado pelo /code-review): exportar_dados_csv('financeiro')
+-- usava INNER JOIN titulos_financeiros -> pedidos via pedido_id — mas
+-- titulos_financeiros.pedido_id é XOR com contrato_id desde
+-- 20261010001900 (título pode vir de Pedido OU de Contrato, nunca os
+-- dois — ver gerar_titulos_contrato()). Todo título gerado a partir de
+-- um Contrato tem pedido_id NULL e era silenciosamente excluído do CSV
+-- — uma empresa que fatura algum cliente via Contrato em vez de Pedido
+-- exportava "contas a receber" subestimado, sem erro nem aviso.
 --
--- create or replace function não muda a assinatura (mesmos 3
--- parâmetros) — sem necessidade de drop.
+-- Fix: LEFT JOIN os dois caminhos (pedido e contrato) e usa coalesce
+-- pro nome do cliente — mesmo padrão que financeiro/page.tsx já usa
+-- pra resolver o nome quando a origem pode ser qualquer uma das duas.
 create or replace function public.exportar_dados_csv(
   p_entidade text,
   p_data_inicio date default null,
@@ -94,11 +89,17 @@ begin
     if not public.has_permission('financeiro', 'view') then
       raise exception 'Sem permissão para exportar financeiro (financeiro.view).';
     end if;
+    -- pedido_id/contrato_id são XOR — left join os dois caminhos e usa
+    -- coalesce pro nome do cliente, senão título de contrato some do
+    -- export (achado do code-review).
     select jsonb_agg(to_jsonb(t)) into v_resultado from (
-      select tf.numero, pe.nome as cliente, tf.valor, tf.valor_recebido, tf.vencimento, tf.status
+      select tf.numero, coalesce(pe_pedido.nome, pe_contrato.nome) as cliente,
+             tf.valor, tf.valor_recebido, tf.vencimento, tf.status
       from public.titulos_financeiros tf
-      join public.pedidos p on p.id = tf.pedido_id
-      join public.pessoas pe on pe.id = p.pessoa_id
+      left join public.pedidos p on p.id = tf.pedido_id and p.company_id = v_company_id
+      left join public.pessoas pe_pedido on pe_pedido.id = p.pessoa_id and pe_pedido.company_id = v_company_id
+      left join public.contratos c on c.id = tf.contrato_id and c.company_id = v_company_id
+      left join public.pessoas pe_contrato on pe_contrato.id = c.pessoa_id and pe_contrato.company_id = v_company_id
       where tf.company_id = v_company_id
         and (p_data_inicio is null or tf.created_at::date >= p_data_inicio)
         and (p_data_fim is null or tf.created_at::date <= p_data_fim)

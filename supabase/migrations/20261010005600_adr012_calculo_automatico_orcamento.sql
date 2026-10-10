@@ -150,7 +150,7 @@ revoke all on function public._validar_valores_configurador(uuid, uuid, jsonb) f
 
 -- =========================================================================
 -- 3. Núcleo do cálculo de custo de material — corpo de
---    calcular_custo_orcamento_item() da Fase 2 (20261105000000), lendo os
+--    calcular_custo_orcamento_item() da Fase 2 (20261010003600), lendo os
 --    valores de p_valores em vez de orcamento_item_caracteristicas. Única
 --    adição ao retorno: dimensoes_pendentes (peça tem linha linear/área e
 --    largura ou altura não foi informada) — sem isso a linha era pulada em
@@ -473,7 +473,7 @@ grant execute on function public.calcular_custo_orcamento_item(uuid) to authenti
 
 -- =========================================================================
 -- 4. Núcleo do cálculo de mão de obra — corpo de
---    calcular_mao_obra_orcamento_item() da Fase 4 (20261105040000); depende
+--    calcular_mao_obra_orcamento_item() da Fase 4 (20261010004000); depende
 --    só do item (roteiro ativo), não dos valores das características.
 -- =========================================================================
 
