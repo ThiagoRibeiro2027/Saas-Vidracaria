@@ -3,11 +3,12 @@ import EngenhariaSection from "./EngenhariaSection";
 import ItensSection from "./ItensSection";
 import PecasSection from "../pecas/PecasSection";
 import VisaoGeralSection from "./VisaoGeralSection";
+import RoteirosSection from "./RoteirosSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
-type TabSlug = "geral" | "fabricar" | "itens" | "pre-engenharia";
+type TabSlug = "geral" | "fabricar" | "itens" | "pre-engenharia" | "roteiros";
 
 // ADR-013 (Identidade D), Fase 4.
 const TAB_TITLE: Record<TabSlug, string> = {
@@ -15,6 +16,7 @@ const TAB_TITLE: Record<TabSlug, string> = {
   fabricar: "Itens a fabricar",
   itens: "Cadastro de itens",
   "pre-engenharia": "Pré-engenharia",
+  roteiros: "Roteiros",
 };
 
 // TÓPICO 5 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
@@ -43,9 +45,25 @@ const TAB_TITLE: Record<TabSlug, string> = {
 export default async function EngenhariaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; pagina?: string; por_pagina?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    pagina?: string;
+    por_pagina?: string;
+    q?: string;
+    ordenar?: string;
+    tipo?: string;
+    situacao?: string;
+  }>;
 }) {
-  const { tab, pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
+  const {
+    tab,
+    pagina: paginaParam,
+    por_pagina: porPaginaParam,
+    q,
+    ordenar,
+    tipo: tipoParam,
+    situacao: situacaoParam,
+  } = await searchParams;
   const supabase = await createClient();
 
   const [
@@ -77,6 +95,7 @@ export default async function EngenhariaPage({
     ...(canViewFabricar ? [{ slug: "fabricar" as const, label: "Itens a fabricar" }] : []),
     ...(canViewItens ? [{ slug: "itens" as const, label: "Cadastro de itens" }] : []),
     ...(canViewPecas ? [{ slug: "pre-engenharia" as const, label: "Pré-engenharia" }] : []),
+    ...(canViewFabricar ? [{ slug: "roteiros" as const, label: "Roteiros" }] : []),
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "geral";
 
@@ -128,10 +147,22 @@ export default async function EngenhariaPage({
           <FabricarTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManageFabricar} />
         )}
         {activeTab === "itens" && canViewItens && (
-          <ItensTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManageItens} />
+          <ItensTab
+            supabase={supabase}
+            pagina={paginaPedida}
+            porPagina={porPagina}
+            canManage={!!canManageItens}
+            q={q}
+            ordenar={ordenar}
+            tipo={tipoParam}
+            situacao={situacaoParam}
+          />
         )}
         {activeTab === "pre-engenharia" && canViewPecas && (
           <PreEngenhariaTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManagePecas} />
+        )}
+        {activeTab === "roteiros" && canViewFabricar && (
+          <RoteirosTab supabase={supabase} canManage={!!canManageFabricar} />
         )}
       </div>
       </div>
@@ -241,10 +272,47 @@ async function FabricarTab({ supabase, pagina, porPagina, canManage }: TabProps)
   );
 }
 
-async function ItensTab({ supabase, pagina, porPagina, canManage }: TabProps) {
-  const { count: totalItens } = await supabase.from("itens").select("id", { count: "exact", head: true });
+// 2026-10-10: piloto de busca/ordenação/filtro — busca por código ou
+// descrição, ordenação por código/descrição/tipo (allow-list fixa) e
+// filtro por tipo/situação.
+const ITENS_ORDENAVEIS = ["codigo", "descricao", "tipo"] as const;
+const ITENS_SITUACOES = ["ativo", "inativo"] as const;
+
+async function ItensTab({
+  supabase,
+  pagina,
+  porPagina,
+  canManage,
+  q,
+  ordenar,
+  tipo,
+  situacao,
+}: TabProps & { q?: string; ordenar?: string; tipo?: string; situacao?: string }) {
+  const termoBusca = q?.trim() || null;
+  const tipoFiltro = tipo?.trim() || null;
+  const situacaoFiltro = (ITENS_SITUACOES as readonly string[]).includes(situacao ?? "") ? situacao! : null;
+  const [ordenarCampo, ordenarDirecao] = ordenar?.split(":") ?? [null, null];
+  const ordenacao =
+    ordenarCampo && (ITENS_ORDENAVEIS as readonly string[]).includes(ordenarCampo)
+      ? { campo: ordenarCampo, ascending: ordenarDirecao === "asc" }
+      : null;
+
+  let countQuery = supabase.from("itens").select("id", { count: "exact", head: true });
+  if (termoBusca) countQuery = countQuery.or(`codigo.ilike.%${termoBusca}%,descricao.ilike.%${termoBusca}%`);
+  if (tipoFiltro) countQuery = countQuery.eq("tipo", tipoFiltro);
+  if (situacaoFiltro) countQuery = countQuery.eq("situacao", situacaoFiltro);
+  const { count: totalItens } = await countQuery;
   const { paginacao, from, to } = calcularPaginacao(pagina, porPagina, totalItens ?? 0);
-  const { data: itens } = await supabase.from("itens").select("*").order("codigo").range(from, to);
+
+  let itensQuery = supabase.from("itens").select("*");
+  if (termoBusca) itensQuery = itensQuery.or(`codigo.ilike.%${termoBusca}%,descricao.ilike.%${termoBusca}%`);
+  if (tipoFiltro) itensQuery = itensQuery.eq("tipo", tipoFiltro);
+  if (situacaoFiltro) itensQuery = itensQuery.eq("situacao", situacaoFiltro);
+  itensQuery = ordenacao
+    ? itensQuery.order(ordenacao.campo, { ascending: ordenacao.ascending })
+    : itensQuery.order("codigo");
+  const { data: itens } = await itensQuery.range(from, to);
+
   return <ItensSection rows={itens ?? []} paginacao={paginacao} canManage={canManage} />;
 }
 
@@ -360,6 +428,37 @@ async function PreEngenhariaTab({ supabase, pagina, porPagina, canManage }: TabP
       variavelCategorias={variavelCategorias ?? []}
       variavelTemplates={variavelTemplates ?? []}
       categoriasPorPeca={categoriasPorPeca}
+      canManage={canManage}
+    />
+  );
+}
+
+// Roteiros produtivos — movido de producao/page.tsx (2026-10-10, pedido do
+// responsável do produto: Roteiros passa a viver em Engenharia, gated por
+// has_permission('engenharia', ...) em vez de 'producao' — ver migration
+// 20261010010100_mover_roteiros_para_engenharia). TÓPICO 4 §15: roteiros
+// configurados pela empresa, agrupados por item.
+async function RoteirosTab({ supabase, canManage }: { supabase: Supabase; canManage: boolean }) {
+  const [{ data: itens }, { data: roteiros }, { data: roteiroOperacoes }, { data: recursos }] = await Promise.all([
+    supabase.from("itens").select("id, codigo, descricao, tipo"),
+    supabase.from("roteiros_produtivos").select("*").order("created_at", { ascending: true }),
+    supabase.from("roteiro_operacoes").select("*").order("sequencia", { ascending: true }),
+    supabase.from("recursos_produtivos").select("id, codigo, nome").eq("ativo", true).order("codigo", { ascending: true }),
+  ]);
+
+  const operacoesPorRoteiro = new Map<string, NonNullable<typeof roteiroOperacoes>>();
+  for (const ro of roteiroOperacoes ?? []) {
+    const list = operacoesPorRoteiro.get(ro.roteiro_id) ?? [];
+    list.push(ro);
+    operacoesPorRoteiro.set(ro.roteiro_id, list);
+  }
+
+  return (
+    <RoteirosSection
+      itens={itens ?? []}
+      roteiros={roteiros ?? []}
+      operacoesPorRoteiro={operacoesPorRoteiro}
+      recursos={recursos ?? []}
       canManage={canManage}
     />
   );

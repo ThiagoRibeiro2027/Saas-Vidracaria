@@ -1,13 +1,21 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { OPCOES_POR_PAGINA, type Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 
-// Rodapé de lista paginada no servidor: o estado vive na URL (`pagina` e
+// Painel de lista paginada no servidor: o estado vive na URL (`pagina` e
 // `por_pagina`), então a página recarrega só a faixa pedida e o botão
 // Voltar do navegador funciona. Preserva os demais parâmetros (ex.: `tab`).
+//
+// 2026-10-10: `posicao="topo"` (pedido do responsável do produto — melhor
+// visualização e ajuste logo de cara) encosta o painel à direita da tabela
+// em vez de ocupar a largura toda como rodapé; `por_pagina` passa a ser
+// lembrado em localStorage por tela (chave inclui o pathname), então o
+// usuário não perde a preferência ao sair e voltar — só o tamanho da
+// página é lembrado, não a página exata (lista muda com o tempo).
 export function Paginacao({
   pagina,
   porPagina,
@@ -15,12 +23,14 @@ export function Paginacao({
   totalPaginas,
   paramPagina = "pagina",
   paramPorPagina = "por_pagina",
+  posicao = "rodape",
 }: PaginacaoInfo & {
   // Uma página com mais de uma lista paginada (ex.: Comercial tem
   // Orçamentos e Oportunidades na mesma rota, em abas) precisa de nomes de
   // parâmetro diferentes na URL — senão paginar uma lista bagunça a outra.
   paramPagina?: string;
   paramPorPagina?: string;
+  posicao?: "topo" | "rodape";
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -33,6 +43,34 @@ export function Paginacao({
     if (novoPorPagina !== undefined) p.set(paramPorPagina, String(novoPorPagina));
     const qs = p.toString();
     return qs ? `${pathname}?${qs}` : pathname;
+  }
+
+  const chavePreferencia = `pag_por_pagina:${pathname}:${paramPorPagina}`;
+
+  // Ao montar: se o usuário já tem uma preferência salva de itens por
+  // página pra esta tela, diferente da que está em uso agora, e a URL não
+  // trouxe `por_pagina` explicitamente (ex.: link compartilhado), aplica a
+  // preferência silenciosamente. Nunca sobrescreve uma escolha explícita
+  // da URL.
+  useEffect(() => {
+    if (searchParams.has(paramPorPagina)) return;
+    try {
+      const salvo = Number(window.localStorage.getItem(chavePreferencia));
+      if ((OPCOES_POR_PAGINA as readonly number[]).includes(salvo) && salvo !== porPagina) {
+        router.replace(href(pagina, salvo));
+      }
+    } catch {
+      // localStorage indisponível (navegação privada, storage bloqueado) — ignora.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function salvarPreferencia(valor: number) {
+    try {
+      window.localStorage.setItem(chavePreferencia, String(valor));
+    } catch {
+      // localStorage indisponível — a navegação ainda funciona, só não lembra.
+    }
   }
 
   const naPrimeira = pagina <= 1;
@@ -56,8 +94,13 @@ export function Paginacao({
     );
   }
 
+  const containerClasses =
+    posicao === "topo"
+      ? "flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-b border-border-subtle pb-2 mb-2 text-xs text-text-muted"
+      : "flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-subtle bg-page-bg px-3 py-2 text-xs text-text-muted";
+
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border-subtle bg-page-bg px-3 py-2 text-xs text-text-muted">
+    <div className={containerClasses}>
       <div className="flex items-center gap-0.5">
         {botao(1, naPrimeira, "Primeira página", <ChevronsLeft size={15} />)}
         {botao(pagina - 1, naPrimeira, "Página anterior", <ChevronLeft size={15} />)}
@@ -90,7 +133,11 @@ export function Paginacao({
         Por página
         <select
           value={porPagina}
-          onChange={(e) => router.push(href(1, Number(e.target.value)))}
+          onChange={(e) => {
+            const valor = Number(e.target.value);
+            salvarPreferencia(valor);
+            router.push(href(1, valor));
+          }}
           className="rounded border border-border bg-surface px-1.5 py-0.5 text-text focus:outline-none"
         >
           {OPCOES_POR_PAGINA.map((n) => (
@@ -101,7 +148,7 @@ export function Paginacao({
         </select>
       </label>
 
-      <span className="ml-auto">{total} registro(s)</span>
+      <span className={posicao === "topo" ? "" : "ml-auto"}>{total} registro(s)</span>
     </div>
   );
 }

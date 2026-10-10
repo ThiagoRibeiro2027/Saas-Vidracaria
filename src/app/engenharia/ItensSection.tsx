@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { upsertItemAction, definirPropriedadesDimensionaisItemAction } from "./actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -11,6 +12,8 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { Modal } from "@/components/ui/Modal";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
 
 const TIPOS = [
   ["materia_prima", "Matéria-prima"],
@@ -72,20 +75,28 @@ export default function ItensSection({
         e editar.
       </p>
 
+      <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+        <TableSearch placeholder="Buscar por código ou descrição..." />
+        <FiltroTipo />
+        <FiltroSituacao />
+      </div>
+
       {canManage && (
-        <div className="my-3">
+        <div className="mb-3">
           <Button type="button" variant="primary" onClick={() => setViewId("novo")}>
             + Novo item
           </Button>
         </div>
       )}
 
+      <Paginacao {...paginacao} posicao="topo" />
+
       <DenseTable>
         <thead>
           <DenseTableHeaderRow>
-            <Th>Código</Th>
-            <Th>Descrição</Th>
-            <Th>Tipo</Th>
+            <SortableTh field="codigo">Código</SortableTh>
+            <SortableTh field="descricao">Descrição</SortableTh>
+            <SortableTh field="tipo">Tipo</SortableTh>
             <Th>Unidade</Th>
             <Th>Situação</Th>
           </DenseTableHeaderRow>
@@ -113,7 +124,6 @@ export default function ItensSection({
           )}
         </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} />
 
       <Modal
         open={criando || viewing !== null}
@@ -253,5 +263,66 @@ function ControleDimensional({ row }: { row: Item }) {
         Salvar dimensional
       </Button>
     </form>
+  );
+}
+
+function FiltroTipo() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("tipo") ?? "";
+
+  function onChange(novoTipo: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoTipo) p.set("tipo", novoTipo);
+    else p.delete("tipo");
+    p.delete("pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por tipo"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os tipos</option>
+      {TIPOS.map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function FiltroSituacao() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("situacao") ?? "";
+
+  function onChange(novaSituacao: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novaSituacao) p.set("situacao", novaSituacao);
+    else p.delete("situacao");
+    p.delete("pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por situação"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Ativos e inativos</option>
+      <option value="ativo">Ativo</option>
+      <option value="inativo">Inativo</option>
+    </select>
   );
 }

@@ -5,7 +5,6 @@ import ProducaoSection, {
   type HistoricoEvento,
   type ToleranciaPerdaRow,
 } from "./ProducaoSection";
-import RoteirosSection from "./RoteirosSection";
 import LotesFabrisSection, { type ListaCorteLoteFabrilRow } from "./LotesFabrisSection";
 import RecursosSection, {
   type CapacidadeRecursoRow,
@@ -26,7 +25,6 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 type TabSlug =
   | "ordens"
-  | "roteiros"
   | "lotes-fabris"
   | "recursos"
   | "programacao"
@@ -38,7 +36,6 @@ type TabSlug =
 // ADR-013 (Identidade D), Fase 4.
 const TAB_TITLE: Record<TabSlug, string> = {
   ordens: "Ordens de produção",
-  roteiros: "Roteiros",
   "lotes-fabris": "Lotes fabris",
   recursos: "Recursos e capacidade",
   programacao: "Programação",
@@ -152,7 +149,6 @@ export default async function ProducaoPage({
 
   const availableTabs: { slug: TabSlug; label: string }[] = [
     { slug: "ordens", label: "Ordens de produção" },
-    { slug: "roteiros", label: "Roteiros" },
     { slug: "lotes-fabris", label: "Lotes fabris" },
     { slug: "recursos", label: "Recursos e capacidade" },
     { slug: "programacao", label: "Programação" },
@@ -179,7 +175,6 @@ export default async function ProducaoPage({
 
       <div className="mt-6">
         {activeTab === "ordens" && <OrdensTab supabase={supabase} canManage={canManageBool} />}
-        {activeTab === "roteiros" && <RoteirosTab supabase={supabase} canManage={canManageBool} />}
         {activeTab === "lotes-fabris" && <LotesFabrisTab supabase={supabase} canManage={canManageBool} />}
         {activeTab === "recursos" && <RecursosTab supabase={supabase} canManage={canManageBool} />}
         {activeTab === "programacao" && <ProgramacaoTab supabase={supabase} canManage={canManageBool} />}
@@ -332,33 +327,6 @@ async function OrdensTab({ supabase, canManage }: { supabase: SupabaseServerClie
       statusLabels={statusLabels}
       situacaoLabels={situacaoLabels}
       toleranciaPorOrdem={toleranciaPorOrdem}
-      canManage={canManage}
-    />
-  );
-}
-
-// TÓPICO 4 §15: roteiros configurados pela empresa, agrupados por item.
-async function RoteirosTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
-  const [{ data: itens }, { data: roteiros }, { data: roteiroOperacoes }, { data: recursos }] = await Promise.all([
-    supabase.from("itens").select("id, codigo, descricao, tipo"),
-    supabase.from("roteiros_produtivos").select("*").order("created_at", { ascending: true }),
-    supabase.from("roteiro_operacoes").select("*").order("sequencia", { ascending: true }),
-    supabase.from("recursos_produtivos").select("id, codigo, nome").eq("ativo", true).order("codigo", { ascending: true }),
-  ]);
-
-  const operacoesPorRoteiro = new Map<string, NonNullable<typeof roteiroOperacoes>>();
-  for (const ro of roteiroOperacoes ?? []) {
-    const list = operacoesPorRoteiro.get(ro.roteiro_id) ?? [];
-    list.push(ro);
-    operacoesPorRoteiro.set(ro.roteiro_id, list);
-  }
-
-  return (
-    <RoteirosSection
-      itens={itens ?? []}
-      roteiros={roteiros ?? []}
-      operacoesPorRoteiro={operacoesPorRoteiro}
-      recursos={recursos ?? []}
       canManage={canManage}
     />
   );

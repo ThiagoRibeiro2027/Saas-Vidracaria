@@ -107,6 +107,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Itens a fabricar", href: "/engenharia?tab=fabricar", tab: "fabricar" },
           { label: "Cadastro de itens", href: "/engenharia?tab=itens", tab: "itens" },
           { label: "Pré-engenharia", href: "/engenharia?tab=pre-engenharia", tab: "pre-engenharia" },
+          { label: "Roteiros", href: "/engenharia?tab=roteiros", tab: "roteiros" },
         ],
       },
     ],
@@ -120,7 +121,6 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Factory,
         children: [
           { label: "Ordens de produção", href: "/producao", tab: "ordens" },
-          { label: "Roteiros", href: "/producao?tab=roteiros", tab: "roteiros" },
           { label: "Lotes fabris", href: "/producao?tab=lotes-fabris", tab: "lotes-fabris" },
           { label: "Recursos e capacidade", href: "/producao?tab=recursos", tab: "recursos" },
           { label: "Programação", href: "/producao?tab=programacao", tab: "programacao" },

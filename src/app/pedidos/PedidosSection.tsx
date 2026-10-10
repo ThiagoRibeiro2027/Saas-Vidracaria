@@ -1,7 +1,10 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
 import {
   iniciarConferenciaAction,
   abrirPendenciaAction,
@@ -132,15 +135,22 @@ export default function PedidosSection({
         Clique num pedido para ver ações e itens; clique num item para conferir o preço.
       </p>
 
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <TableSearch placeholder="Buscar por número..." />
+        <FiltroStatus />
+      </div>
+
+      <Paginacao {...paginacao} posicao="topo" />
+
       <DenseTable>
         <thead>
           <DenseTableHeaderRow>
-            <Th>Número</Th>
+            <SortableTh field="numero">Número</SortableTh>
             <Th>Cliente</Th>
             <Th>Obra</Th>
-            <Th>Data</Th>
+            <SortableTh field="created_at">Data</SortableTh>
             <Th>Origem</Th>
-            <Th>Status</Th>
+            <SortableTh field="status">Status</SortableTh>
             <Th>Pendências</Th>
             <Th className="w-6" />
           </DenseTableHeaderRow>
@@ -193,7 +203,6 @@ export default function PedidosSection({
             )}
           </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} />
 
       <Modal
         open={itemViewing !== null}
@@ -376,5 +385,37 @@ function ItemConferencia({
         <p className="text-xs text-text-muted">Sem divergência de preço.</p>
       )}
     </div>
+  );
+}
+
+function FiltroStatus() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("status") ?? "";
+
+  function onChange(novoStatus: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoStatus) p.set("status", novoStatus);
+    else p.delete("status");
+    p.delete("pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por status"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os status</option>
+      {(Object.entries(STATUS_LABEL) as [Pedido["status"], string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
   );
 }

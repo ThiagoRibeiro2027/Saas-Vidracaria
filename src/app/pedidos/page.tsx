@@ -18,12 +18,36 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // 2026-10-04: mesmo tratamento de layout já aplicado em Orçamentos e
 // Engenharia — tela larga, lista paginada no servidor e detalhe/ações em
 // modal em vez de empilhado abaixo da tabela.
+//
+// 2026-10-10: piloto de busca/ordenação/filtro (pedido do responsável do
+// produto) — busca por número (`q`), ordenação por número/data/status
+// (`ordenar=campo:asc|desc`, allow-list fixa — nunca aceitar coluna
+// arbitrária da URL) e filtro por status (`status`). Nome do cliente fica
+// de fora da busca nesta etapa: exigiria join com `pessoas`, fora do
+// escopo do piloto.
+const PEDIDOS_STATUS = ["recebido", "em_conferencia", "pendente", "liberado", "cancelado"] as const;
+const PEDIDOS_ORDENAVEIS = ["numero", "created_at", "status"] as const;
+
 export default async function PedidosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ pedido?: string; pagina?: string; por_pagina?: string }>;
+  searchParams: Promise<{
+    pedido?: string;
+    pagina?: string;
+    por_pagina?: string;
+    q?: string;
+    ordenar?: string;
+    status?: string;
+  }>;
 }) {
-  const { pedido: pedidoInicialId, pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
+  const {
+    pedido: pedidoInicialId,
+    pagina: paginaParam,
+    por_pagina: porPaginaParam,
+    q,
+    ordenar,
+    status: statusParam,
+  } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -43,15 +67,33 @@ export default async function PedidosPage({
     pagina: paginaParam,
     por_pagina: porPaginaParam,
   });
-  const { count: totalPedidos } = await supabase.from("pedidos").select("id", { count: "exact", head: true });
+
+  const termoBusca = q?.trim() || null;
+  const status = (PEDIDOS_STATUS as readonly string[]).includes(statusParam ?? "") ? statusParam! : null;
+  const [ordenarCampo, ordenarDirecao] = ordenar?.split(":") ?? [null, null];
+  const ordenacao =
+    ordenarCampo && (PEDIDOS_ORDENAVEIS as readonly string[]).includes(ordenarCampo)
+      ? { campo: ordenarCampo, ascending: ordenarDirecao === "asc" }
+      : null;
+
+  // Sem helper genérico aplicando os filtros nas duas queries (count e
+  // dados): o encadeamento do builder do Supabase por cima de um genérico
+  // deixa o TypeScript tentando instanciar um tipo profundo demais ("Type
+  // instantiation is excessively deep", achado ao tentar). Repete as duas
+  // condições (curtas) em cada query em vez disso.
+  let countQuery = supabase.from("pedidos").select("id", { count: "exact", head: true });
+  if (termoBusca) countQuery = countQuery.ilike("numero", `%${termoBusca}%`);
+  if (status) countQuery = countQuery.eq("status", status);
+  const { count: totalPedidos } = await countQuery;
   const { paginacao, from, to } = calcularPaginacao(paginaPedida, porPagina, totalPedidos ?? 0);
 
-  const { data: pedidos } = await supabase
-    .from("pedidos")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .order("id")
-    .range(from, to);
+  let pedidosQuery = supabase.from("pedidos").select("*");
+  if (termoBusca) pedidosQuery = pedidosQuery.ilike("numero", `%${termoBusca}%`);
+  if (status) pedidosQuery = pedidosQuery.eq("status", status);
+  pedidosQuery = ordenacao
+    ? pedidosQuery.order(ordenacao.campo, { ascending: ordenacao.ascending }).order("id")
+    : pedidosQuery.order("created_at", { ascending: false }).order("id");
+  const { data: pedidos } = await pedidosQuery.range(from, to);
   const pedidoIds = (pedidos ?? []).map((p) => p.id);
 
   const [{ data: pedidoItens }, { data: pendencias }, { data: orcamentosAprovados }, { data: pessoas }, { data: obras }, { data: itens }] =
