@@ -89,4 +89,12 @@ pontas andarem juntas.
    `20261010002900_fix_permissoes_ausentes_aprovar.sql`). Ao adicionar
    permissão nova, conferir se ela já existe no banco (`select * from
    permissions where resource=... and action=...` via `psql`/`db push` de
-   uma migration, nunca supondo que `seed.sql` sozinho basta).
+   uma migration, nunca supondo que `seed.sql` sozinho basta).7. **Timestamp de migration nova = data/hora real (UTC), nunca à frente.**
+   Gerar com `date -u +%Y%m%d%H%M%S` (ou `npx supabase migration new`), e
+   conferir que é maior que a última versão em `supabase/migrations/`. Não
+   inventar sequência "à frente" para reservar ordem: o `db push` aplica por
+   timestamp, e uma migration futura obriga toda migration real seguinte a
+   ficar atrás dela. Em 10/10/2026 foram renomeadas 60 migrations que tinham
+   ficado com datas de 11/10 a 14/12/2026 (agora `20261010000100` a
+   `20261010010000`); o ajuste exigiu `supabase migration repair` no banco e
+   `git pull` na outra máquina antes de qualquer `db push`.
