@@ -88,10 +88,7 @@ export default function SuprimentosSection({
       </p>
 
       {canManage && (
-        <div className="mt-3 flex flex-col gap-2">
-          <GerarNecessidadesForm pedidos={pedidos} ordensProducao={ordensProducao} pedidoPorId={pedidoPorId} />
-          <NovaNecessidadeForm itens={itens} />
-        </div>
+        <NovaNecessidadeBlock pedidos={pedidos} ordensProducao={ordensProducao} pedidoPorId={pedidoPorId} itens={itens} />
       )}
 
       <DenseTable>
@@ -151,18 +148,57 @@ export default function SuprimentosSection({
   );
 }
 
-function GerarNecessidadesForm({
+function NovaNecessidadeBlock({
   pedidos,
   ordensProducao,
   pedidoPorId,
+  itens,
 }: {
   pedidos: Pedido[];
   ordensProducao: OrdemProducao[];
   pedidoPorId: Map<string, Pedido>;
+  itens: Item[];
+}) {
+  const [criando, setCriando] = useState(false);
+
+  if (!criando) {
+    return (
+      <Button type="button" variant="primary" size="sm" onClick={() => setCriando(true)} className="mt-3">
+        + Nova necessidade
+      </Button>
+    );
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 rounded-md bg-page-bg p-2">
+      <GerarNecessidadesForm
+        pedidos={pedidos}
+        ordensProducao={ordensProducao}
+        pedidoPorId={pedidoPorId}
+        onDone={() => setCriando(false)}
+      />
+      <NovaNecessidadeForm itens={itens} onDone={() => setCriando(false)} />
+      <Button type="button" variant="secondary" size="sm" className="self-start" onClick={() => setCriando(false)}>
+        Fechar
+      </Button>
+    </div>
+  );
+}
+
+function GerarNecessidadesForm({
+  pedidos,
+  ordensProducao,
+  pedidoPorId,
+  onDone,
+}: {
+  pedidos: Pedido[];
+  ordensProducao: OrdemProducao[];
+  pedidoPorId: Map<string, Pedido>;
+  onDone: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-4 rounded-md bg-page-bg p-2">
-      <form action={gerarNecessidadesDePedidoAction} className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-4">
+      <form action={gerarNecessidadesDePedidoAction} className="flex items-center gap-1.5" onSubmit={onDone}>
         <Select name="pedido_id" required className="w-40">
           <option value="">Gerar do pedido…</option>
           {pedidos.map((p) => (
@@ -176,7 +212,7 @@ function GerarNecessidadesForm({
         </Button>
       </form>
 
-      <form action={gerarNecessidadesDeOrdemProducaoAction} className="flex items-center gap-1.5">
+      <form action={gerarNecessidadesDeOrdemProducaoAction} className="flex items-center gap-1.5" onSubmit={onDone}>
         <Select name="ordem_producao_id" required className="w-56">
           <option value="">Gerar da ordem de produção…</option>
           {ordensProducao.map((op) => (
@@ -193,9 +229,9 @@ function GerarNecessidadesForm({
   );
 }
 
-function NovaNecessidadeForm({ itens }: { itens: Item[] }) {
+function NovaNecessidadeForm({ itens, onDone }: { itens: Item[]; onDone: () => void }) {
   return (
-    <form action={criarNecessidadeCompraAction} className="flex flex-wrap items-center gap-1.5">
+    <form action={criarNecessidadeCompraAction} className="flex flex-wrap items-center gap-1.5" onSubmit={onDone}>
       <Select name="item_id" required>
         <option value="">item…</option>
         {itens.map((i) => (

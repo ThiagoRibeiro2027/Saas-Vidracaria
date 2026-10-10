@@ -5,10 +5,10 @@ import { criarVariavelCategoriaAction, criarVariavelTemplateAction, atualizarVar
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { Th, Td } from "@/components/ui/Table";
 import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { StatusPill } from "@/components/ui/StatusPill";
+import { SectionLabel, Field, CheckboxField, OptionCard } from "@/components/ui/FormField";
 
 type Categoria = { id: string; nome: string };
 type Template = {
@@ -176,36 +176,60 @@ function TemplateRow({ template, canManage }: { template: Template; canManage: b
         <form
           action={atualizarVariavelTemplateAction}
           onSubmit={() => setEditando(false)}
-          className="flex flex-wrap items-center gap-1.5"
+          className="my-1.5 rounded-lg border border-border-subtle bg-page-bg p-3"
         >
           <input type="hidden" name="id" value={template.id} />
           <input type="hidden" name="tipo" value={template.tipo} />
-          <span className="font-medium text-text">{template.nome}</span>
-          <span className="text-[10px] text-text-muted">({TIPO_LABEL[template.tipo]} — nome e tipo não mudam)</span>
-          <Input name="unidade" defaultValue={template.unidade ?? ""} placeholder="unidade (opcional)" className="w-28" />
-          {template.tipo === "opcao" && (
-            <Input
-              name="opcoes"
-              defaultValue={template.opcoes?.join(", ") ?? ""}
-              placeholder="opções, separadas por vírgula"
-              required
-              className="w-56"
+
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-medium text-text">{template.nome}</span>
+            <span className="text-[11px] text-text-muted">({TIPO_LABEL[template.tipo]} — nome e tipo não mudam)</span>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-4">
+            <div className="w-40">
+              <Field label="Unidade" hint="Medida, se houver (ex.: mm, kg). Deixe em branco se não se aplica.">
+                <Input className="w-full" name="unidade" defaultValue={template.unidade ?? ""} placeholder="mm" />
+              </Field>
+            </div>
+            {template.tipo === "opcao" && (
+              <div className="w-72">
+                <Field label="Opções da lista" hint="Uma opção por vírgula — é o que o time vai escolher na peça.">
+                  <Input
+                    className="w-full"
+                    name="opcoes"
+                    defaultValue={template.opcoes?.join(", ") ?? ""}
+                    placeholder="Incolor, Verde, Fumê, Bronze"
+                    required
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-4">
+            <CheckboxField
+              name="obrigatoria_padrao"
+              defaultChecked={template.obrigatoria_padrao}
+              label="Obrigatória por padrão"
+              hint="Toda peça nova dessa categoria já exige essa variável preenchida (pode desmarcar peça a peça depois)."
             />
-          )}
-          <label className="flex items-center gap-1 text-xs text-text">
-            <input type="checkbox" name="obrigatoria_padrao" defaultChecked={template.obrigatoria_padrao} className="accent-primary" />
-            obrigatória (padrão)
-          </label>
-          <label className="flex items-center gap-1 text-xs text-text">
-            <input type="checkbox" name="ativo" defaultChecked={template.ativo} className="accent-primary" />
-            ativa
-          </label>
-          <Button type="submit" variant="primary" size="sm">
-            Salvar
-          </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(false)}>
-            Cancelar
-          </Button>
+            <CheckboxField
+              name="ativo"
+              defaultChecked={template.ativo}
+              label="Ativa"
+              hint="Se desmarcar, some das opções de peça nova — peças que já usam continuam normais."
+            />
+          </div>
+
+          <div className="mt-3 flex gap-1.5">
+            <Button type="submit" variant="primary" size="sm">
+              Salvar
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(false)}>
+              Cancelar
+            </Button>
+          </div>
         </form>
       </Td>
     </tr>
@@ -216,25 +240,71 @@ function NovaVariavelForm({ categoriaId }: { categoriaId: string }) {
   const [tipo, setTipo] = useState<Template["tipo"]>("opcao");
 
   return (
-    <form action={criarVariavelTemplateAction} className="mt-1.5 flex flex-wrap items-center gap-1.5">
+    <form action={criarVariavelTemplateAction} className="mt-1.5 rounded-lg border border-border-subtle bg-page-bg p-4">
       <input type="hidden" name="categoria_id" value={categoriaId} />
-      <Input name="nome" placeholder="nome (ex.: Cor do perfil)" required className="w-40" />
-      <Select name="tipo" value={tipo} onChange={(e) => setTipo(e.target.value as Template["tipo"])} className="w-36">
-        <option value="numero">Número</option>
-        <option value="texto">Texto</option>
-        <option value="opcao">Opção (lista)</option>
-      </Select>
-      <Input name="unidade" placeholder="unidade (opcional)" className="w-28" />
-      {tipo === "opcao" && (
-        <Input name="opcoes" placeholder="opções, separadas por vírgula" required className="w-56" />
-      )}
-      <label className="flex items-center gap-1 text-xs text-text">
-        <input type="checkbox" name="obrigatoria_padrao" defaultChecked className="accent-primary" />
-        obrigatória (padrão)
-      </label>
-      <Button type="submit" variant="primary">
+
+      <SectionLabel>Identificação</SectionLabel>
+      <div className="mt-2 max-w-xs">
+        <Field label="Nome da variável" hint="Como aparece pro time marcar na peça.">
+          <Input className="w-full" name="nome" placeholder="Cor do perfil" required />
+        </Field>
+      </div>
+
+      <SectionLabel className="mt-4">Tipo de valor</SectionLabel>
+      <input type="hidden" name="tipo" value={tipo} />
+      <div className="mt-2 grid max-w-xl grid-cols-3 gap-2">
+        <OptionCard
+          value="opcao"
+          label="Opção (lista)"
+          hint="Lista fixa pra escolher, ex.: cores disponíveis."
+          selected={tipo === "opcao"}
+          onSelect={() => setTipo("opcao")}
+        />
+        <OptionCard
+          value="numero"
+          label="Número"
+          hint="Valor numérico, ex.: espessura em mm."
+          selected={tipo === "numero"}
+          onSelect={() => setTipo("numero")}
+        />
+        <OptionCard
+          value="texto"
+          label="Texto"
+          hint="Texto livre, sem formato fixo."
+          selected={tipo === "texto"}
+          onSelect={() => setTipo("texto")}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-4">
+        <div className="w-40">
+          <Field label="Unidade" hint="Medida, se houver (ex.: mm, kg). Deixe em branco se não se aplica.">
+            <Input className="w-full" name="unidade" placeholder="mm" />
+          </Field>
+        </div>
+        {tipo === "opcao" && (
+          <div className="w-72">
+            <Field label="Opções da lista" hint="Uma opção por vírgula — é o que o time vai escolher na peça.">
+              <Input className="w-full" name="opcoes" placeholder="Incolor, Verde, Fumê, Bronze" required />
+            </Field>
+          </div>
+        )}
+      </div>
+
+      <SectionLabel className="mt-4">Comportamento</SectionLabel>
+      <div className="mt-2">
+        <CheckboxField
+          name="obrigatoria_padrao"
+          defaultChecked
+          label="Obrigatória por padrão"
+          hint="Toda peça nova dessa categoria já exige essa variável preenchida (pode desmarcar peça a peça depois)."
+        />
+      </div>
+
+      <Button type="submit" variant="primary" className="mt-4">
         Adicionar variável
       </Button>
     </form>
   );
 }
+

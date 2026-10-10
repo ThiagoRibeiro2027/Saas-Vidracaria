@@ -28,6 +28,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { Modal } from "@/components/ui/Modal";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { Field, CheckboxField, OptionCard } from "@/components/ui/FormField";
 import RegrasPeca from "./RegrasPeca";
 
 type Item = { id: string; codigo: string; descricao: string; tipo: string; unidade_principal: string };
@@ -63,6 +64,14 @@ const TIPO_CALCULO_LABEL: Record<PecaComposicao["tipo_calculo"], string> = {
   // do perímetro inteiro.
   largura: "Linear (só largura)",
   altura: "Linear (só altura)",
+};
+
+const TIPO_CALCULO_HINT: Record<PecaComposicao["tipo_calculo"], string> = {
+  fixo: "Quantidade fixa por unidade da peça — não varia com o tamanho (ex.: puxador, dobradiça).",
+  linear: "Multiplica a quantidade acima pelo perímetro (largura + altura) da peça — ex.: borracha de vedação.",
+  area: "Multiplica a quantidade acima pela área (largura × altura) da peça — ex.: vidro, chapa.",
+  largura: "Multiplica só pela largura, não pelo perímetro inteiro — ex.: trilho que corre só em cima.",
+  altura: "Multiplica só pela altura, não pelo perímetro inteiro — ex.: montante lateral.",
 };
 type ComprimentoBarra = { id: string; item_id: string; comprimento_metros: number };
 type Regra = {
@@ -155,17 +164,27 @@ export default function PecasSection({
       </p>
 
       {canManage && (
-        <form action={criarPecaAction} className="mt-3 flex flex-wrap items-center gap-1.5">
-          <Select name="item_id" required className="w-64">
-            <option value="">Selecione o item (componente/produto acabado)...</option>
-            {itensDisponiveisParaPeca.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.codigo} — {it.descricao}
-              </option>
-            ))}
-          </Select>
-          <Input name="descricao_tecnica" placeholder="descrição técnica (opcional)" className="w-56" />
-          <Button type="submit" variant="primary">
+        <form action={criarPecaAction} className="mt-3 rounded-lg border border-border-subtle bg-page-bg p-4">
+          <div className="flex flex-wrap gap-4">
+            <div className="w-72">
+              <Field label="Item" hint="Só itens do tipo componente ou produto acabado que ainda não viraram peça.">
+                <Select className="w-full" name="item_id" required>
+                  <option value="">Selecione o item...</option>
+                  {itensDisponiveisParaPeca.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.codigo} — {it.descricao}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="w-64">
+              <Field label="Descrição técnica" hint="Anotação interna sobre a peça (opcional) — não aparece pro cliente.">
+                <Input className="w-full" name="descricao_tecnica" placeholder="Ex.: box de abrir 2 folhas" />
+              </Field>
+            </div>
+          </div>
+          <Button type="submit" variant="primary" className="mt-3">
             Cadastrar peça
           </Button>
         </form>
@@ -301,11 +320,11 @@ function PecaDetalhe({
               return (
                 <Fragment key={c.id}>
                   <tr>
-                    <Td>
+                    <Td className="align-top">
                       {itemLabel(c.material_item_id)}
                       {ehPeca && <span className="ml-1.5 font-mono text-[10px] text-primary">subconjunto</span>}
                     </Td>
-                    <Td>
+                    <Td className="align-top">
                       {canManage ? (
                         <form action={atualizarMaterialPecaAction} className="flex items-center gap-1">
                           <input type="hidden" name="id" value={c.id} />
@@ -326,8 +345,8 @@ function PecaDetalhe({
                         c.quantidade_por_unidade
                       )}
                     </Td>
-                    <Td>{c.observacao ?? "—"}</Td>
-                    <Td>
+                    <Td className="align-top">{c.observacao ?? "—"}</Td>
+                    <Td className="align-top">
                       {canManage ? (
                         <TipoCalculoComposicao
                           // Remonta quando o tipo salvo muda (depois de
@@ -344,7 +363,7 @@ function PecaDetalhe({
                       )}
                     </Td>
                     {canManage && (
-                      <Td>
+                      <Td className="align-top">
                         <form action={removerMaterialPecaAction}>
                           <input type="hidden" name="id" value={c.id} />
                           <Button type="submit" variant="danger" size="sm">
@@ -382,38 +401,45 @@ function PecaDetalhe({
       </div>
 
       {canManage && p.situacao === "ativo" && (
-        <form action={adicionarMaterialPecaAction} className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <form action={adicionarMaterialPecaAction} className="mt-4 rounded-lg border border-border-subtle bg-page-bg p-3">
           <input type="hidden" name="peca_id" value={p.id} />
-          <Select name="material_item_id" required className="w-64">
-            <option value="">Selecione o material ou subconjunto...</option>
-            <optgroup label="Matéria-prima / insumo / material auxiliar">
-              {itensMateriais.map((it) => (
-                <option key={it.id} value={it.id}>
-                  {it.codigo} — {it.descricao} ({it.unidade_principal})
-                </option>
-              ))}
-            </optgroup>
-            {pecasComoSubconjunto.length > 0 && (
-              <optgroup label="Outra peça (subconjunto)">
-                {pecasComoSubconjunto.map((sp) => (
-                  <option key={sp.item_id} value={sp.item_id}>
-                    {itemLabel(sp.item_id)}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </Select>
-          <Input
-            name="quantidade_por_unidade"
-            type="number"
-            min="0.0001"
-            step="0.0001"
-            placeholder="qtd. por unidade"
-            required
-            className="w-28"
-          />
-          <Input name="observacao" placeholder="observação (opcional)" className="w-40" />
-          <Button type="submit" variant="primary">
+          <p className="mb-2 text-xs font-semibold text-text">Adicionar material à composição</p>
+          <div className="flex flex-wrap gap-4">
+            <div className="w-72">
+              <Field label="Material ou subconjunto" hint="O que entra na composição desta peça: perfil, vidro, acessório, insumo — ou outra peça já cadastrada.">
+                <Select className="w-full" name="material_item_id" required>
+                  <option value="">Selecione...</option>
+                  <optgroup label="Matéria-prima / insumo / material auxiliar">
+                    {itensMateriais.map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.codigo} — {it.descricao} ({it.unidade_principal})
+                      </option>
+                    ))}
+                  </optgroup>
+                  {pecasComoSubconjunto.length > 0 && (
+                    <optgroup label="Outra peça (subconjunto)">
+                      {pecasComoSubconjunto.map((sp) => (
+                        <option key={sp.item_id} value={sp.item_id}>
+                          {itemLabel(sp.item_id)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </Select>
+              </Field>
+            </div>
+            <div className="w-36">
+              <Field label="Quantidade por unidade" hint="Quanto desse material 1 unidade da peça consome.">
+                <Input className="w-full" name="quantidade_por_unidade" type="number" min="0.0001" step="0.0001" placeholder="0,000" required />
+              </Field>
+            </div>
+            <div className="w-48">
+              <Field label="Observação" hint="Anotação livre (opcional).">
+                <Input className="w-full" name="observacao" placeholder="Ex.: lado interno" />
+              </Field>
+            </div>
+          </div>
+          <Button type="submit" variant="primary" className="mt-3">
             Adicionar
           </Button>
         </form>
@@ -484,7 +510,12 @@ function ComprimentosBarraComposicao({
       {canManage && (
         <form action={definirComprimentoBarraAction} className="flex items-center gap-1">
           <input type="hidden" name="composicao_id" value={composicaoId} />
-          <Select name="item_id" required className="w-40 text-[11px]">
+          <Select
+            name="item_id"
+            required
+            title="Item de barra em que esse material é vendido/cortado (ex.: barra de 6 metros)."
+            className="w-40 text-[11px]"
+          >
             <option value="">item da barra...</option>
             {itensMateriais
               .filter((it) => !itensJaUsados.has(it.id))
@@ -494,7 +525,15 @@ function ComprimentosBarraComposicao({
                 </option>
               ))}
           </Select>
-          <Input name="comprimento_metros" type="number" min="0.001" step="0.001" placeholder="metros" className="w-16 text-[11px]" />
+          <Input
+            name="comprimento_metros"
+            type="number"
+            min="0.001"
+            step="0.001"
+            placeholder="metros"
+            title="Comprimento dessa barra, em metros."
+            className="w-16 text-[11px]"
+          />
           <Button type="submit" variant="primary" size="sm">
             Adicionar
           </Button>
@@ -508,34 +547,38 @@ function TipoCalculoComposicao({ composicao }: { composicao: PecaComposicao }) {
   const [tipo, setTipo] = useState<PecaComposicao["tipo_calculo"]>(composicao.tipo_calculo);
 
   return (
-    <form action={definirTipoCalculoComposicaoAction} className="flex items-center gap-1">
+    <form action={definirTipoCalculoComposicaoAction} className="flex flex-col gap-1">
       <input type="hidden" name="composicao_id" value={composicao.id} />
-      <Select
-        name="tipo_calculo"
-        value={tipo}
-        onChange={(e) => setTipo(e.target.value as PecaComposicao["tipo_calculo"])}
-        className="w-36"
-      >
-        {(Object.keys(TIPO_CALCULO_LABEL) as PecaComposicao["tipo_calculo"][]).map((v) => (
-          <option key={v} value={v}>
-            {TIPO_CALCULO_LABEL[v]}
-          </option>
-        ))}
-      </Select>
-      {tipo !== "fixo" && (
-        <Input
-          name="percentual_perda"
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="% perda"
-          defaultValue={composicao.tipo_calculo !== "fixo" ? composicao.percentual_perda : 0}
-          className="w-20"
-        />
-      )}
-      <Button type="submit" variant="primary" size="sm">
-        Salvar
-      </Button>
+      <div className="flex items-center gap-1">
+        <Select
+          name="tipo_calculo"
+          value={tipo}
+          onChange={(e) => setTipo(e.target.value as PecaComposicao["tipo_calculo"])}
+          className="w-36"
+        >
+          {(Object.keys(TIPO_CALCULO_LABEL) as PecaComposicao["tipo_calculo"][]).map((v) => (
+            <option key={v} value={v}>
+              {TIPO_CALCULO_LABEL[v]}
+            </option>
+          ))}
+        </Select>
+        {tipo !== "fixo" && (
+          <Input
+            name="percentual_perda"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="% perda"
+            title="% de perda de corte — sobra que vira refugo, somada à quantidade calculada."
+            defaultValue={composicao.tipo_calculo !== "fixo" ? composicao.percentual_perda : 0}
+            className="w-20"
+          />
+        )}
+        <Button type="submit" variant="primary" size="sm">
+          Salvar
+        </Button>
+      </div>
+      <p className="max-w-xs text-[11px] text-text-muted">{TIPO_CALCULO_HINT[tipo]}</p>
     </form>
   );
 }
@@ -593,7 +636,7 @@ function CaracteristicasPeca({
   categoriasPeca: string[];
   canManage: boolean;
 }) {
-  const [tipoNovo, setTipoNovo] = useState<string>("numero");
+  const [tipoNovo, setTipoNovo] = useState<"numero" | "texto" | "opcao">("numero");
   const [mostrarCatalogo, setMostrarCatalogo] = useState(false);
 
   const nomesJaUsados = new Set(caracteristicas.map((c) => c.nome));
@@ -656,25 +699,65 @@ function CaracteristicasPeca({
       )}
 
       {canManage && (
-        <form action={definirCaracteristicaPecaAction} className="flex flex-wrap items-center gap-1.5">
+        <form action={definirCaracteristicaPecaAction} className="rounded-lg border border-border-subtle bg-page-bg p-3">
           <input type="hidden" name="peca_id" value={pecaId} />
-          <Input name="nome" placeholder="nome (ex.: largura)" required className="w-32" />
-          <Select name="tipo" value={tipoNovo} onChange={(e) => setTipoNovo(e.target.value)} className="w-32">
-            {CARACTERISTICA_TIPOS.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Input name="unidade" placeholder="unidade (opcional)" className="w-24" />
+
+          <div className="flex flex-wrap gap-4">
+            <div className="w-40">
+              <Field label="Nome" hint="Como aparece pro cliente escolher, ex.: largura.">
+                <Input className="w-full" name="nome" placeholder="largura" required />
+              </Field>
+            </div>
+            <div className="w-32">
+              <Field label="Unidade" hint="Se houver (ex.: mm). Deixe em branco se não se aplica.">
+                <Input className="w-full" name="unidade" placeholder="mm" />
+              </Field>
+            </div>
+          </div>
+
+          <div className="mt-3 grid max-w-md grid-cols-3 gap-2">
+            <OptionCard
+              value="numero"
+              label="Número"
+              hint="Valor numérico, ex.: medida em mm."
+              selected={tipoNovo === "numero"}
+              onSelect={() => setTipoNovo("numero")}
+            />
+            <OptionCard
+              value="texto"
+              label="Texto"
+              hint="Texto livre, sem formato fixo."
+              selected={tipoNovo === "texto"}
+              onSelect={() => setTipoNovo("texto")}
+            />
+            <OptionCard
+              value="opcao"
+              label="Opção (lista)"
+              hint="Lista fixa pra escolher, ex.: cores."
+              selected={tipoNovo === "opcao"}
+              onSelect={() => setTipoNovo("opcao")}
+            />
+          </div>
+          <input type="hidden" name="tipo" value={tipoNovo} />
+
           {tipoNovo === "opcao" && (
-            <Input name="opcoes" placeholder="opções, separadas por vírgula" required className="w-44" />
+            <div className="mt-3 w-72">
+              <Field label="Opções da lista" hint="Uma opção por vírgula — é o que o cliente vai escolher.">
+                <Input className="w-full" name="opcoes" placeholder="Incolor, Verde, Fumê, Bronze" required />
+              </Field>
+            </div>
           )}
-          <label className="flex items-center gap-1 text-xs text-text">
-            <input type="checkbox" name="obrigatoria" defaultChecked className="accent-primary" />
-            obrigatória
-          </label>
-          <Button type="submit" variant="primary" size="sm">
+
+          <div className="mt-3">
+            <CheckboxField
+              name="obrigatoria"
+              defaultChecked
+              label="Obrigatória"
+              hint="O cliente precisa preencher essa característica pra fechar o pedido."
+            />
+          </div>
+
+          <Button type="submit" variant="primary" size="sm" className="mt-3">
             Adicionar característica
           </Button>
         </form>
@@ -696,44 +779,63 @@ function CaracteristicaItem({ c, canManage }: { c: Caracteristica; canManage: bo
 
   if (editando) {
     return (
-      <li className="flex flex-wrap items-center gap-1.5">
+      <li>
         <form
           action={atualizarCaracteristicaPecaAction}
           onSubmit={() => setEditando(false)}
-          className="flex flex-wrap items-center gap-1.5"
+          className="my-1 rounded-lg border border-border-subtle bg-page-bg p-3"
         >
           <input type="hidden" name="id" value={c.id} />
           <input type="hidden" name="tipo" value={c.tipo} />
-          <span className="font-semibold text-text">{c.nome}</span>
-          <span className="text-[10px] text-text-muted">({tipoLabel} — nome e tipo não mudam)</span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-medium text-text">{c.nome}</span>
+            <span className="text-[11px] text-text-muted">({tipoLabel} — nome e tipo não mudam)</span>
+          </div>
+
           {doCatalogo ? (
             <>
               {/* Unidade/opções vêm do catálogo — editar aqui divergiria da
                   fonte única; manda os valores atuais sem campo pra mexer. */}
               <input type="hidden" name="unidade" value={c.unidade ?? ""} />
               <input type="hidden" name="opcoes" value={c.opcoes?.join(", ") ?? ""} />
-              <span className="text-[10px] text-text-muted">
-                unidade/opções: editar em Configurações → Variáveis do configurador
-              </span>
+              <p className="mt-2 text-[11px] text-text-muted">
+                Unidade/opções vêm do catálogo — editar em Configurações → Variáveis do configurador.
+              </p>
             </>
           ) : (
-            <>
-              <Input name="unidade" defaultValue={c.unidade ?? ""} placeholder="unidade (opcional)" className="w-24" />
+            <div className="mt-3 flex flex-wrap gap-4">
+              <div className="w-40">
+                <Field label="Unidade" hint="Se houver (ex.: mm). Deixe em branco se não se aplica.">
+                  <Input className="w-full" name="unidade" defaultValue={c.unidade ?? ""} placeholder="mm" />
+                </Field>
+              </div>
               {c.tipo === "opcao" && (
-                <Input name="opcoes" defaultValue={c.opcoes?.join(", ") ?? ""} placeholder="opções, separadas por vírgula" required className="w-44" />
+                <div className="w-72">
+                  <Field label="Opções da lista" hint="Uma opção por vírgula.">
+                    <Input className="w-full" name="opcoes" defaultValue={c.opcoes?.join(", ") ?? ""} placeholder="Incolor, Verde, Fumê, Bronze" required />
+                  </Field>
+                </div>
               )}
-            </>
+            </div>
           )}
-          <label className="flex items-center gap-1 text-xs text-text">
-            <input type="checkbox" name="obrigatoria" defaultChecked={c.obrigatoria} className="accent-primary" />
-            obrigatória
-          </label>
-          <Button type="submit" variant="primary" size="sm">
-            Salvar
-          </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(false)}>
-            Cancelar
-          </Button>
+
+          <div className="mt-3">
+            <CheckboxField
+              name="obrigatoria"
+              defaultChecked={c.obrigatoria}
+              label="Obrigatória"
+              hint="O cliente precisa preencher essa característica pra fechar o pedido."
+            />
+          </div>
+
+          <div className="mt-3 flex gap-1.5">
+            <Button type="submit" variant="primary" size="sm">
+              Salvar
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(false)}>
+              Cancelar
+            </Button>
+          </div>
         </form>
       </li>
     );

@@ -63,6 +63,8 @@ export default function EstoqueSection({
   reservaAtivaPorPedidoItem,
   pessoas,
   obras,
+  itensDimensionalPagina,
+  dmPaginacao,
   pecasDimensionais,
   canManage,
 }: {
@@ -77,6 +79,8 @@ export default function EstoqueSection({
   reservaAtivaPorPedidoItem: Map<string, Reserva>;
   pessoas: Pessoa[];
   obras: Obra[];
+  itensDimensionalPagina: Item[];
+  dmPaginacao: PaginacaoInfo;
   pecasDimensionais: PecaDimensional[];
   canManage: boolean;
 }) {
@@ -280,7 +284,9 @@ export default function EstoqueSection({
 
       {activeTab === "dimensional" && (
         <DimensionalTab
-          itens={itens.filter((i) => i.dimensao_tipo !== null)}
+          itensTodos={itens.filter((i) => i.dimensao_tipo !== null)}
+          itensPagina={itensDimensionalPagina}
+          paginacao={dmPaginacao}
           pecasDimensionais={pecasDimensionais}
           canManage={canManage}
         />
@@ -337,15 +343,19 @@ function SaldoItemRow({ item, saldo, canManage }: { item: Item; saldo: Saldo | u
 // A vedação do TÓPICO 4 §54 continua integral: isto é posição de estoque,
 // nunca decisão de corte ou nesting.
 function DimensionalTab({
-  itens,
+  itensTodos,
+  itensPagina,
+  paginacao,
   pecasDimensionais,
   canManage,
 }: {
-  itens: Item[];
+  itensTodos: Item[];
+  itensPagina: Item[];
+  paginacao: PaginacaoInfo;
   pecasDimensionais: PecaDimensional[];
   canManage: boolean;
 }) {
-  if (itens.length === 0) {
+  if (paginacao.total === 0) {
     return (
       <section>
         <h2 className="text-sm font-semibold text-text">Peças dimensionais</h2>
@@ -368,11 +378,12 @@ function DimensionalTab({
         para ver e gerenciar as peças.
       </p>
 
-      <ConversorUnidade itens={itens} />
+      <ConversorUnidade itens={itensTodos} />
 
       <div className="mt-3 overflow-x-auto">
-        <DimensionalTable itens={itens} pecasDimensionais={pecasDimensionais} canManage={canManage} />
+        <DimensionalTable itens={itensPagina} pecasDimensionais={pecasDimensionais} canManage={canManage} />
       </div>
+      <Paginacao {...paginacao} paramPagina="dm_pagina" paramPorPagina="dm_por_pagina" />
     </section>
   );
 }

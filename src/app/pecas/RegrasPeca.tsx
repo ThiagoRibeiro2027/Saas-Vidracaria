@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Table, Th, Td } from "@/components/ui/Table";
+import { SectionLabel, Field } from "@/components/ui/FormField";
 
 type Caracteristica = { id: string; nome: string; tipo: string; unidade: string | null; opcoes: string[] | null; obrigatoria: boolean };
 type MaterialOpcao = { id: string; label: string };
@@ -126,75 +127,114 @@ export default function RegrasPeca({
         <form
           action={criarRegraPecaAction}
           onSubmit={() => setMostrarNovaRegra(false)}
-          className="flex flex-wrap items-center gap-1.5"
+          className="rounded-lg border border-border-subtle bg-page-bg p-3"
         >
           <input type="hidden" name="peca_id" value={pecaId} />
           <input type="hidden" name="tipo" value={caracteristicaSelecionada?.tipo ?? ""} />
-          <Select
-            name="caracteristica_id"
-            required
-            value={caracteristicaSelecionadaId}
-            onChange={(e) => setCaracteristicaSelecionadaId(e.target.value)}
-            className="w-28"
-          >
-            <option value="">se...</option>
-            {caracteristicas.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </Select>
-          <Select name="operador" required className="w-16">
-            {operadoresDisponiveis.map((op) => (
-              <option key={op} value={op}>
-                {op}
-              </option>
-            ))}
-          </Select>
-          {caracteristicaSelecionada?.tipo === "opcao" ? (
-            <Select name="valor_comparacao" required className="w-28">
-              {(caracteristicaSelecionada.opcoes ?? []).map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <Input
-              name="valor_comparacao"
-              type={caracteristicaSelecionada?.tipo === "numero" ? "number" : "text"}
-              step="any"
-              placeholder="valor"
-              required
-              className="w-24"
-            />
-          )}
-          <span className="text-xs text-text-muted">→</span>
-          <Select name="acao" value={acaoSelecionada} onChange={(e) => setAcaoSelecionada(e.target.value)} className="w-40">
-            {ACOES.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-          <Select name="acao_material_item_id" required className="w-44">
-            <option value="">material...</option>
-            {materiais.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </Select>
-          {acaoSelecionada !== "remover_material" && (
-            <Input name="acao_quantidade" type="number" step="0.0001" min="0.0001" placeholder="qtd." required className="w-20" />
-          )}
-          <Input name="motivo" placeholder="motivo (opcional)" className="w-36" />
-          <Button type="submit" variant="primary" size="sm">
-            Criar regra
-          </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => setMostrarNovaRegra(false)}>
-            Cancelar
-          </Button>
+
+          <SectionLabel>Condição (se)</SectionLabel>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <div className="w-40">
+              <Field label="Característica" hint="Qual medida ou opção do pedido dispara a regra.">
+                <Select
+                  className="w-full"
+                  name="caracteristica_id"
+                  required
+                  value={caracteristicaSelecionadaId}
+                  onChange={(e) => setCaracteristicaSelecionadaId(e.target.value)}
+                >
+                  <option value="">Selecione...</option>
+                  {caracteristicas.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="w-24">
+              <Field label="Comparação" hint="Operador usado no teste.">
+                <Select className="w-full" name="operador" required>
+                  {operadoresDisponiveis.map((op) => (
+                    <option key={op} value={op}>
+                      {op}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="w-32">
+              <Field label="Valor" hint="Valor de referência da comparação.">
+                {caracteristicaSelecionada?.tipo === "opcao" ? (
+                  <Select className="w-full" name="valor_comparacao" required>
+                    {(caracteristicaSelecionada.opcoes ?? []).map((o) => (
+                      <option key={o} value={o}>
+                        {o}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Input
+                    className="w-full"
+                    name="valor_comparacao"
+                    type={caracteristicaSelecionada?.tipo === "numero" ? "number" : "text"}
+                    step="any"
+                    placeholder="valor"
+                    required
+                  />
+                )}
+              </Field>
+            </div>
+          </div>
+
+          <SectionLabel className="mt-4">Ação (então)</SectionLabel>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <div className="w-48">
+              <Field label="O que fazer" hint="O que a regra muda na composição da peça.">
+                <Select className="w-full" name="acao" value={acaoSelecionada} onChange={(e) => setAcaoSelecionada(e.target.value)}>
+                  {ACOES.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="w-56">
+              <Field label="Material" hint="Material afetado pela ação.">
+                <Select className="w-full" name="acao_material_item_id" required>
+                  <option value="">Selecione...</option>
+                  {materiais.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            {acaoSelecionada !== "remover_material" && (
+              <div className="w-28">
+                <Field label="Quantidade" hint="Nova quantidade por unidade da peça.">
+                  <Input className="w-full" name="acao_quantidade" type="number" step="0.0001" min="0.0001" placeholder="0,000" required />
+                </Field>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 w-64">
+            <Field label="Motivo" hint="Anotação opcional, fica no histórico da regra.">
+              <Input className="w-full" name="motivo" placeholder="Ex.: reforço acima de 1,5m" />
+            </Field>
+          </div>
+
+          <div className="mt-3 flex gap-1.5">
+            <Button type="submit" variant="primary" size="sm">
+              Criar regra
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setMostrarNovaRegra(false)}>
+              Cancelar
+            </Button>
+          </div>
         </form>
       )}
     </div>

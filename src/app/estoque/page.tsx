@@ -25,11 +25,16 @@ const TAB_TITLE: Record<TabSlug, string> = {
 // 2026-10-04: tela larga + aba "Visão geral" nova + paginação server-side
 // em Saldo (catálogo de itens) e Reserva (pedidos liberados), lazy por
 // aba. `itens` continua um lookup leve sempre buscado (usado nos
-// dropdowns de Sobra/Dimensional, não só no Saldo) — a versão paginada é
-// separada, só pro Saldo exibir. Peças dimensionais (Fase 2 ADR-011)
-// continuam buscadas inteiras — são agrupadas por item, e o número de
-// itens com controle dimensional tende a ser pequeno; não há paginação
-// real aí nesta etapa, só o tratamento de linha compacta.
+// dropdowns de Sobra, não só no Saldo) — a versão paginada é separada,
+// só pro Saldo exibir.
+//
+// 2026-10-10: Dimensional ganhou paginação própria também — a lista que
+// de fato cresce sem limite é a de peças físicas registradas (nunca
+// deletadas, só passam a "esgotada"), não o catálogo de itens com
+// controle dimensional. Por isso pagina-se pelo ITEM (mesmo padrão já
+// usado em Qualidade/Reserva: página de itens → busca peças só dos itens
+// daquela página) em vez de paginar peça a peça, o que quebraria o
+// agrupamento visual por item.
 export default async function EstoquePage({
   searchParams,
 }: {
@@ -39,10 +44,19 @@ export default async function EstoquePage({
     sd_por_pagina?: string;
     rs_pagina?: string;
     rs_por_pagina?: string;
+    dm_pagina?: string;
+    dm_por_pagina?: string;
   }>;
 }) {
-  const { tab, sd_pagina: sdPaginaParam, sd_por_pagina: sdPorPaginaParam, rs_pagina: rsPaginaParam, rs_por_pagina: rsPorPaginaParam } =
-    await searchParams;
+  const {
+    tab,
+    sd_pagina: sdPaginaParam,
+    sd_por_pagina: sdPorPaginaParam,
+    rs_pagina: rsPaginaParam,
+    rs_por_pagina: rsPorPaginaParam,
+    dm_pagina: dmPaginaParam,
+    dm_por_pagina: dmPorPaginaParam,
+  } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -144,13 +158,34 @@ export default async function EstoquePage({
     (reservas ?? []).filter((r) => r.status === "reservado").map((r) => [r.pedido_item_id, r] as const),
   );
 
-  // Dimensional — peças físicas, buscadas inteiras só com a aba ativa (ver
-  // nota no topo do arquivo sobre o porquê de não paginar aqui).
-  const { data: pecasDimensionais } =
+  // Dimensional — catálogo de itens com controle dimensional, paginado;
+  // peças físicas buscadas só para os itens da página atual (ver nota no
+  // topo do arquivo).
+  const { pagina: dmPaginaPedida, porPagina: dmPorPagina } = lerParametrosPaginacao({
+    pagina: dmPaginaParam,
+    por_pagina: dmPorPaginaParam,
+  });
+  const { count: totalItensDimensional } =
     activeTab === "dimensional"
+      ? await supabase.from("itens").select("id", { count: "exact", head: true }).not("dimensao_tipo", "is", null)
+      : { count: 0 };
+  const { paginacao: dmPaginacao, from: dmFrom, to: dmTo } = calcularPaginacao(dmPaginaPedida, dmPorPagina, totalItensDimensional ?? 0);
+  const { data: itensDimensionalPagina } =
+    activeTab === "dimensional"
+      ? await supabase
+          .from("itens")
+          .select("id, codigo, descricao, tipo, unidade_principal, dimensao_tipo, peso_por_unidade_dimensao")
+          .not("dimensao_tipo", "is", null)
+          .order("codigo")
+          .range(dmFrom, dmTo)
+      : { data: [] as never[] };
+  const itensDimensionalIds = (itensDimensionalPagina ?? []).map((i) => i.id);
+  const { data: pecasDimensionais } =
+    itensDimensionalIds.length > 0
       ? await supabase
           .from("itens_pecas_dimensionais")
           .select("id, item_id, identificador, quantidade_original, quantidade_disponivel, situacao, observacao, created_at")
+          .in("item_id", itensDimensionalIds)
           .order("created_at", { ascending: false })
       : { data: [] as never[] };
 
@@ -188,6 +223,8 @@ export default async function EstoquePage({
           reservaAtivaPorPedidoItem={reservaAtivaPorPedidoItem}
           pessoas={pessoas ?? []}
           obras={obras ?? []}
+          itensDimensionalPagina={itensDimensionalPagina ?? []}
+          dmPaginacao={dmPaginacao}
           pecasDimensionais={pecasDimensionais ?? []}
           canManage={!!canManage}
         />
