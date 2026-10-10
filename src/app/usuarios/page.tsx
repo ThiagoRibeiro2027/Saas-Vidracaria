@@ -38,10 +38,22 @@ const TAB_TITLE: Record<TabSlug, string> = {
 // de paginação — mas as linhas de papéis da empresa também passam a
 // expandir ao clicar, em vez de sempre mostrar todas as permissões e o
 // formulário de conceder.
+// 2026-10-11: busca/ordenação/filtro na lista de usuários — busca por
+// nome/matrícula, ordenação por nome/matrícula/ativo (allow-list fixa) e
+// filtro por ativo/inativo.
+const USUARIOS_ORDENAVEIS = ["display_name", "login_identifier", "active"] as const;
+
 export default async function UsuariosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; us_pagina?: string; us_por_pagina?: string }>;
+  searchParams: Promise<{
+    tab?: string;
+    us_pagina?: string;
+    us_por_pagina?: string;
+    us_q?: string;
+    us_ordenar?: string;
+    us_ativo?: string;
+  }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
@@ -80,16 +92,29 @@ export default async function UsuariosPage({
   ]);
 
   // Só a aba ativa busca sua consulta pesada.
-  const { count: totalProfiles } = activeTab === "usuarios" ? await supabase.from("profiles").select("id", { count: "exact", head: true }) : { count: 0 };
+  const usBusca = params.us_q?.trim() || null;
+  const usAtivo = params.us_ativo === "sim" ? true : params.us_ativo === "nao" ? false : null;
+  const [usOrdenarCampo, usOrdenarDirecao] = params.us_ordenar?.split(":") ?? [null, null];
+  const usOrdenacao =
+    usOrdenarCampo && (USUARIOS_ORDENAVEIS as readonly string[]).includes(usOrdenarCampo)
+      ? { campo: usOrdenarCampo, ascending: usOrdenarDirecao === "asc" }
+      : null;
+
+  let usCountQuery = supabase.from("profiles").select("id", { count: "exact", head: true });
+  if (usBusca) usCountQuery = usCountQuery.or(`display_name.ilike.%${usBusca}%,login_identifier.ilike.%${usBusca}%`);
+  if (usAtivo !== null) usCountQuery = usCountQuery.eq("active", usAtivo);
+  const { count: totalProfiles } = activeTab === "usuarios" ? await usCountQuery : { count: 0 };
   const { paginacao: usPaginacao, from: usFrom, to: usTo } = calcularPaginacao(usPaginaPedida, usPorPagina, totalProfiles ?? 0);
-  const { data: profiles } =
-    activeTab === "usuarios"
-      ? await supabase
-          .from("profiles")
-          .select("id, login_identifier, display_name, contact_email, active, must_change_password")
-          .order("display_name")
-          .range(usFrom, usTo)
-      : { data: [] as never[] };
+
+  let profilesQuery = supabase
+    .from("profiles")
+    .select("id, login_identifier, display_name, contact_email, active, must_change_password");
+  if (usBusca) profilesQuery = profilesQuery.or(`display_name.ilike.%${usBusca}%,login_identifier.ilike.%${usBusca}%`);
+  if (usAtivo !== null) profilesQuery = profilesQuery.eq("active", usAtivo);
+  profilesQuery = usOrdenacao
+    ? profilesQuery.order(usOrdenacao.campo, { ascending: usOrdenacao.ascending })
+    : profilesQuery.order("display_name");
+  const { data: profiles } = activeTab === "usuarios" ? await profilesQuery.range(usFrom, usTo) : { data: [] as never[] };
 
   const profileIdsPagina = (profiles ?? []).map((p) => p.id);
   const { data: userRoles } =

@@ -14,6 +14,9 @@ import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -112,16 +115,23 @@ export default function QualidadeSection({
       <h2 className="text-sm font-semibold text-text">Ordens de produção concluídas</h2>
       <p className="mt-1 text-xs text-text-muted">Clique numa OP para ver histórico e registrar inspeção/retrabalho.</p>
 
+      <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+        <TableSearch placeholder="Buscar por número da OP..." />
+        <FiltroStatusQualidade />
+      </div>
+
+      <Paginacao {...paginacao} posicao="topo" />
+
       <DenseTable>
         <thead>
           <DenseTableHeaderRow>
-            <Th>OP</Th>
+            <SortableTh field="numero">OP</SortableTh>
             <Th>Pedido</Th>
             <Th>Cliente</Th>
             <Th>Obra</Th>
             <Th>Item</Th>
             <Th>Produzida</Th>
-            <Th>Status</Th>
+            <SortableTh field="status_qualidade">Status</SortableTh>
             <Th className="w-6" />
           </DenseTableHeaderRow>
         </thead>
@@ -169,7 +179,6 @@ export default function QualidadeSection({
             )}
           </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} />
     </section>
   );
 }
@@ -305,5 +314,37 @@ function OrdemDetalhe({
         </div>
       )}
     </div>
+  );
+}
+
+function FiltroStatusQualidade() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("status_qualidade") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("status_qualidade", novoValor);
+    else p.delete("status_qualidade");
+    p.delete("pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por status de qualidade"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os status</option>
+      {(Object.entries(STATUS_QUALIDADE_LABEL) as [OrdemProducao["status_qualidade"], string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
   );
 }

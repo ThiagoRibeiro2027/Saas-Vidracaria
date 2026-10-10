@@ -24,6 +24,8 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { formatarData } from "@/lib/formato/data";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -209,10 +211,16 @@ export default function InstalacaoSection({
         <h2 className="text-sm font-semibold text-text">Pedidos liberados — agenda de instalação</h2>
         <p className="mt-1 text-xs text-text-muted">Clique num pedido para ver e agendar instalações.</p>
 
+        <div className="mb-2 mt-3">
+          <TableSearch paramBusca="ag_q" paramPagina="ag_pagina" placeholder="Buscar por número do pedido..." />
+        </div>
+
+        <Paginacao {...agPaginacao} paramPagina="ag_pagina" paramPorPagina="ag_por_pagina" posicao="topo" />
+
         <DenseTable>
           <thead>
             <DenseTableHeaderRow>
-              <Th>Número</Th>
+              <SortableTh field="numero" paramOrdenar="ag_ordenar" paramPagina="ag_pagina">Número</SortableTh>
               <Th>Cliente</Th>
               <Th>Obra</Th>
               <Th>Instalações</Th>
@@ -244,7 +252,6 @@ export default function InstalacaoSection({
             )}
           </tbody>
         </DenseTable>
-        <Paginacao {...agPaginacao} paramPagina="ag_pagina" paramPorPagina="ag_por_pagina" />
 
         {pedidoSelecionado && (
           <PedidoInstalacoesDetalhe

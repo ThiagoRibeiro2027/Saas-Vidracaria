@@ -22,6 +22,21 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
+const TIPOS_ITEM = [
+  ["materia_prima", "Matéria-prima"],
+  ["insumo", "Insumo"],
+  ["componente", "Componente"],
+  ["produto_intermediario", "Produto intermediário"],
+  ["produto_acabado", "Produto acabado"],
+  ["material_auxiliar", "Material auxiliar"],
+  ["embalagem", "Embalagem"],
+  ["servico", "Serviço"],
+  ["outro", "Outro"],
+] as const;
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -103,10 +118,17 @@ export default function EstoqueSection({
           Sem módulo de Compras ainda (TÓPICO 18, M2) — ajuste é o único jeito de estabelecer ou
           corrigir saldo neste recorte. Disponível = físico − reservado.
         </p>
+        <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+          <TableSearch paramBusca="sd_q" paramPagina="sd_pagina" placeholder="Buscar por código ou descrição..." />
+          <FiltroTipoItem paramTipo="sd_tipo" paramPagina="sd_pagina" />
+        </div>
+
+        <Paginacao {...sdPaginacao} paramPagina="sd_pagina" paramPorPagina="sd_por_pagina" posicao="topo" />
+
         <DenseTable>
             <thead>
               <DenseTableHeaderRow>
-                <Th>Item</Th>
+                <SortableTh field="codigo" paramOrdenar="sd_ordenar" paramPagina="sd_pagina">Item</SortableTh>
                 <Th>Físico</Th>
                 <Th>Reservado</Th>
                 <Th>Disponível</Th>
@@ -128,7 +150,6 @@ export default function EstoqueSection({
               )}
             </tbody>
         </DenseTable>
-        <Paginacao {...sdPaginacao} paramPagina="sd_pagina" paramPorPagina="sd_por_pagina" />
       </section>
       )}
 
@@ -137,10 +158,16 @@ export default function EstoqueSection({
         <h2 className="text-sm font-semibold text-text">Reserva para pedidos liberados</h2>
         <p className="mt-1 text-xs text-text-muted">Clique num pedido para ver e reservar os itens.</p>
 
+        <div className="mb-2 mt-3">
+          <TableSearch paramBusca="rs_q" paramPagina="rs_pagina" placeholder="Buscar por número do pedido..." />
+        </div>
+
+        <Paginacao {...rsPaginacao} paramPagina="rs_pagina" paramPorPagina="rs_por_pagina" posicao="topo" />
+
         <DenseTable>
             <thead>
               <DenseTableHeaderRow>
-                <Th>Número</Th>
+                <SortableTh field="numero" paramOrdenar="rs_ordenar" paramPagina="rs_pagina">Número</SortableTh>
                 <Th>Cliente</Th>
                 <Th>Obra</Th>
                 <Th>Itens</Th>
@@ -183,7 +210,6 @@ export default function EstoqueSection({
               )}
             </tbody>
         </DenseTable>
-        <Paginacao {...rsPaginacao} paramPagina="rs_pagina" paramPorPagina="rs_por_pagina" />
 
         {pedidoSelecionado && (
           <Card padding="xs" className="mt-3">
@@ -380,10 +406,16 @@ function DimensionalTab({
 
       <ConversorUnidade itens={itensTodos} />
 
-      <div className="mt-3 overflow-x-auto">
+      <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+        <TableSearch paramBusca="dm_q" paramPagina="dm_pagina" placeholder="Buscar por código ou descrição..." />
+        <FiltroDimensao />
+      </div>
+
+      <Paginacao {...paginacao} paramPagina="dm_pagina" paramPorPagina="dm_por_pagina" posicao="topo" />
+
+      <div className="overflow-x-auto">
         <DimensionalTable itens={itensPagina} pecasDimensionais={pecasDimensionais} canManage={canManage} />
       </div>
-      <Paginacao {...paginacao} paramPagina="dm_pagina" paramPorPagina="dm_por_pagina" />
     </section>
   );
 }
@@ -403,7 +435,7 @@ function DimensionalTable({
     <DenseTable>
       <thead>
         <DenseTableHeaderRow>
-          <Th>Item</Th>
+          <SortableTh field="codigo" paramOrdenar="dm_ordenar" paramPagina="dm_pagina">Item</SortableTh>
           <Th>Controle</Th>
           <Th>Disponível</Th>
           <Th className="w-6" />
@@ -604,5 +636,66 @@ function ConversorUnidade({ itens }: { itens: Item[] }) {
         )}
       </form>
     </Card>
+  );
+}
+
+function FiltroTipoItem({ paramTipo, paramPagina }: { paramTipo: string; paramPagina: string }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get(paramTipo) ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set(paramTipo, novoValor);
+    else p.delete(paramTipo);
+    p.delete(paramPagina);
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por tipo"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os tipos</option>
+      {TIPOS_ITEM.map(([valor2, rotulo]) => (
+        <option key={valor2} value={valor2}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function FiltroDimensao() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("dm_dimensao") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("dm_dimensao", novoValor);
+    else p.delete("dm_dimensao");
+    p.delete("dm_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por tipo de controle"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Linear e área</option>
+      <option value="linear">Linear (metro)</option>
+      <option value="area">Área (m²)</option>
+    </select>
   );
 }

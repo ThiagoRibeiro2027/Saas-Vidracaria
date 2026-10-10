@@ -20,6 +20,8 @@ import { Table, Th, Td } from "@/components/ui/Table";
 import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -113,10 +115,16 @@ export default function ExpedicaoSection({
       <h2 className="text-sm font-semibold text-text">Pedidos liberados — expedições</h2>
       <p className="mt-1 text-xs text-text-muted">Clique num pedido para ver e gerenciar as expedições.</p>
 
+      <div className="mb-2 mt-3">
+        <TableSearch placeholder="Buscar por número do pedido..." />
+      </div>
+
+      <Paginacao {...paginacao} posicao="topo" />
+
       <DenseTable>
         <thead>
           <DenseTableHeaderRow>
-            <Th>Pedido</Th>
+            <SortableTh field="numero">Pedido</SortableTh>
             <Th>Cliente</Th>
             <Th>Obra</Th>
             <Th>Expedições</Th>
@@ -196,7 +204,6 @@ export default function ExpedicaoSection({
             )}
           </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} />
     </section>
   );
 }

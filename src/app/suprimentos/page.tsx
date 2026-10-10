@@ -13,12 +13,21 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // 2026-10-04: tela larga + paginação server-side (lista que cresce a cada
 // necessidade identificada). As ações por linha já ficavam atrás de um
 // clique (AcoesNecessidade/RegistrarRecebimentoForm) — nada a mudar aí.
+//
+// 2026-10-11: busca por observação, ordenação por data/quantidade/status
+// (allow-list fixa) e filtro por status/origem. Sem busca por item — a
+// tabela guarda só item_id, buscar por código/descrição exigiria join,
+// fora do escopo deste piloto.
+const SUPRIMENTOS_ORDENAVEIS = ["created_at", "quantidade", "status"] as const;
+const NECESSIDADE_STATUS_VALORES = ["aberta", "atendida", "cancelada", "recebida"] as const;
+const NECESSIDADE_ORIGEM_VALORES = ["manual", "pedido", "producao"] as const;
+
 export default async function SuprimentosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ pagina?: string; por_pagina?: string }>;
+  searchParams: Promise<{ pagina?: string; por_pagina?: string; q?: string; ordenar?: string; status?: string; origem?: string }>;
 }) {
-  const { pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
+  const { pagina: paginaParam, por_pagina: porPaginaParam, q, ordenar, status: statusParam, origem: origemParam } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -38,11 +47,33 @@ export default async function SuprimentosPage({
     pagina: paginaParam,
     por_pagina: porPaginaParam,
   });
-  const { count: totalNecessidades } = await supabase.from("necessidades_compra").select("id", { count: "exact", head: true });
+
+  const termoBusca = q?.trim() || null;
+  const status = (NECESSIDADE_STATUS_VALORES as readonly string[]).includes(statusParam ?? "") ? statusParam! : null;
+  const origem = (NECESSIDADE_ORIGEM_VALORES as readonly string[]).includes(origemParam ?? "") ? origemParam! : null;
+  const [ordenarCampo, ordenarDirecao] = ordenar?.split(":") ?? [null, null];
+  const ordenacao =
+    ordenarCampo && (SUPRIMENTOS_ORDENAVEIS as readonly string[]).includes(ordenarCampo)
+      ? { campo: ordenarCampo, ascending: ordenarDirecao === "asc" }
+      : null;
+
+  let countQuery = supabase.from("necessidades_compra").select("id", { count: "exact", head: true });
+  if (termoBusca) countQuery = countQuery.ilike("observacoes", `%${termoBusca}%`);
+  if (status) countQuery = countQuery.eq("status", status);
+  if (origem) countQuery = countQuery.eq("origem", origem);
+  const { count: totalNecessidades } = await countQuery;
   const { paginacao, from, to } = calcularPaginacao(paginaPedida, porPagina, totalNecessidades ?? 0);
 
+  let necessidadesQuery = supabase.from("necessidades_compra").select("*");
+  if (termoBusca) necessidadesQuery = necessidadesQuery.ilike("observacoes", `%${termoBusca}%`);
+  if (status) necessidadesQuery = necessidadesQuery.eq("status", status);
+  if (origem) necessidadesQuery = necessidadesQuery.eq("origem", origem);
+  necessidadesQuery = ordenacao
+    ? necessidadesQuery.order(ordenacao.campo, { ascending: ordenacao.ascending })
+    : necessidadesQuery.order("created_at", { ascending: false });
+
   const [{ data: necessidades }, { data: itens }, { data: pedidos }, { data: ordensProducao }] = await Promise.all([
-    supabase.from("necessidades_compra").select("*").order("created_at", { ascending: false }).range(from, to),
+    necessidadesQuery.range(from, to),
     supabase.from("itens").select("id, codigo, descricao, unidade_principal").eq("situacao", "ativo").order("codigo"),
     supabase.from("pedidos").select("id, numero").eq("status", "liberado").order("numero"),
     supabase.from("ordens_producao").select("id, numero, pedido_id").order("numero"),

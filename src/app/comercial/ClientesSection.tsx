@@ -12,6 +12,9 @@ import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Pessoa = {
   id: string;
@@ -86,10 +89,17 @@ export default function ClientesSection({
         </div>
       )}
 
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <TableSearch paramBusca="cli_q" paramPagina="cli_pagina" placeholder="Buscar por nome..." />
+        <FiltroSituacaoCliente />
+      </div>
+
+      <Paginacao {...paginacao} paramPagina="cli_pagina" paramPorPagina="cli_por_pagina" posicao="topo" />
+
       <DenseTable>
           <thead>
             <DenseTableHeaderRow>
-              <Th>Nome</Th>
+              <SortableTh field="nome" paramOrdenar="cli_ordenar" paramPagina="cli_pagina">Nome</SortableTh>
               <Th>Documento</Th>
               <Th>Contato</Th>
               <Th>Situação</Th>
@@ -141,7 +151,6 @@ export default function ClientesSection({
             )}
           </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} paramPagina="cli_pagina" paramPorPagina="cli_por_pagina" />
     </section>
   );
 }
@@ -390,5 +399,35 @@ function ObraForm({
         </Button>
       )}
     </form>
+  );
+}
+
+function FiltroSituacaoCliente() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("cli_situacao") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("cli_situacao", novoValor);
+    else p.delete("cli_situacao");
+    p.delete("cli_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por situação"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Ativos, inativos e bloqueados</option>
+      <option value="ativo">Ativo</option>
+      <option value="inativo">Inativo</option>
+      <option value="bloqueado">Bloqueado</option>
+    </select>
   );
 }

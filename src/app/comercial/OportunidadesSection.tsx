@@ -10,7 +10,11 @@ import { Th, Td } from "@/components/ui/Table";
 import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
+import { formatarData } from "@/lib/formato/data";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Pessoa = { id: string; nome: string };
 
@@ -87,7 +91,7 @@ const motivoPerdaLabel = (value: string | null) =>
 
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const COLUNAS = 7;
+const COLUNAS = 8;
 
 // Mesmo padrão da lista de itens do orçamento (OrcamentosSection.tsx):
 // cada oportunidade vira uma linha compacta; clicar abre o detalhe
@@ -121,13 +125,21 @@ export default function OportunidadesSection({
         cliente é feito em Comercial → Clientes. Clique numa linha para abrir, revisar e mudar o estágio.
       </p>
 
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <TableSearch paramBusca="op_q" paramPagina="op_pagina" placeholder="Buscar por descrição..." />
+        <FiltroEstagio />
+      </div>
+
+      <Paginacao {...paginacao} paramPagina="op_pagina" paramPorPagina="op_por_pagina" posicao="topo" />
+
       <DenseTable>
           <thead>
             <DenseTableHeaderRow>
               <Th>Cliente/prospect</Th>
               <Th>Descrição</Th>
               <Th>Origem</Th>
-              <Th>Estágio</Th>
+              <SortableTh field="estagio" paramOrdenar="op_ordenar" paramPagina="op_pagina">Estágio</SortableTh>
+              <SortableTh field="previsao_fechamento" paramOrdenar="op_ordenar" paramPagina="op_pagina">Previsão</SortableTh>
               <Th className="text-right">Valor potencial</Th>
               <Th className="text-right">Prob.</Th>
               <Th className="w-6" />
@@ -162,7 +174,6 @@ export default function OportunidadesSection({
             )}
           </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} paramPagina="op_pagina" paramPorPagina="op_por_pagina" />
     </section>
   );
 }
@@ -189,6 +200,9 @@ function OportunidadeLinha({
       <Td className="text-text-muted">{oportunidade.origem ?? "—"}</Td>
       <Td>
         <StatusPill tone={ESTAGIO_TONE[oportunidade.estagio]}>{ESTAGIO_LABEL[oportunidade.estagio]}</StatusPill>
+      </Td>
+      <Td className="text-text-muted">
+        {oportunidade.previsao_fechamento ? formatarData(oportunidade.previsao_fechamento) : "—"}
       </Td>
       <Td className="text-right">
         {oportunidade.valor_potencial != null ? currency(oportunidade.valor_potencial) : "—"}
@@ -420,5 +434,37 @@ function NovaOportunidadeForm({ todasPessoas, onSaved }: { todasPessoas: Pessoa[
       </Button>
       {erro && <span className="text-xs text-danger">{erro}</span>}
     </form>
+  );
+}
+
+function FiltroEstagio() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("op_estagio") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("op_estagio", novoValor);
+    else p.delete("op_estagio");
+    p.delete("op_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por estágio"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os estágios</option>
+      {ESTAGIOS.map((e) => (
+        <option key={e.value} value={e.value}>
+          {e.label}
+        </option>
+      ))}
+    </select>
   );
 }

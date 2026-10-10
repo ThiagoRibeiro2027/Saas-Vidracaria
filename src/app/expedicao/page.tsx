@@ -16,12 +16,19 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // (nível superior da lista) + linha compacta que expande (mesmo
 // tratamento já aplicado nos outros módulos). Expedições/itens/
 // ocorrências passam a ser buscados só para os pedidos da página atual.
+//
+// 2026-10-11: busca por número do pedido + ordenação por número/data
+// (allow-list fixa). Sem filtro de status aqui — a lista já é sempre só
+// "liberado" (único status que entra em expedição), não há segunda
+// dimensão óbvia pra filtrar neste nível.
+const EXPEDICAO_ORDENAVEIS = ["numero", "created_at"] as const;
+
 export default async function ExpedicaoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ pagina?: string; por_pagina?: string }>;
+  searchParams: Promise<{ pagina?: string; por_pagina?: string; q?: string; ordenar?: string }>;
 }) {
-  const { pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
+  const { pagina: paginaParam, por_pagina: porPaginaParam, q, ordenar } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -41,18 +48,26 @@ export default async function ExpedicaoPage({
     pagina: paginaParam,
     por_pagina: porPaginaParam,
   });
-  const { count: totalPedidos } = await supabase
-    .from("pedidos")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "liberado");
+
+  const termoBusca = q?.trim() || null;
+  const [ordenarCampo, ordenarDirecao] = ordenar?.split(":") ?? [null, null];
+  const ordenacao =
+    ordenarCampo && (EXPEDICAO_ORDENAVEIS as readonly string[]).includes(ordenarCampo)
+      ? { campo: ordenarCampo, ascending: ordenarDirecao === "asc" }
+      : null;
+
+  let countQuery = supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("status", "liberado");
+  if (termoBusca) countQuery = countQuery.ilike("numero", `%${termoBusca}%`);
+  const { count: totalPedidos } = await countQuery;
   const { paginacao, from, to } = calcularPaginacao(paginaPedida, porPagina, totalPedidos ?? 0);
 
-  const { data: pedidos } = await supabase
-    .from("pedidos")
-    .select("id, numero, pessoa_id, obra_id")
-    .eq("status", "liberado")
-    .order("created_at", { ascending: false })
-    .range(from, to);
+  let pedidosQuery = supabase.from("pedidos").select("id, numero, pessoa_id, obra_id").eq("status", "liberado");
+  if (termoBusca) pedidosQuery = pedidosQuery.ilike("numero", `%${termoBusca}%`);
+  pedidosQuery = ordenacao
+    ? pedidosQuery.order(ordenacao.campo, { ascending: ordenacao.ascending })
+    : pedidosQuery.order("created_at", { ascending: false });
+
+  const { data: pedidos } = await pedidosQuery.range(from, to);
   const pedidoIds = (pedidos ?? []).map((p) => p.id);
 
   const [{ data: pedidoItens }, { data: itens }, { data: pessoas }, { data: obras }, { data: ordens }, { data: expedicoes }] =

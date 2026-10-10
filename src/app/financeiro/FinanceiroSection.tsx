@@ -31,6 +31,9 @@ import { FieldBox } from "@/components/ui/FieldBox";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { formatarData, parseDataLocal } from "@/lib/formato/data";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const currency = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -219,16 +222,23 @@ export default function FinanceiroSection({
             </div>
           )}
 
+          <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+            <TableSearch paramBusca="tr_q" paramPagina="tr_pagina" placeholder="Buscar por número..." />
+            <FiltroStatusTitulo paramStatus="tr_status" paramPagina="tr_pagina" />
+          </div>
+
+          <Paginacao {...trPaginacao} paramPagina="tr_pagina" paramPorPagina="tr_por_pagina" posicao="topo" />
+
           <DenseTable>
             <thead>
               <DenseTableHeaderRow>
-                <Th>Número</Th>
+                <SortableTh field="numero" paramOrdenar="tr_ordenar" paramPagina="tr_pagina">Número</SortableTh>
                 <Th>Pedido</Th>
                 <Th>Cliente</Th>
                 <Th>Parcela</Th>
                 <Th>Saldo</Th>
-                <Th>Vencimento</Th>
-                <Th>Status</Th>
+                <SortableTh field="vencimento" paramOrdenar="tr_ordenar" paramPagina="tr_pagina">Vencimento</SortableTh>
+                <SortableTh field="status" paramOrdenar="tr_ordenar" paramPagina="tr_pagina">Status</SortableTh>
                 <Th className="w-6" />
               </DenseTableHeaderRow>
             </thead>
@@ -299,7 +309,6 @@ export default function FinanceiroSection({
               )}
             </tbody>
           </DenseTable>
-          <Paginacao {...trPaginacao} paramPagina="tr_pagina" paramPorPagina="tr_por_pagina" />
         </section>
       )}
 
@@ -454,14 +463,21 @@ export default function FinanceiroSection({
             sem alçada aplicável, o pagamento pode ser registrado direto. Clique num título para ver
             ações.
           </p>
-          <DenseTable className="mt-3">
+          <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+            <TableSearch paramBusca="tp_q" paramPagina="tp_pagina" placeholder="Buscar por número..." />
+            <FiltroStatusTitulo paramStatus="tp_status" paramPagina="tp_pagina" />
+          </div>
+
+          <Paginacao {...tpPaginacao} paramPagina="tp_pagina" paramPorPagina="tp_por_pagina" posicao="topo" />
+
+          <DenseTable>
             <thead>
               <DenseTableHeaderRow>
-                <Th>Número</Th>
+                <SortableTh field="numero" paramOrdenar="tp_ordenar" paramPagina="tp_pagina">Número</SortableTh>
                 <Th>Fornecedor</Th>
                 <Th>Saldo</Th>
-                <Th>Vencimento</Th>
-                <Th>Status</Th>
+                <SortableTh field="vencimento" paramOrdenar="tp_ordenar" paramPagina="tp_pagina">Vencimento</SortableTh>
+                <SortableTh field="status" paramOrdenar="tp_ordenar" paramPagina="tp_pagina">Status</SortableTh>
                 <Th>Aprovação</Th>
                 <Th className="w-6" />
               </DenseTableHeaderRow>
@@ -508,7 +524,6 @@ export default function FinanceiroSection({
               )}
             </tbody>
           </DenseTable>
-          <Paginacao {...tpPaginacao} paramPagina="tp_pagina" paramPorPagina="tp_por_pagina" />
         </section>
       )}
 
@@ -520,15 +535,23 @@ export default function FinanceiroSection({
             Code de verdade. Clique numa cobrança para ver ações.
           </p>
           {canManage && <GerarCobrancaForm titulosAbertos={titulosAbertos} contasAtivas={contasAtivas} />}
-          <DenseTable className="mt-3">
+
+          <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+            <TableSearch paramBusca="cb_q" paramPagina="cb_pagina" placeholder="Buscar por número..." />
+            <FiltroStatusCobranca />
+          </div>
+
+          <Paginacao {...cbPaginacao} paramPagina="cb_pagina" paramPorPagina="cb_por_pagina" posicao="topo" />
+
+          <DenseTable>
             <thead>
               <DenseTableHeaderRow>
-                <Th>Número</Th>
+                <SortableTh field="numero" paramOrdenar="cb_ordenar" paramPagina="cb_pagina">Número</SortableTh>
                 <Th>Título</Th>
                 <Th>Tipo</Th>
                 <Th>Valor</Th>
-                <Th>Vencimento</Th>
-                <Th>Status</Th>
+                <SortableTh field="vencimento" paramOrdenar="cb_ordenar" paramPagina="cb_pagina">Vencimento</SortableTh>
+                <SortableTh field="status" paramOrdenar="cb_ordenar" paramPagina="cb_pagina">Status</SortableTh>
                 <Th className="w-6" />
               </DenseTableHeaderRow>
             </thead>
@@ -584,7 +607,6 @@ export default function FinanceiroSection({
               )}
             </tbody>
           </DenseTable>
-          <Paginacao {...cbPaginacao} paramPagina="cb_pagina" paramPorPagina="cb_por_pagina" />
         </section>
       )}
 
@@ -596,12 +618,20 @@ export default function FinanceiroSection({
             título ou cobrança. Clique numa movimentação para conciliar.
           </p>
           {canManage && <MovimentacaoForm contasAtivas={contasAtivas} />}
-          <DenseTable className="mt-3">
+
+          <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+            <TableSearch paramBusca="mv_q" paramPagina="mv_pagina" placeholder="Buscar por descrição..." />
+            <FiltroConciliacao />
+          </div>
+
+          <Paginacao {...mvPaginacao} paramPagina="mv_pagina" paramPorPagina="mv_por_pagina" posicao="topo" />
+
+          <DenseTable>
             <thead>
               <DenseTableHeaderRow>
-                <Th>Data</Th>
+                <SortableTh field="data_movimento" paramOrdenar="mv_ordenar" paramPagina="mv_pagina">Data</SortableTh>
                 <Th>Tipo</Th>
-                <Th>Valor</Th>
+                <SortableTh field="valor" paramOrdenar="mv_ordenar" paramPagina="mv_pagina">Valor</SortableTh>
                 <Th>Descrição</Th>
                 <Th>Conciliação</Th>
                 <Th className="w-6" />
@@ -648,7 +678,6 @@ export default function FinanceiroSection({
               )}
             </tbody>
           </DenseTable>
-          <Paginacao {...mvPaginacao} paramPagina="mv_pagina" paramPorPagina="mv_por_pagina" />
         </section>
       )}
     </>
@@ -1027,5 +1056,97 @@ function AcoesMovimentacao({
         Conciliar
       </Button>
     </form>
+  );
+}
+
+function FiltroStatusTitulo({ paramStatus, paramPagina }: { paramStatus: string; paramPagina: string }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get(paramStatus) ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set(paramStatus, novoValor);
+    else p.delete(paramStatus);
+    p.delete(paramPagina);
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por status"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os status</option>
+      <option value="aberto">Aberto</option>
+      <option value="parcial">Parcial</option>
+      <option value="pago">Pago</option>
+      <option value="cancelado">Cancelado</option>
+    </select>
+  );
+}
+
+function FiltroStatusCobranca() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("cb_status") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("cb_status", novoValor);
+    else p.delete("cb_status");
+    p.delete("cb_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por status da cobrança"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os status</option>
+      {(Object.entries(COBRANCA_STATUS_LABEL) as [string, string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function FiltroConciliacao() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("mv_conciliado") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("mv_conciliado", novoValor);
+    else p.delete("mv_conciliado");
+    p.delete("mv_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por conciliação"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Conciliadas e não conciliadas</option>
+      <option value="sim">Conciliadas</option>
+      <option value="nao">Não conciliadas</option>
+    </select>
   );
 }

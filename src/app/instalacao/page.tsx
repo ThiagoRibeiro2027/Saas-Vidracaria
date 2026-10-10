@@ -33,6 +33,13 @@ const TAB_TITLE: Record<TabSlug, string> = {
 // primeiro, ações atrás de botão. Equipes continua um catálogo pequeno,
 // sempre buscado inteiro (mesmo tratamento de "unidades"/"papéis" em
 // outros módulos) — não há necessidade real de paginar.
+// 2026-10-11: Agenda ganha busca por número do pedido e ordenação por
+// número/data (allow-list fixa). Danos fica sem busca/ordenação própria
+// — descrição e causa vivem em danos_instalacao, uma tabela só acessada
+// via join depois da página já carregada (ver abaixo), não dá pra filtrar
+// via query direta sem reescrever esse join inteiro.
+const AGENDA_ORDENAVEIS = ["numero", "created_at"] as const;
+
 export default async function InstalacaoPage({
   searchParams,
 }: {
@@ -42,6 +49,8 @@ export default async function InstalacaoPage({
     ag_por_pagina?: string;
     dn_pagina?: string;
     dn_por_pagina?: string;
+    ag_q?: string;
+    ag_ordenar?: string;
   }>;
 }) {
   const {
@@ -50,6 +59,8 @@ export default async function InstalacaoPage({
     ag_por_pagina: agPorPaginaParam,
     dn_pagina: dnPaginaParam,
     dn_por_pagina: dnPorPaginaParam,
+    ag_q,
+    ag_ordenar,
   } = await searchParams;
   const supabase = await createClient();
 
@@ -112,18 +123,24 @@ export default async function InstalacaoPage({
     pagina: agPaginaParam,
     por_pagina: agPorPaginaParam,
   });
-  const { count: totalPedidos } =
-    activeTab === "agenda" ? await supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("status", "liberado") : { count: 0 };
+  const agBusca = ag_q?.trim() || null;
+  const [agOrdenarCampo, agOrdenarDirecao] = ag_ordenar?.split(":") ?? [null, null];
+  const agOrdenacao =
+    agOrdenarCampo && (AGENDA_ORDENAVEIS as readonly string[]).includes(agOrdenarCampo)
+      ? { campo: agOrdenarCampo, ascending: agOrdenarDirecao === "asc" }
+      : null;
+
+  let agCountQuery = supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("status", "liberado");
+  if (agBusca) agCountQuery = agCountQuery.ilike("numero", `%${agBusca}%`);
+  const { count: totalPedidos } = activeTab === "agenda" ? await agCountQuery : { count: 0 };
   const { paginacao: agPaginacao, from: agFrom, to: agTo } = calcularPaginacao(agPaginaPedida, agPorPagina, totalPedidos ?? 0);
-  const { data: pedidos } =
-    activeTab === "agenda"
-      ? await supabase
-          .from("pedidos")
-          .select("id, numero, pessoa_id, obra_id")
-          .eq("status", "liberado")
-          .order("created_at", { ascending: false })
-          .range(agFrom, agTo)
-      : { data: [] as never[] };
+
+  let agendaQuery = supabase.from("pedidos").select("id, numero, pessoa_id, obra_id").eq("status", "liberado");
+  if (agBusca) agendaQuery = agendaQuery.ilike("numero", `%${agBusca}%`);
+  agendaQuery = agOrdenacao
+    ? agendaQuery.order(agOrdenacao.campo, { ascending: agOrdenacao.ascending })
+    : agendaQuery.order("created_at", { ascending: false });
+  const { data: pedidos } = activeTab === "agenda" ? await agendaQuery.range(agFrom, agTo) : { data: [] as never[] };
   const pedidoIds = (pedidos ?? []).map((p) => p.id);
 
   const [{ data: pedidoItens }, { data: instalacoes }, { data: expedicoes }] = await Promise.all([

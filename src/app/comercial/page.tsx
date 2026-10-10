@@ -46,6 +46,15 @@ export default async function ComercialPage({
     // /cadastros).
     cli_pagina?: string;
     cli_por_pagina?: string;
+    q?: string;
+    ordenar?: string;
+    status?: string;
+    op_q?: string;
+    op_ordenar?: string;
+    op_estagio?: string;
+    cli_q?: string;
+    cli_ordenar?: string;
+    cli_situacao?: string;
   }>;
 }) {
   const {
@@ -56,8 +65,51 @@ export default async function ComercialPage({
     op_por_pagina: opPorPaginaParam,
     cli_pagina: cliPaginaParam,
     cli_por_pagina: cliPorPaginaParam,
+    q,
+    ordenar,
+    status: statusParam,
+    op_q: opQ,
+    op_ordenar: opOrdenar,
+    op_estagio: opEstagioParam,
+    cli_q: cliQ,
+    cli_ordenar: cliOrdenar,
+    cli_situacao: cliSituacaoParam,
   } = await searchParams;
   const supabase = await createClient();
+
+  // 2026-10-11: busca/ordenação/filtro nas 3 listas (prefixo próprio por
+  // lista, mesmo padrão já usado em Financeiro/RH).
+  const ORCAMENTOS_ORDENAVEIS = ["numero", "status", "data_orcamento"] as const;
+  const OPORTUNIDADES_ORDENAVEIS = ["estagio", "previsao_fechamento"] as const;
+  const ORCAMENTO_STATUS_VALORES = ["rascunho", "aprovado", "rejeitado", "cancelado"] as const;
+  const OPORTUNIDADE_ESTAGIO_VALORES = [
+    "prospeccao",
+    "contato",
+    "levantamento",
+    "qualificada",
+    "negociacao",
+    "aprovacao",
+    "ganha",
+    "perdida",
+  ] as const;
+  const PESSOA_SITUACAO_VALORES = ["ativo", "inativo", "bloqueado"] as const;
+
+  function lerOrdenacao(valor: string | undefined, permitidas: readonly string[]) {
+    const [campo, direcao] = valor?.split(":") ?? [null, null];
+    return campo && permitidas.includes(campo) ? { campo, ascending: direcao === "asc" } : null;
+  }
+
+  const orcBusca = q?.trim() || null;
+  const orcStatus = (ORCAMENTO_STATUS_VALORES as readonly string[]).includes(statusParam ?? "") ? statusParam! : null;
+  const orcOrdenacao = lerOrdenacao(ordenar, ORCAMENTOS_ORDENAVEIS);
+
+  const opBusca = opQ?.trim() || null;
+  const opEstagio = (OPORTUNIDADE_ESTAGIO_VALORES as readonly string[]).includes(opEstagioParam ?? "") ? opEstagioParam! : null;
+  const opOrdenacao = lerOrdenacao(opOrdenar, OPORTUNIDADES_ORDENAVEIS);
+
+  const cliBusca = cliQ?.trim().toLowerCase() || null;
+  const cliSituacao = (PESSOA_SITUACAO_VALORES as readonly string[]).includes(cliSituacaoParam ?? "") ? cliSituacaoParam! : null;
+  const cliOrdenacaoDesc = cliOrdenar === "nome:desc";
 
   const [
     { data: canView },
@@ -126,20 +178,22 @@ export default async function ComercialPage({
     pagina: paginaParam,
     por_pagina: porPaginaParam,
   });
-  const { count: totalOrcamentos } = await supabase
-    .from("orcamentos")
-    .select("id", { count: "exact", head: true });
+  let orcCountQuery = supabase.from("orcamentos").select("id", { count: "exact", head: true });
+  if (orcBusca) orcCountQuery = orcCountQuery.ilike("numero", `%${orcBusca}%`);
+  if (orcStatus) orcCountQuery = orcCountQuery.eq("status", orcStatus);
+  const { count: totalOrcamentos } = await orcCountQuery;
   const { paginacao, from, to } = calcularPaginacao(
     paginaPedida,
     porPagina,
     totalOrcamentos ?? 0,
   );
-  const { data: orcamentos } = await supabase
-    .from("orcamentos")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .order("id")
-    .range(from, to);
+  let orcamentosQuery = supabase.from("orcamentos").select("*");
+  if (orcBusca) orcamentosQuery = orcamentosQuery.ilike("numero", `%${orcBusca}%`);
+  if (orcStatus) orcamentosQuery = orcamentosQuery.eq("status", orcStatus);
+  orcamentosQuery = orcOrdenacao
+    ? orcamentosQuery.order(orcOrdenacao.campo, { ascending: orcOrdenacao.ascending }).order("id")
+    : orcamentosQuery.order("created_at", { ascending: false }).order("id");
+  const { data: orcamentos } = await orcamentosQuery.range(from, to);
   const orcamentoIds = (orcamentos ?? []).map((o) => o.id);
   const { data: orcamentoItens } =
     orcamentoIds.length > 0
@@ -155,9 +209,10 @@ export default async function ComercialPage({
     pagina: opPaginaParam,
     por_pagina: opPorPaginaParam,
   });
-  const { count: totalOportunidades } = canViewOportunidades
-    ? await supabase.from("oportunidades").select("id", { count: "exact", head: true })
-    : { count: 0 };
+  let opCountQuery = supabase.from("oportunidades").select("id", { count: "exact", head: true });
+  if (opBusca) opCountQuery = opCountQuery.ilike("descricao", `%${opBusca}%`);
+  if (opEstagio) opCountQuery = opCountQuery.eq("estagio", opEstagio);
+  const { count: totalOportunidades } = canViewOportunidades ? await opCountQuery : { count: 0 };
   const {
     paginacao: paginacaoOportunidades,
     from: opFrom,
@@ -175,7 +230,7 @@ export default async function ComercialPage({
     { data: propostas },
     { data: pedidosGerados },
   ] = await Promise.all([
-    supabase.from("pessoas").select("id, nome").order("nome"),
+    supabase.from("pessoas").select("id, nome, situacao").order("nome"),
     supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
     supabase
       .from("obras")
@@ -187,12 +242,15 @@ export default async function ComercialPage({
       .order("codigo"),
     supabase.from("pecas").select("id, item_id"),
     canViewOportunidades
-      ? supabase
-          .from("oportunidades")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .order("id")
-          .range(opFrom, opTo)
+      ? (() => {
+          let opQuery = supabase.from("oportunidades").select("*");
+          if (opBusca) opQuery = opQuery.ilike("descricao", `%${opBusca}%`);
+          if (opEstagio) opQuery = opQuery.eq("estagio", opEstagio);
+          opQuery = opOrdenacao
+            ? opQuery.order(opOrdenacao.campo, { ascending: opOrdenacao.ascending }).order("id")
+            : opQuery.order("created_at", { ascending: false }).order("id");
+          return opQuery.range(opFrom, opTo);
+        })()
       : Promise.resolve({ data: [] as never[] }),
     // Lista completa (não paginada) das oportunidades abertas, pro
     // formulário de orçamento vincular — independe de qual página da aba
@@ -228,6 +286,15 @@ export default async function ComercialPage({
   );
   const clientesElegiveis = (pessoas ?? []).filter((p) => clienteIds.has(p.id));
 
+  // Busca/filtro/ordenação da aba Clientes rodam em memória sobre uma
+  // CÓPIA filtrada — nunca sobre `clientesElegiveis` em si, que alimenta o
+  // indicador "clientes ativos" da Visão geral e o <select> de cliente dos
+  // formulários de Orçamento/Oportunidade em outras abas (filtrar ali
+  // quebraria os dois).
+  let clientesFiltrados = cliSituacao ? clientesElegiveis.filter((p) => p.situacao === cliSituacao) : clientesElegiveis;
+  if (cliBusca) clientesFiltrados = clientesFiltrados.filter((p) => p.nome.toLowerCase().includes(cliBusca));
+  if (cliOrdenacaoDesc) clientesFiltrados = [...clientesFiltrados].reverse();
+
   // Visão geral — contagens leves (head:true), sem nenhuma consulta pesada
   // nova. Oportunidades abertas e clientes ativos já vêm do que é buscado
   // sempre, acima.
@@ -246,12 +313,19 @@ export default async function ComercialPage({
     pagina: cliPaginaParam,
     por_pagina: cliPorPaginaParam,
   });
-  const { paginacao: cliPaginacao, from: cliFrom, to: cliTo } = calcularPaginacao(cliPaginaPedida, cliPorPagina, clientesElegiveis.length);
-  const idsClientesPagina = tab === "clientes" && canViewPessoas ? clientesElegiveis.slice(cliFrom, cliTo + 1).map((p) => p.id) : [];
-  const { data: pessoasClientesPagina } =
+  const { paginacao: cliPaginacao, from: cliFrom, to: cliTo } = calcularPaginacao(cliPaginaPedida, cliPorPagina, clientesFiltrados.length);
+  const idsClientesPagina = tab === "clientes" && canViewPessoas ? clientesFiltrados.slice(cliFrom, cliTo + 1).map((p) => p.id) : [];
+  const { data: pessoasClientesPaginaData } =
     idsClientesPagina.length > 0
-      ? await supabase.from("pessoas").select("*").in("id", idsClientesPagina).order("nome")
+      ? await supabase.from("pessoas").select("*").in("id", idsClientesPagina)
       : { data: [] as never[] };
+  // Reordena no cliente pela mesma ordem decidida em `clientesFiltrados`
+  // (asc/desc) — a query acima não tem `.order()` de propósito, porque
+  // `.in()` não garante nenhuma ordem própria pra sobrescrever.
+  const ordemClientesPagina = new Map(idsClientesPagina.map((id, i) => [id, i]));
+  const pessoasClientesPagina = [...(pessoasClientesPaginaData ?? [])].sort(
+    (a, b) => (ordemClientesPagina.get(a.id) ?? 0) - (ordemClientesPagina.get(b.id) ?? 0),
+  );
   const { data: obrasDosClientesPagina } =
     idsClientesPagina.length > 0
       ? await supabase.from("obras").select("*").in("pessoa_id", idsClientesPagina).order("nome")

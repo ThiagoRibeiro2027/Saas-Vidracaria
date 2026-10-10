@@ -24,6 +24,9 @@ import { FieldBox } from "@/components/ui/FieldBox";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from "@/lib/storage/constants";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const STATUS_LABEL: Record<string, string> = {
   ativo: "Ativo",
@@ -185,13 +188,20 @@ export default function RHSection({
           </div>
         )}
 
-        <DenseTable className="mt-3">
+        <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+          <TableSearch paramBusca="fu_q" paramPagina="fu_pagina" placeholder="Buscar por nome..." />
+          <FiltroStatusFuncionario />
+        </div>
+
+        <Paginacao {...fuPaginacao} paramPagina="fu_pagina" paramPorPagina="fu_por_pagina" posicao="topo" />
+
+        <DenseTable>
           <thead>
             <DenseTableHeaderRow>
-              <Th>Nome</Th>
+              <SortableTh field="nome" paramOrdenar="fu_ordenar" paramPagina="fu_pagina">Nome</SortableTh>
               <Th>Cargo/Função</Th>
               <Th>Unidade</Th>
-              <Th>Status</Th>
+              <SortableTh field="status" paramOrdenar="fu_ordenar" paramPagina="fu_pagina">Status</SortableTh>
               <Th className="w-6" />
             </DenseTableHeaderRow>
           </thead>
@@ -269,7 +279,6 @@ export default function RHSection({
             )}
           </tbody>
         </DenseTable>
-        <Paginacao {...fuPaginacao} paramPagina="fu_pagina" paramPorPagina="fu_por_pagina" />
       </section>
       )}
 
@@ -290,13 +299,20 @@ export default function RHSection({
           </div>
         )}
 
-        <DenseTable className="mt-3">
+        <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+          <TableSearch paramBusca="doc_q" paramPagina="doc_pagina" placeholder="Buscar por nome do documento..." />
+          <FiltroTipoDocumento />
+        </div>
+
+        <Paginacao {...docPaginacao} paramPagina="doc_pagina" paramPorPagina="doc_por_pagina" posicao="topo" />
+
+        <DenseTable>
             <thead>
               <DenseTableHeaderRow>
                 <Th>Funcionário</Th>
-                <Th>Tipo</Th>
+                <SortableTh field="tipo" paramOrdenar="doc_ordenar" paramPagina="doc_pagina">Tipo</SortableTh>
                 <Th>Nome</Th>
-                <Th>Status</Th>
+                <SortableTh field="status" paramOrdenar="doc_ordenar" paramPagina="doc_pagina">Status</SortableTh>
                 <Th className="w-6" />
               </DenseTableHeaderRow>
             </thead>
@@ -369,7 +385,6 @@ export default function RHSection({
               )}
             </tbody>
         </DenseTable>
-        <Paginacao {...docPaginacao} paramPagina="doc_pagina" paramPorPagina="doc_por_pagina" />
       </section>
       )}
 
@@ -387,12 +402,18 @@ export default function RHSection({
           </div>
         )}
 
-        <DenseTable className="mt-3">
+        <div className="mb-2 mt-3">
+          <FiltroTipoAfastamento />
+        </div>
+
+        <Paginacao {...afPaginacao} paramPagina="af_pagina" paramPorPagina="af_por_pagina" posicao="topo" />
+
+        <DenseTable>
           <thead>
             <DenseTableHeaderRow>
               <Th>Funcionário</Th>
-              <Th>Tipo</Th>
-              <Th>Início</Th>
+              <SortableTh field="tipo" paramOrdenar="af_ordenar" paramPagina="af_pagina">Tipo</SortableTh>
+              <SortableTh field="data_inicio" paramOrdenar="af_ordenar" paramPagina="af_pagina">Início</SortableTh>
               <Th>Fim</Th>
               <Th>Status</Th>
               <Th className="w-6" />
@@ -453,7 +474,6 @@ export default function RHSection({
               )}
           </tbody>
         </DenseTable>
-        <Paginacao {...afPaginacao} paramPagina="af_pagina" paramPorPagina="af_por_pagina" />
       </section>
       )}
     </>
@@ -816,5 +836,101 @@ function AcoesAfastamento({ row }: { row: Afastamento }) {
         Cancelar
       </Button>
     </div>
+  );
+}
+
+function FiltroStatusFuncionario() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("fu_status") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("fu_status", novoValor);
+    else p.delete("fu_status");
+    p.delete("fu_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por status"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os status</option>
+      {(Object.entries(STATUS_LABEL) as [string, string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function FiltroTipoDocumento() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("doc_tipo") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("doc_tipo", novoValor);
+    else p.delete("doc_tipo");
+    p.delete("doc_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por tipo de documento"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os tipos</option>
+      {(Object.entries(TIPO_DOCUMENTO_LABEL) as [string, string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function FiltroTipoAfastamento() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("af_tipo") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("af_tipo", novoValor);
+    else p.delete("af_tipo");
+    p.delete("af_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por tipo de afastamento"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os tipos</option>
+      {(Object.entries(TIPO_AFASTAMENTO_LABEL) as [string, string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
   );
 }

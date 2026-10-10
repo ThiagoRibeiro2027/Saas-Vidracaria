@@ -46,6 +46,14 @@ export default async function EstoquePage({
     rs_por_pagina?: string;
     dm_pagina?: string;
     dm_por_pagina?: string;
+    sd_q?: string;
+    sd_ordenar?: string;
+    sd_tipo?: string;
+    rs_q?: string;
+    rs_ordenar?: string;
+    dm_q?: string;
+    dm_ordenar?: string;
+    dm_dimensao?: string;
   }>;
 }) {
   const {
@@ -56,8 +64,38 @@ export default async function EstoquePage({
     rs_por_pagina: rsPorPaginaParam,
     dm_pagina: dmPaginaParam,
     dm_por_pagina: dmPorPaginaParam,
+    sd_q: sdQ,
+    sd_ordenar: sdOrdenar,
+    sd_tipo: sdTipoParam,
+    rs_q: rsQ,
+    rs_ordenar: rsOrdenar,
+    dm_q: dmQ,
+    dm_ordenar: dmOrdenar,
+    dm_dimensao: dmDimensaoParam,
   } = await searchParams;
   const supabase = await createClient();
+
+  // 2026-10-11: busca/ordenação/filtro nas 3 listas paginadas (prefixo de
+  // parâmetro próprio por lista).
+  const SD_ORDENAVEIS = ["codigo", "descricao", "tipo"] as const;
+  const RS_ORDENAVEIS = ["numero", "created_at"] as const;
+  const DM_ORDENAVEIS = ["codigo", "descricao"] as const;
+
+  function lerOrdenacao(valor: string | undefined, permitidas: readonly string[]) {
+    const [campo, direcao] = valor?.split(":") ?? [null, null];
+    return campo && permitidas.includes(campo) ? { campo, ascending: direcao === "asc" } : null;
+  }
+
+  const sdBusca = sdQ?.trim() || null;
+  const sdTipo = sdTipoParam?.trim() || null;
+  const sdOrdenacao = lerOrdenacao(sdOrdenar, SD_ORDENAVEIS);
+
+  const rsBusca = rsQ?.trim() || null;
+  const rsOrdenacao = lerOrdenacao(rsOrdenar, RS_ORDENAVEIS);
+
+  const dmBusca = dmQ?.trim() || null;
+  const dmDimensao = dmDimensaoParam === "linear" || dmDimensaoParam === "area" ? dmDimensaoParam : null;
+  const dmOrdenacao = lerOrdenacao(dmOrdenar, DM_ORDENAVEIS);
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
     supabase.rpc("has_permission", { p_resource: "estoque", p_action: "view" }),
@@ -110,16 +148,18 @@ export default async function EstoquePage({
     pagina: sdPaginaParam,
     por_pagina: sdPorPaginaParam,
   });
-  const { count: totalItens } = activeTab === "saldo" ? await supabase.from("itens").select("id", { count: "exact", head: true }) : { count: 0 };
+  let sdCountQuery = supabase.from("itens").select("id", { count: "exact", head: true });
+  if (sdBusca) sdCountQuery = sdCountQuery.or(`codigo.ilike.%${sdBusca}%,descricao.ilike.%${sdBusca}%`);
+  if (sdTipo) sdCountQuery = sdCountQuery.eq("tipo", sdTipo);
+  const { count: totalItens } = activeTab === "saldo" ? await sdCountQuery : { count: 0 };
   const { paginacao: sdPaginacao, from: sdFrom, to: sdTo } = calcularPaginacao(sdPaginaPedida, sdPorPagina, totalItens ?? 0);
-  const { data: itensSaldoPagina } =
-    activeTab === "saldo"
-      ? await supabase
-          .from("itens")
-          .select("id, codigo, descricao, tipo, unidade_principal, dimensao_tipo, peso_por_unidade_dimensao")
-          .order("codigo")
-          .range(sdFrom, sdTo)
-      : { data: [] as never[] };
+  let sdQuery = supabase
+    .from("itens")
+    .select("id, codigo, descricao, tipo, unidade_principal, dimensao_tipo, peso_por_unidade_dimensao");
+  if (sdBusca) sdQuery = sdQuery.or(`codigo.ilike.%${sdBusca}%,descricao.ilike.%${sdBusca}%`);
+  if (sdTipo) sdQuery = sdQuery.eq("tipo", sdTipo);
+  sdQuery = sdOrdenacao ? sdQuery.order(sdOrdenacao.campo, { ascending: sdOrdenacao.ascending }) : sdQuery.order("codigo");
+  const { data: itensSaldoPagina } = activeTab === "saldo" ? await sdQuery.range(sdFrom, sdTo) : { data: [] as never[] };
   const itensSaldoIds = (itensSaldoPagina ?? []).map((i) => i.id);
   const { data: saldosPagina } =
     itensSaldoIds.length > 0 ? await supabase.from("estoque_saldos").select("*").in("item_id", itensSaldoIds) : { data: [] as never[] };
@@ -130,13 +170,16 @@ export default async function EstoquePage({
     pagina: rsPaginaParam,
     por_pagina: rsPorPaginaParam,
   });
-  const { count: totalPedidosReserva } =
-    activeTab === "reserva" ? await supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("status", "liberado") : { count: 0 };
+  let rsCountQuery = supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("status", "liberado");
+  if (rsBusca) rsCountQuery = rsCountQuery.ilike("numero", `%${rsBusca}%`);
+  const { count: totalPedidosReserva } = activeTab === "reserva" ? await rsCountQuery : { count: 0 };
   const { paginacao: rsPaginacao, from: rsFrom, to: rsTo } = calcularPaginacao(rsPaginaPedida, rsPorPagina, totalPedidosReserva ?? 0);
-  const { data: pedidos } =
-    activeTab === "reserva"
-      ? await supabase.from("pedidos").select("*").eq("status", "liberado").order("created_at", { ascending: false }).range(rsFrom, rsTo)
-      : { data: [] as never[] };
+  let rsQuery = supabase.from("pedidos").select("*").eq("status", "liberado");
+  if (rsBusca) rsQuery = rsQuery.ilike("numero", `%${rsBusca}%`);
+  rsQuery = rsOrdenacao
+    ? rsQuery.order(rsOrdenacao.campo, { ascending: rsOrdenacao.ascending })
+    : rsQuery.order("created_at", { ascending: false });
+  const { data: pedidos } = activeTab === "reserva" ? await rsQuery.range(rsFrom, rsTo) : { data: [] as never[] };
   const pedidoIds = (pedidos ?? []).map((p) => p.id);
 
   const [{ data: pedidoItens }, { data: reservas }, { data: pessoas }, { data: obras }] = await Promise.all([
@@ -165,20 +208,19 @@ export default async function EstoquePage({
     pagina: dmPaginaParam,
     por_pagina: dmPorPaginaParam,
   });
-  const { count: totalItensDimensional } =
-    activeTab === "dimensional"
-      ? await supabase.from("itens").select("id", { count: "exact", head: true }).not("dimensao_tipo", "is", null)
-      : { count: 0 };
+  let dmCountQuery = supabase.from("itens").select("id", { count: "exact", head: true }).not("dimensao_tipo", "is", null);
+  if (dmBusca) dmCountQuery = dmCountQuery.or(`codigo.ilike.%${dmBusca}%,descricao.ilike.%${dmBusca}%`);
+  if (dmDimensao) dmCountQuery = dmCountQuery.eq("dimensao_tipo", dmDimensao);
+  const { count: totalItensDimensional } = activeTab === "dimensional" ? await dmCountQuery : { count: 0 };
   const { paginacao: dmPaginacao, from: dmFrom, to: dmTo } = calcularPaginacao(dmPaginaPedida, dmPorPagina, totalItensDimensional ?? 0);
-  const { data: itensDimensionalPagina } =
-    activeTab === "dimensional"
-      ? await supabase
-          .from("itens")
-          .select("id, codigo, descricao, tipo, unidade_principal, dimensao_tipo, peso_por_unidade_dimensao")
-          .not("dimensao_tipo", "is", null)
-          .order("codigo")
-          .range(dmFrom, dmTo)
-      : { data: [] as never[] };
+  let dmQuery = supabase
+    .from("itens")
+    .select("id, codigo, descricao, tipo, unidade_principal, dimensao_tipo, peso_por_unidade_dimensao")
+    .not("dimensao_tipo", "is", null);
+  if (dmBusca) dmQuery = dmQuery.or(`codigo.ilike.%${dmBusca}%,descricao.ilike.%${dmBusca}%`);
+  if (dmDimensao) dmQuery = dmQuery.eq("dimensao_tipo", dmDimensao);
+  dmQuery = dmOrdenacao ? dmQuery.order(dmOrdenacao.campo, { ascending: dmOrdenacao.ascending }) : dmQuery.order("codigo");
+  const { data: itensDimensionalPagina } = activeTab === "dimensional" ? await dmQuery.range(dmFrom, dmTo) : { data: [] as never[] };
   const itensDimensionalIds = (itensDimensionalPagina ?? []).map((i) => i.id);
   const { data: pecasDimensionais } =
     itensDimensionalIds.length > 0

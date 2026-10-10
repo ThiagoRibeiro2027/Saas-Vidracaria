@@ -17,12 +17,25 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // tratamento já aplicado nos outros módulos). Inspeções/não conformidades
 // passam a ser buscadas só para as OPs da página atual, não a tabela
 // inteira.
+//
+// 2026-10-11: busca/ordenação/filtro — busca por número da OP, ordenação
+// por número/status de qualidade/data (allow-list fixa) e filtro por
+// status_qualidade.
+const QUALIDADE_ORDENAVEIS = ["numero", "status_qualidade", "created_at"] as const;
+const STATUS_QUALIDADE_VALORES = ["pendente", "aprovado", "bloqueado"] as const;
+
 export default async function QualidadePage({
   searchParams,
 }: {
-  searchParams: Promise<{ pagina?: string; por_pagina?: string }>;
+  searchParams: Promise<{ pagina?: string; por_pagina?: string; q?: string; ordenar?: string; status_qualidade?: string }>;
 }) {
-  const { pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
+  const {
+    pagina: paginaParam,
+    por_pagina: porPaginaParam,
+    q,
+    ordenar,
+    status_qualidade: statusQualidadeParam,
+  } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
@@ -42,20 +55,33 @@ export default async function QualidadePage({
     pagina: paginaParam,
     por_pagina: porPaginaParam,
   });
-  const { count: totalOrdens } = await supabase
-    .from("ordens_producao")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "concluida");
+
+  const termoBusca = q?.trim() || null;
+  const statusQualidade = (STATUS_QUALIDADE_VALORES as readonly string[]).includes(statusQualidadeParam ?? "")
+    ? statusQualidadeParam!
+    : null;
+  const [ordenarCampo, ordenarDirecao] = ordenar?.split(":") ?? [null, null];
+  const ordenacao =
+    ordenarCampo && (QUALIDADE_ORDENAVEIS as readonly string[]).includes(ordenarCampo)
+      ? { campo: ordenarCampo, ascending: ordenarDirecao === "asc" }
+      : null;
+
+  let countQuery = supabase.from("ordens_producao").select("id", { count: "exact", head: true }).eq("status", "concluida");
+  if (termoBusca) countQuery = countQuery.ilike("numero", `%${termoBusca}%`);
+  if (statusQualidade) countQuery = countQuery.eq("status_qualidade", statusQualidade);
+  const { count: totalOrdens } = await countQuery;
   const { paginacao, from, to } = calcularPaginacao(paginaPedida, porPagina, totalOrdens ?? 0);
+
+  let ordensQuery = supabase.from("ordens_producao").select("*").eq("status", "concluida");
+  if (termoBusca) ordensQuery = ordensQuery.ilike("numero", `%${termoBusca}%`);
+  if (statusQualidade) ordensQuery = ordensQuery.eq("status_qualidade", statusQualidade);
+  ordensQuery = ordenacao
+    ? ordensQuery.order(ordenacao.campo, { ascending: ordenacao.ascending })
+    : ordensQuery.order("created_at", { ascending: false });
 
   const [{ data: ordens }, { data: pedidos }, { data: pedidoItens }, { data: itens }, { data: pessoas }, { data: obras }] =
     await Promise.all([
-      supabase
-        .from("ordens_producao")
-        .select("*")
-        .eq("status", "concluida")
-        .order("created_at", { ascending: false })
-        .range(from, to),
+      ordensQuery.range(from, to),
       supabase.from("pedidos").select("id, numero, pessoa_id, obra_id"),
       supabase.from("pedido_itens").select("id, pedido_id, item_id"),
       supabase.from("itens").select("id, codigo, descricao"),

@@ -25,6 +25,9 @@ import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const TIPO_LABEL: Record<string, string> = {
   cliente: "Cliente",
@@ -175,13 +178,21 @@ export default function ContratosSection({
         </div>
       )}
 
-      <DenseTable className="mt-3">
+      <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+        <TableSearch placeholder="Buscar por número..." />
+        <FiltroTipoContrato />
+        <FiltroStatusContrato />
+      </div>
+
+      <Paginacao {...paginacao} posicao="topo" />
+
+      <DenseTable>
         <thead>
           <DenseTableHeaderRow>
-            <Th>Número</Th>
-            <Th>Tipo</Th>
+            <SortableTh field="numero">Número</SortableTh>
+            <SortableTh field="tipo">Tipo</SortableTh>
             <Th>Vínculo</Th>
-            <Th>Status</Th>
+            <SortableTh field="status">Status</SortableTh>
             <Th className="w-6" />
           </DenseTableHeaderRow>
         </thead>
@@ -286,7 +297,6 @@ export default function ContratosSection({
             )}
           </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} />
     </section>
   );
 }
@@ -699,5 +709,69 @@ function ContratoAnexos({ contratoId, anexos, canManage }: { contratoId: string;
       )}
       {error && <span className="text-xs text-danger">{error}</span>}
     </div>
+  );
+}
+
+function FiltroTipoContrato() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("tipo") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("tipo", novoValor);
+    else p.delete("tipo");
+    p.delete("pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por tipo"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os tipos</option>
+      {(Object.entries(TIPO_LABEL) as [string, string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function FiltroStatusContrato() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("status") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("status", novoValor);
+    else p.delete("status");
+    p.delete("pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por status"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os status</option>
+      {(Object.entries(STATUS_LABEL) as [string, string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
   );
 }

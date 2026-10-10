@@ -18,12 +18,19 @@ import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 // resto do app — migrada pros componentes padrão (Table/Button/Input...)
 // e pro mesmo tratamento de layout dos demais módulos (tela larga, lista
 // paginada no servidor, linha compacta que expande pro detalhe e ações).
+//
+// 2026-10-11: busca por número, ordenação por número/tipo/status/data
+// (allow-list fixa) e filtro por tipo e status.
+const CONTRATOS_ORDENAVEIS = ["numero", "tipo", "status", "created_at"] as const;
+const CONTRATO_TIPO_VALORES = ["cliente", "fornecedor", "funcionario"] as const;
+const CONTRATO_STATUS_VALORES = ["rascunho", "em_aprovacao", "vigente", "suspenso", "encerrado", "cancelado"] as const;
+
 export default async function ContratosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ pagina?: string; por_pagina?: string }>;
+  searchParams: Promise<{ pagina?: string; por_pagina?: string; q?: string; ordenar?: string; tipo?: string; status?: string }>;
 }) {
-  const { pagina: paginaParam, por_pagina: porPaginaParam } = await searchParams;
+  const { pagina: paginaParam, por_pagina: porPaginaParam, q, ordenar, tipo: tipoParam, status: statusParam } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: canView }, { data: canManage }, { data: canAprovar }, { data: canGerarTitulos }] = await Promise.all([
@@ -45,12 +52,33 @@ export default async function ContratosPage({
     pagina: paginaParam,
     por_pagina: porPaginaParam,
   });
-  const { count: totalContratos } = await supabase.from("contratos").select("id", { count: "exact", head: true });
+  const termoBusca = q?.trim() || null;
+  const tipo = (CONTRATO_TIPO_VALORES as readonly string[]).includes(tipoParam ?? "") ? tipoParam! : null;
+  const status = (CONTRATO_STATUS_VALORES as readonly string[]).includes(statusParam ?? "") ? statusParam! : null;
+  const [ordenarCampo, ordenarDirecao] = ordenar?.split(":") ?? [null, null];
+  const ordenacao =
+    ordenarCampo && (CONTRATOS_ORDENAVEIS as readonly string[]).includes(ordenarCampo)
+      ? { campo: ordenarCampo, ascending: ordenarDirecao === "asc" }
+      : null;
+
+  let countQuery = supabase.from("contratos").select("id", { count: "exact", head: true });
+  if (termoBusca) countQuery = countQuery.ilike("numero", `%${termoBusca}%`);
+  if (tipo) countQuery = countQuery.eq("tipo", tipo);
+  if (status) countQuery = countQuery.eq("status", status);
+  const { count: totalContratos } = await countQuery;
   const { paginacao, from, to } = calcularPaginacao(paginaPedida, porPagina, totalContratos ?? 0);
+
+  let contratosQuery = supabase.from("contratos").select("*");
+  if (termoBusca) contratosQuery = contratosQuery.ilike("numero", `%${termoBusca}%`);
+  if (tipo) contratosQuery = contratosQuery.eq("tipo", tipo);
+  if (status) contratosQuery = contratosQuery.eq("status", status);
+  contratosQuery = ordenacao
+    ? contratosQuery.order(ordenacao.campo, { ascending: ordenacao.ascending }).order("id")
+    : contratosQuery.order("created_at", { ascending: false }).order("id");
 
   const [{ data: contratos }, { data: pessoas }, { data: papeis }, { data: obras }, { data: pedidos }, { data: funcionarios }, { data: titulos }] =
     await Promise.all([
-      supabase.from("contratos").select("*").order("created_at", { ascending: false }).order("id").range(from, to),
+      contratosQuery.range(from, to),
       supabase.from("pessoas").select("id, nome").order("nome"),
       supabase.from("pessoa_papeis").select("pessoa_id, papel, ativo"),
       supabase.from("obras").select("id, nome, pessoa_id").order("nome"),

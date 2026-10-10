@@ -18,6 +18,9 @@ import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 export type Profile = {
   id: string;
@@ -78,12 +81,19 @@ export default function UsuariosSection({
         </form>
       )}
 
-      <DenseTable className="mt-3">
+      <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
+        <TableSearch paramBusca="us_q" paramPagina="us_pagina" placeholder="Buscar por nome ou matrícula..." />
+        <FiltroAtivo />
+      </div>
+
+      <Paginacao {...paginacao} paramPagina="us_pagina" paramPorPagina="us_por_pagina" posicao="topo" />
+
+      <DenseTable>
         <thead>
           <DenseTableHeaderRow>
-            <Th>Matrícula</Th>
-            <Th>Nome</Th>
-            <Th>Situação</Th>
+            <SortableTh field="login_identifier" paramOrdenar="us_ordenar" paramPagina="us_pagina">Matrícula</SortableTh>
+            <SortableTh field="display_name" paramOrdenar="us_ordenar" paramPagina="us_pagina">Nome</SortableTh>
+            <SortableTh field="active" paramOrdenar="us_ordenar" paramPagina="us_pagina">Situação</SortableTh>
             <Th>Papéis</Th>
             <Th className="w-6" />
           </DenseTableHeaderRow>
@@ -188,7 +198,35 @@ export default function UsuariosSection({
           )}
         </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} paramPagina="us_pagina" paramPorPagina="us_por_pagina" />
     </section>
+  );
+}
+
+function FiltroAtivo() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("us_ativo") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("us_ativo", novoValor);
+    else p.delete("us_ativo");
+    p.delete("us_pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por situação"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Ativos e inativos</option>
+      <option value="sim">Ativos</option>
+      <option value="nao">Inativos</option>
+    </select>
   );
 }

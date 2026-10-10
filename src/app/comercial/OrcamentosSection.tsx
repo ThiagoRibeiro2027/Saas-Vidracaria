@@ -41,6 +41,8 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { Modal } from "@/components/ui/Modal";
 import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
+import { TableSearch } from "@/components/ui/TableSearch";
+import { SortableTh } from "@/components/ui/SortableTh";
 import ItemConfiguravelForm, {
   MOTIVO_OPERACAO_LABEL,
   type DefCaracteristica,
@@ -247,14 +249,21 @@ export default function OrcamentosSection({
         </div>
       )}
 
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <TableSearch placeholder="Buscar por número..." />
+        <FiltroStatusOrcamento />
+      </div>
+
+      <Paginacao {...paginacao} posicao="topo" />
+
       <DenseTable>
           <thead>
             <DenseTableHeaderRow>
-              <Th>Número</Th>
+              <SortableTh field="numero">Número</SortableTh>
               <Th>Cliente</Th>
               <Th>Obra</Th>
-              <Th>Data</Th>
-              <Th>Status</Th>
+              <SortableTh field="data_orcamento">Data</SortableTh>
+              <SortableTh field="status">Status</SortableTh>
               <Th className="text-right">Total</Th>
               <Th className="w-6" />
             </DenseTableHeaderRow>
@@ -334,7 +343,6 @@ export default function OrcamentosSection({
             )}
           </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} />
 
       <Modal
         open={criandoOpen}
@@ -1608,5 +1616,37 @@ function CalculadoraMaoDeObraConfigurador({
         </div>
       )}
     </div>
+  );
+}
+
+function FiltroStatusOrcamento() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("status") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("status", novoValor);
+    else p.delete("status");
+    p.delete("pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por status"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Todos os status</option>
+      {(Object.entries(STATUS_LABEL) as [string, string][]).map(([valorOpcao, rotulo]) => (
+        <option key={valorOpcao} value={valorOpcao}>
+          {rotulo}
+        </option>
+      ))}
+    </select>
   );
 }

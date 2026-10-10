@@ -50,10 +50,52 @@ export default async function FinanceiroPage({
     cb_por_pagina?: string;
     mv_pagina?: string;
     mv_por_pagina?: string;
+    tr_q?: string;
+    tr_ordenar?: string;
+    tr_status?: string;
+    tp_q?: string;
+    tp_ordenar?: string;
+    tp_status?: string;
+    cb_q?: string;
+    cb_ordenar?: string;
+    cb_status?: string;
+    mv_q?: string;
+    mv_ordenar?: string;
+    mv_conciliado?: string;
   }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
+
+  // 2026-10-11: busca/ordenação/filtro nas 4 listas paginadas (prefixo de
+  // parâmetro próprio por lista, mesmo padrão já usado pra paginação).
+  const TR_ORDENAVEIS = ["numero", "vencimento", "status"] as const;
+  const TP_ORDENAVEIS = ["numero", "vencimento", "status"] as const;
+  const CB_ORDENAVEIS = ["numero", "vencimento", "status"] as const;
+  const MV_ORDENAVEIS = ["data_movimento", "valor"] as const;
+  const TITULO_STATUS_VALORES = ["aberto", "parcial", "pago", "cancelado"] as const;
+  const COBRANCA_STATUS_VALORES = ["gerada", "paga", "vencida", "cancelada"] as const;
+
+  function lerOrdenacao(valor: string | undefined, permitidas: readonly string[]) {
+    const [campo, direcao] = valor?.split(":") ?? [null, null];
+    return campo && permitidas.includes(campo) ? { campo, ascending: direcao === "asc" } : null;
+  }
+
+  const trBusca = params.tr_q?.trim() || null;
+  const trStatus = (TITULO_STATUS_VALORES as readonly string[]).includes(params.tr_status ?? "") ? params.tr_status! : null;
+  const trOrdenacao = lerOrdenacao(params.tr_ordenar, TR_ORDENAVEIS);
+
+  const tpBusca = params.tp_q?.trim() || null;
+  const tpStatus = (TITULO_STATUS_VALORES as readonly string[]).includes(params.tp_status ?? "") ? params.tp_status! : null;
+  const tpOrdenacao = lerOrdenacao(params.tp_ordenar, TP_ORDENAVEIS);
+
+  const cbBusca = params.cb_q?.trim() || null;
+  const cbStatus = (COBRANCA_STATUS_VALORES as readonly string[]).includes(params.cb_status ?? "") ? params.cb_status! : null;
+  const cbOrdenacao = lerOrdenacao(params.cb_ordenar, CB_ORDENAVEIS);
+
+  const mvBusca = params.mv_q?.trim() || null;
+  const mvConciliado = params.mv_conciliado === "sim" ? true : params.mv_conciliado === "nao" ? false : null;
+  const mvOrdenacao = lerOrdenacao(params.mv_ordenar, MV_ORDENAVEIS);
 
   const [{ data: canView }, { data: canManage }, { data: canReceber }, { data: canPagar }, { data: canAprovar }] = await Promise.all([
     supabase.rpc("has_permission", { p_resource: "financeiro", p_action: "view" }),
@@ -156,31 +198,53 @@ export default async function FinanceiroPage({
 
   // Só a aba ativa busca a lista paginada — as outras 3 ficam de fora
   // (mesmo padrão já usado em Engenharia/Pré-engenharia).
-  const { count: totalTitulos } = activeTab === "receber" ? await supabase.from("titulos_financeiros").select("id", { count: "exact", head: true }) : { count: 0 };
+  let trCountQuery = supabase.from("titulos_financeiros").select("id", { count: "exact", head: true });
+  if (trBusca) trCountQuery = trCountQuery.ilike("numero", `%${trBusca}%`);
+  if (trStatus) trCountQuery = trCountQuery.eq("status", trStatus);
+  const { count: totalTitulos } = activeTab === "receber" ? await trCountQuery : { count: 0 };
   const { paginacao: trPaginacao, from: trFrom, to: trTo } = calcularPaginacao(trPaginaPedida, trPorPagina, totalTitulos ?? 0);
-  const { data: titulos } =
-    activeTab === "receber" ? await supabase.from("titulos_financeiros").select("*").order("vencimento").range(trFrom, trTo) : { data: [] as never[] };
+  let trQuery = supabase.from("titulos_financeiros").select("*");
+  if (trBusca) trQuery = trQuery.ilike("numero", `%${trBusca}%`);
+  if (trStatus) trQuery = trQuery.eq("status", trStatus);
+  trQuery = trOrdenacao ? trQuery.order(trOrdenacao.campo, { ascending: trOrdenacao.ascending }) : trQuery.order("vencimento");
+  const { data: titulos } = activeTab === "receber" ? await trQuery.range(trFrom, trTo) : { data: [] as never[] };
 
-  const { count: totalTitulosPagar } = activeTab === "pagar" ? await supabase.from("titulos_pagar").select("id", { count: "exact", head: true }) : { count: 0 };
+  let tpCountQuery = supabase.from("titulos_pagar").select("id", { count: "exact", head: true });
+  if (tpBusca) tpCountQuery = tpCountQuery.ilike("numero", `%${tpBusca}%`);
+  if (tpStatus) tpCountQuery = tpCountQuery.eq("status", tpStatus);
+  const { count: totalTitulosPagar } = activeTab === "pagar" ? await tpCountQuery : { count: 0 };
   const { paginacao: tpPaginacao, from: tpFrom, to: tpTo } = calcularPaginacao(tpPaginaPedida, tpPorPagina, totalTitulosPagar ?? 0);
-  const { data: titulosPagar } =
-    activeTab === "pagar"
-      ? await supabase.from("titulos_pagar").select("*, pedidos_compra(numero, pessoa_id)").order("vencimento").range(tpFrom, tpTo)
-      : { data: [] as never[] };
+  let tpQuery = supabase.from("titulos_pagar").select("*, pedidos_compra(numero, pessoa_id)");
+  if (tpBusca) tpQuery = tpQuery.ilike("numero", `%${tpBusca}%`);
+  if (tpStatus) tpQuery = tpQuery.eq("status", tpStatus);
+  tpQuery = tpOrdenacao ? tpQuery.order(tpOrdenacao.campo, { ascending: tpOrdenacao.ascending }) : tpQuery.order("vencimento");
+  const { data: titulosPagar } = activeTab === "pagar" ? await tpQuery.range(tpFrom, tpTo) : { data: [] as never[] };
 
-  const { count: totalCobrancas } = activeTab === "cobranca" ? await supabase.from("cobrancas").select("id", { count: "exact", head: true }) : { count: 0 };
+  let cbCountQuery = supabase.from("cobrancas").select("id", { count: "exact", head: true });
+  if (cbBusca) cbCountQuery = cbCountQuery.ilike("numero", `%${cbBusca}%`);
+  if (cbStatus) cbCountQuery = cbCountQuery.eq("status", cbStatus);
+  const { count: totalCobrancas } = activeTab === "cobranca" ? await cbCountQuery : { count: 0 };
   const { paginacao: cbPaginacao, from: cbFrom, to: cbTo } = calcularPaginacao(cbPaginaPedida, cbPorPagina, totalCobrancas ?? 0);
-  const { data: cobrancas } =
-    activeTab === "cobranca"
-      ? await supabase.from("cobrancas").select("*, titulos_financeiros(numero)").order("created_at", { ascending: false }).range(cbFrom, cbTo)
-      : { data: [] as never[] };
+  let cbQuery = supabase.from("cobrancas").select("*, titulos_financeiros(numero)");
+  if (cbBusca) cbQuery = cbQuery.ilike("numero", `%${cbBusca}%`);
+  if (cbStatus) cbQuery = cbQuery.eq("status", cbStatus);
+  cbQuery = cbOrdenacao
+    ? cbQuery.order(cbOrdenacao.campo, { ascending: cbOrdenacao.ascending })
+    : cbQuery.order("created_at", { ascending: false });
+  const { data: cobrancas } = activeTab === "cobranca" ? await cbQuery.range(cbFrom, cbTo) : { data: [] as never[] };
 
-  const { count: totalMovimentacoes } = activeTab === "mov" ? await supabase.from("movimentacoes_bancarias").select("id", { count: "exact", head: true }) : { count: 0 };
+  let mvCountQuery = supabase.from("movimentacoes_bancarias").select("id", { count: "exact", head: true });
+  if (mvBusca) mvCountQuery = mvCountQuery.ilike("descricao", `%${mvBusca}%`);
+  if (mvConciliado !== null) mvCountQuery = mvCountQuery.eq("conciliado", mvConciliado);
+  const { count: totalMovimentacoes } = activeTab === "mov" ? await mvCountQuery : { count: 0 };
   const { paginacao: mvPaginacao, from: mvFrom, to: mvTo } = calcularPaginacao(mvPaginaPedida, mvPorPagina, totalMovimentacoes ?? 0);
-  const { data: movimentacoes } =
-    activeTab === "mov"
-      ? await supabase.from("movimentacoes_bancarias").select("*").order("data_movimento", { ascending: false }).range(mvFrom, mvTo)
-      : { data: [] as never[] };
+  let mvQuery = supabase.from("movimentacoes_bancarias").select("*");
+  if (mvBusca) mvQuery = mvQuery.ilike("descricao", `%${mvBusca}%`);
+  if (mvConciliado !== null) mvQuery = mvQuery.eq("conciliado", mvConciliado);
+  mvQuery = mvOrdenacao
+    ? mvQuery.order(mvOrdenacao.campo, { ascending: mvOrdenacao.ascending })
+    : mvQuery.order("data_movimento", { ascending: false });
+  const { data: movimentacoes } = activeTab === "mov" ? await mvQuery.range(mvFrom, mvTo) : { data: [] as never[] };
 
   return (
     <>

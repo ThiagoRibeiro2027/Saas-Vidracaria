@@ -30,6 +30,8 @@ import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { Field, CheckboxField, OptionCard } from "@/components/ui/FormField";
 import RegrasPeca from "./RegrasPeca";
+import { SortableTh } from "@/components/ui/SortableTh";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type Item = { id: string; codigo: string; descricao: string; tipo: string; unidade_principal: string };
 type Peca = { id: string; item_id: string; descricao_tecnica: string | null; situacao: "ativo" | "inativo"; revisao_atual: number };
@@ -190,12 +192,18 @@ export default function PecasSection({
         </form>
       )}
 
+      <div className="mb-2 mt-3">
+        <FiltroSituacaoPeca />
+      </div>
+
+      <Paginacao {...paginacao} paramPagina="pagina" paramPorPagina="por_pagina" posicao="topo" />
+
       <DenseTable>
         <thead>
           <DenseTableHeaderRow>
             <Th>Peça</Th>
-            <Th>Situação</Th>
-            <Th>Revisão</Th>
+            <SortableTh field="situacao" paramOrdenar="pc_ordenar">Situação</SortableTh>
+            <SortableTh field="revisao_atual" paramOrdenar="pc_ordenar">Revisão</SortableTh>
           </DenseTableHeaderRow>
         </thead>
         <tbody>
@@ -223,7 +231,6 @@ export default function PecasSection({
           )}
         </tbody>
       </DenseTable>
-      <Paginacao {...paginacao} />
 
       <Modal
         open={viewing !== null}
@@ -905,5 +912,34 @@ function HistoricoRevisoes({ revisoes }: { revisoes: Revisao[] }) {
         </ul>
       )}
     </div>
+  );
+}
+
+function FiltroSituacaoPeca() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const valor = searchParams.get("pc_situacao") ?? "";
+
+  function onChange(novoValor: string) {
+    const p = new URLSearchParams(searchParams.toString());
+    if (novoValor) p.set("pc_situacao", novoValor);
+    else p.delete("pc_situacao");
+    p.delete("pagina");
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return (
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Filtrar por situação"
+      className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+    >
+      <option value="">Ativas e inativas</option>
+      <option value="ativo">Ativa</option>
+      <option value="inativo">Inativa</option>
+    </select>
   );
 }

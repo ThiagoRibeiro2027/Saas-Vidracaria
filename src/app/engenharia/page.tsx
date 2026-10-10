@@ -53,6 +53,8 @@ export default async function EngenhariaPage({
     ordenar?: string;
     tipo?: string;
     situacao?: string;
+    pc_ordenar?: string;
+    pc_situacao?: string;
   }>;
 }) {
   const {
@@ -63,6 +65,8 @@ export default async function EngenhariaPage({
     ordenar,
     tipo: tipoParam,
     situacao: situacaoParam,
+    pc_ordenar: pcOrdenar,
+    pc_situacao: pcSituacaoParam,
   } = await searchParams;
   const supabase = await createClient();
 
@@ -159,7 +163,14 @@ export default async function EngenhariaPage({
           />
         )}
         {activeTab === "pre-engenharia" && canViewPecas && (
-          <PreEngenhariaTab supabase={supabase} pagina={paginaPedida} porPagina={porPagina} canManage={!!canManagePecas} />
+          <PreEngenhariaTab
+            supabase={supabase}
+            pagina={paginaPedida}
+            porPagina={porPagina}
+            canManage={!!canManagePecas}
+            ordenar={pcOrdenar}
+            situacao={pcSituacaoParam}
+          />
         )}
         {activeTab === "roteiros" && canViewFabricar && (
           <RoteirosTab supabase={supabase} canManage={!!canManageFabricar} />
@@ -316,12 +327,41 @@ async function ItensTab({
   return <ItensSection rows={itens ?? []} paginacao={paginacao} canManage={canManage} />;
 }
 
-async function PreEngenhariaTab({ supabase, pagina, porPagina, canManage }: TabProps) {
-  const { count: totalPecas } = await supabase.from("pecas").select("id", { count: "exact", head: true });
+// 2026-10-11: filtro por situação (ativo/inativo) e ordenação por
+// situação/revisão/data (allow-list fixa). Sem busca — "Peça" na tabela é
+// o código/descrição do ITEM vinculado (join em memória, mesmo padrão já
+// usado no resto do arquivo), não uma coluna própria de `pecas` pra
+// filtrar via ilike direto na query.
+const PECAS_ORDENAVEIS = ["situacao", "revisao_atual", "created_at"] as const;
+
+async function PreEngenhariaTab({
+  supabase,
+  pagina,
+  porPagina,
+  canManage,
+  ordenar,
+  situacao,
+}: TabProps & { ordenar?: string; situacao?: string }) {
+  const pecaSituacao = situacao === "ativo" || situacao === "inativo" ? situacao : null;
+  const [ordenarCampo, ordenarDirecao] = ordenar?.split(":") ?? [null, null];
+  const ordenacao =
+    ordenarCampo && (PECAS_ORDENAVEIS as readonly string[]).includes(ordenarCampo)
+      ? { campo: ordenarCampo, ascending: ordenarDirecao === "asc" }
+      : null;
+
+  let totalPecasQuery = supabase.from("pecas").select("id", { count: "exact", head: true });
+  if (pecaSituacao) totalPecasQuery = totalPecasQuery.eq("situacao", pecaSituacao);
+  const { count: totalPecas } = await totalPecasQuery;
   const { paginacao, from, to } = calcularPaginacao(pagina, porPagina, totalPecas ?? 0);
 
+  let pecasQuery = supabase.from("pecas").select("*");
+  if (pecaSituacao) pecasQuery = pecasQuery.eq("situacao", pecaSituacao);
+  pecasQuery = ordenacao
+    ? pecasQuery.order(ordenacao.campo, { ascending: ordenacao.ascending }).order("id")
+    : pecasQuery.order("created_at", { ascending: false }).order("id");
+
   const [{ data: pecas }, { data: itens }] = await Promise.all([
-    supabase.from("pecas").select("*").order("created_at", { ascending: false }).order("id").range(from, to),
+    pecasQuery.range(from, to),
     supabase
       .from("itens")
       .select("id, codigo, descricao, tipo, unidade_principal")

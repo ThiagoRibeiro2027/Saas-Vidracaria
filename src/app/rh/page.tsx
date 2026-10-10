@@ -39,10 +39,43 @@ export default async function RHPage({
     doc_por_pagina?: string;
     af_pagina?: string;
     af_por_pagina?: string;
+    fu_q?: string;
+    fu_ordenar?: string;
+    fu_status?: string;
+    doc_q?: string;
+    doc_ordenar?: string;
+    doc_tipo?: string;
+    af_ordenar?: string;
+    af_tipo?: string;
   }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
+
+  // 2026-10-11: busca/ordenação/filtro nas 3 listas paginadas (prefixo de
+  // parâmetro próprio por lista, mesmo padrão já usado em Financeiro).
+  const FU_ORDENAVEIS = ["nome", "status"] as const;
+  const DOC_ORDENAVEIS = ["tipo", "status", "created_at"] as const;
+  const AF_ORDENAVEIS = ["tipo", "data_inicio"] as const;
+  const FUNCIONARIO_STATUS_VALORES = ["ativo", "afastado", "desligado"] as const;
+  const TIPO_DOCUMENTO_VALORES = ["admissao", "certificacao", "epi", "habilitacao"] as const;
+  const TIPO_AFASTAMENTO_VALORES = ["afastamento", "ferias"] as const;
+
+  function lerOrdenacao(valor: string | undefined, permitidas: readonly string[]) {
+    const [campo, direcao] = valor?.split(":") ?? [null, null];
+    return campo && permitidas.includes(campo) ? { campo, ascending: direcao === "asc" } : null;
+  }
+
+  const fuBusca = params.fu_q?.trim() || null;
+  const fuStatus = (FUNCIONARIO_STATUS_VALORES as readonly string[]).includes(params.fu_status ?? "") ? params.fu_status! : null;
+  const fuOrdenacao = lerOrdenacao(params.fu_ordenar, FU_ORDENAVEIS);
+
+  const docBusca = params.doc_q?.trim() || null;
+  const docTipo = (TIPO_DOCUMENTO_VALORES as readonly string[]).includes(params.doc_tipo ?? "") ? params.doc_tipo! : null;
+  const docOrdenacao = lerOrdenacao(params.doc_ordenar, DOC_ORDENAVEIS);
+
+  const afTipo = (TIPO_AFASTAMENTO_VALORES as readonly string[]).includes(params.af_tipo ?? "") ? params.af_tipo! : null;
+  const afOrdenacao = lerOrdenacao(params.af_ordenar, AF_ORDENAVEIS);
 
   const [{ data: canView }, { data: canManage }] = await Promise.all([
     supabase.rpc("has_permission", { p_resource: "rh", p_action: "view" }),
@@ -82,6 +115,17 @@ export default async function RHPage({
   const hoje = agora.toISOString().slice(0, 10);
   const em30Dias = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+  let totalFuncionariosQuery = supabase.from("funcionarios").select("id", { count: "exact", head: true });
+  if (fuBusca) totalFuncionariosQuery = totalFuncionariosQuery.ilike("nome", `%${fuBusca}%`);
+  if (fuStatus) totalFuncionariosQuery = totalFuncionariosQuery.eq("status", fuStatus);
+
+  let totalDocumentosQuery = supabase.from("funcionario_documentos").select("id", { count: "exact", head: true });
+  if (docBusca) totalDocumentosQuery = totalDocumentosQuery.ilike("nome", `%${docBusca}%`);
+  if (docTipo) totalDocumentosQuery = totalDocumentosQuery.eq("tipo", docTipo);
+
+  let totalAfastamentosQuery = supabase.from("funcionario_afastamentos").select("id", { count: "exact", head: true });
+  if (afTipo) totalAfastamentosQuery = totalAfastamentosQuery.eq("tipo", afTipo);
+
   const [
     { count: totalFuncionarios },
     { count: totalDocumentos },
@@ -93,9 +137,9 @@ export default async function RHPage({
     { count: documentosVencendoCount },
     { count: afastamentosAbertosCount },
   ] = await Promise.all([
-    supabase.from("funcionarios").select("id", { count: "exact", head: true }),
-    supabase.from("funcionario_documentos").select("id", { count: "exact", head: true }),
-    supabase.from("funcionario_afastamentos").select("id", { count: "exact", head: true }),
+    totalFuncionariosQuery,
+    totalDocumentosQuery,
+    totalAfastamentosQuery,
     supabase.from("funcionarios").select("id", { count: "exact", head: true }).eq("status", "ativo"),
     supabase.from("funcionarios").select("id", { count: "exact", head: true }).eq("status", "afastado"),
     supabase.from("funcionarios").select("id", { count: "exact", head: true }).eq("status", "desligado"),
@@ -116,6 +160,26 @@ export default async function RHPage({
   const { paginacao: docPaginacao, from: docFrom, to: docTo } = calcularPaginacao(docPaginaPedida, docPorPagina, totalDocumentos ?? 0);
   const { paginacao: afPaginacao, from: afFrom, to: afTo } = calcularPaginacao(afPaginaPedida, afPorPagina, totalAfastamentos ?? 0);
 
+  let funcionariosPaginaQuery = supabase.from("funcionarios").select("*");
+  if (fuBusca) funcionariosPaginaQuery = funcionariosPaginaQuery.ilike("nome", `%${fuBusca}%`);
+  if (fuStatus) funcionariosPaginaQuery = funcionariosPaginaQuery.eq("status", fuStatus);
+  funcionariosPaginaQuery = fuOrdenacao
+    ? funcionariosPaginaQuery.order(fuOrdenacao.campo, { ascending: fuOrdenacao.ascending })
+    : funcionariosPaginaQuery.order("nome");
+
+  let documentosQuery = supabase.from("funcionario_documentos").select("*");
+  if (docBusca) documentosQuery = documentosQuery.ilike("nome", `%${docBusca}%`);
+  if (docTipo) documentosQuery = documentosQuery.eq("tipo", docTipo);
+  documentosQuery = docOrdenacao
+    ? documentosQuery.order(docOrdenacao.campo, { ascending: docOrdenacao.ascending })
+    : documentosQuery.order("created_at", { ascending: false });
+
+  let afastamentosQuery = supabase.from("funcionario_afastamentos").select("*");
+  if (afTipo) afastamentosQuery = afastamentosQuery.eq("tipo", afTipo);
+  afastamentosQuery = afOrdenacao
+    ? afastamentosQuery.order(afOrdenacao.campo, { ascending: afOrdenacao.ascending })
+    : afastamentosQuery.order("data_inicio", { ascending: false });
+
   const [
     { data: funcionariosPagina },
     { data: funcionariosTodos },
@@ -125,19 +189,15 @@ export default async function RHPage({
     { data: afastamentos },
     { data: recursos },
   ] = await Promise.all([
-    activeTab === "funcionarios" ? supabase.from("funcionarios").select("*").order("nome").range(fuFrom, fuTo) : Promise.resolve({ data: [] as never[] }),
+    activeTab === "funcionarios" ? funcionariosPaginaQuery.range(fuFrom, fuTo) : Promise.resolve({ data: [] as never[] }),
     // Lookups (nome por funcionário) e os <select> dos formulários de
     // Documentos/Afastamentos precisam de qualquer funcionário, não só
     // dos da página atual — mesmo padrão de itens/pessoas em Comercial.
     supabase.from("funcionarios").select("id, nome, status, profile_id").order("nome"),
     supabase.from("company_units").select("id, name").eq("active", true).order("name"),
     supabase.from("profiles").select("id, display_name, login_identifier").eq("active", true).order("display_name"),
-    activeTab === "documentos"
-      ? supabase.from("funcionario_documentos").select("*").order("created_at", { ascending: false }).range(docFrom, docTo)
-      : Promise.resolve({ data: [] as never[] }),
-    activeTab === "afastamentos"
-      ? supabase.from("funcionario_afastamentos").select("*").order("data_inicio", { ascending: false }).range(afFrom, afTo)
-      : Promise.resolve({ data: [] as never[] }),
+    activeTab === "documentos" ? documentosQuery.range(docFrom, docTo) : Promise.resolve({ data: [] as never[] }),
+    activeTab === "afastamentos" ? afastamentosQuery.range(afFrom, afTo) : Promise.resolve({ data: [] as never[] }),
     supabase.from("recursos_produtivos").select("id, codigo, nome, tipo").in("tipo", ["maquina", "equipamento"]).order("nome"),
   ]);
 
