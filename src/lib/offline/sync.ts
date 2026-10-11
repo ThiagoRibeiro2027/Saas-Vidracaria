@@ -49,6 +49,13 @@ export async function refreshPacote(supabase: SupabaseClient): Promise<{ ok: tru
     return { ok: false, erro: (nowError ?? pacoteError)?.message ?? "Falha ao sincronizar." };
   }
   await salvarPacote({ data: (pacote as unknown[]) ?? [], syncedAt: now as string });
+  // Achado da auditoria de gaps ADR-001 a ADR-012 (11/10/2026) — "syncedAt"
+  // até aqui só existia no IndexedDB do aparelho; o escritório não tinha
+  // como ver quem está atrasado. Sem await de propósito: não é o resultado
+  // decisivo desta função (o pacote já foi salvo localmente com sucesso
+  // de qualquer forma) — uma falha aqui não deve fazer sincronizar()
+  // parecer que falhou pro usuário de campo.
+  void supabase.rpc("registrar_sincronizacao_offline", { p_synced_at: now });
   return { ok: true };
 }
 

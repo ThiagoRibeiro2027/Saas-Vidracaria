@@ -51,6 +51,7 @@ const TEST_SCRIPTS = [
   "scripts/test-compras.mjs",
   "scripts/test-bancario.mjs",
   "scripts/test-e2e-fluxo-completo.mjs",
+  "scripts/test-offline-pull-status.mjs",
 ];
 
 function supabaseCredentials() {

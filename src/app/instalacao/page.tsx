@@ -2,11 +2,12 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import InstalacaoSection, { type DanoExibicao } from "./InstalacaoSection";
 import VisaoGeralSection from "./VisaoGeralSection";
+import SincronizacaoSection, { type SyncStatusRow } from "./SincronizacaoSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
 
-type TabSlug = "geral" | "equipes" | "agenda" | "danos";
+type TabSlug = "geral" | "equipes" | "agenda" | "danos" | "sincronizacao";
 
 // ADR-013 (Identidade D), Fase 4.
 const TAB_TITLE: Record<TabSlug, string> = {
@@ -14,6 +15,7 @@ const TAB_TITLE: Record<TabSlug, string> = {
   equipes: "Equipes",
   agenda: "Agenda de instalação",
   danos: "Danos em obra",
+  sincronizacao: "Sincronização de campo",
 };
 
 // TÓPICO 16 — lado ESCRITÓRIO do recorte mínimo do M1. A execução em campo
@@ -83,6 +85,7 @@ export default async function InstalacaoPage({
     { slug: "equipes", label: "Equipes" },
     { slug: "agenda", label: "Agenda de instalação" },
     { slug: "danos", label: "Danos em obra" },
+    { slug: "sincronizacao", label: "Sincronização de campo" },
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "geral";
 
@@ -117,6 +120,31 @@ export default async function InstalacaoPage({
           supabase.from("solicitacoes_nova_fabricacao").select("id", { count: "exact", head: true }).eq("status", "pendente"),
         ])
       : [{ count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }];
+
+  // Sincronização de campo — achado da auditoria de gaps ADR-001 a
+  // ADR-012 (11/10/2026): offline_pull_status (1 linha por usuário que já
+  // sincronizou o app de campo pelo menos uma vez) só buscada com a aba
+  // ativa. Usuário com permissão de campo mas que nunca abriu/sincronizou
+  // o app não tem linha aqui — não é "atrasado", nunca começou a usar.
+  let syncStatusRows: SyncStatusRow[] = [];
+  // Componente de servidor roda uma vez por requisição (sem re-render
+  // reativo) — o problema de instabilidade que a regra de pureza evita
+  // não se aplica aqui; é só o "agora" usado pra calcular há quanto tempo
+  // cada celular sincronizou, igual ao padrão já usado em rh/page.tsx.
+  // eslint-disable-next-line react-hooks/purity
+  const agoraMs = Date.now();
+  if (activeTab === "sincronizacao") {
+    const { data: pullStatus } = await supabase
+      .from("offline_pull_status")
+      .select("profile_id, last_synced_at")
+      .order("last_synced_at", { ascending: true });
+    const profilesPorId = new Map((profiles ?? []).map((p) => [p.id, p.display_name] as const));
+    syncStatusRows = (pullStatus ?? []).map((row) => ({
+      profileId: row.profile_id,
+      displayName: profilesPorId.get(row.profile_id) ?? "(usuário removido)",
+      lastSyncedAt: row.last_synced_at,
+    }));
+  }
 
   // Agenda — pedidos liberados, paginados, só buscados com a aba ativa.
   const { pagina: agPaginaPedida, porPagina: agPorPagina } = lerParametrosPaginacao({
@@ -292,6 +320,8 @@ export default async function InstalacaoPage({
             }}
           />
         )}
+
+        {activeTab === "sincronizacao" && <SincronizacaoSection rows={syncStatusRows} agoraMs={agoraMs} />}
 
         <InstalacaoSection
           activeTab={activeTab}

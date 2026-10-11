@@ -109,7 +109,7 @@ export default function InstalacaoSection({
   canManage,
   canDecidirDano,
 }: {
-  activeTab: "geral" | "equipes" | "agenda" | "danos";
+  activeTab: "geral" | "equipes" | "agenda" | "danos" | "sincronizacao";
   pedidos: Pedido[];
   agPaginacao: PaginacaoInfo;
   pedidoItensPorPedido: Map<string, PedidoItem[]>;
