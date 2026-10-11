@@ -266,7 +266,61 @@ async function main() {
     check("roles.papel_criado registrado em activity_logs", !!log);
   }
 
-  console.log("\n5. Isolamento cross-tenant de leitura (RLS já existente da Fundação)");
+  console.log("\n5. Correção de auto-promoção de privilégio (fix 20261011000151)");
+  {
+    const { data: papelLimitadoId } = await admTenant.client.rpc("criar_papel_empresa", {
+      p_key: "GESTOR_LIMITADO_TESTE", p_name: "Gestor Limitado Teste",
+    });
+    const { data: permUsersManage } = await admin.from("permissions").select("id").eq("resource", "users").eq("action", "manage").single();
+    const { data: permRolesManage } = await admin.from("permissions").select("id").eq("resource", "roles").eq("action", "manage").single();
+    await admTenant.client.rpc("conceder_permissao_papel", { p_role_id: papelLimitadoId, p_permission_id: permUsersManage.id });
+    await admTenant.client.rpc("conceder_permissao_papel", { p_role_id: papelLimitadoId, p_permission_id: permRolesManage.id });
+
+    const limitadoAuthId = await criarAuthUser("14e01");
+    await admTenant.client.rpc("criar_perfil_usuario", {
+      p_auth_user_id: limitadoAuthId, p_login_identifier: "op030", p_display_name: "Operador Limitado",
+    });
+    await admTenant.client.rpc("atribuir_papel_usuario", {
+      p_profile_id: limitadoAuthId, p_role_id: papelLimitadoId, p_valid_until: null,
+    });
+
+    const limitadoClient = createClient(url, anonKey);
+    await limitadoClient.auth.signInWithPassword({
+      email: `14e01.${admTenant.company.slug}@users.internal`, password: "senha-de-teste-123456",
+    });
+
+    const { data: papelAlvoId } = await admTenant.client.rpc("criar_papel_empresa", {
+      p_key: "PAPEL_ALVO_TESTE", p_name: "Papel Alvo Teste",
+    });
+    const { data: permFinanceiro } = await admin.from("permissions").select("id").eq("resource", "financeiro").eq("action", "manage").single();
+
+    const { error: concederSemPermError } = await limitadoClient.rpc("conceder_permissao_papel", {
+      p_role_id: papelAlvoId, p_permission_id: permFinanceiro.id,
+    });
+    check("usuário com roles.manage não concede permissão que ele mesmo não possui", !!concederSemPermError);
+
+    const { error: concederComPermError } = await admTenant.client.rpc("conceder_permissao_papel", {
+      p_role_id: papelAlvoId, p_permission_id: permFinanceiro.id,
+    });
+    check("quem já possui a permissão continua podendo concedê-la a um papel", !concederComPermError);
+
+    // Simula um papel que já tinha uma permissão elevada antes do fix (inserção
+    // direta, contornando conceder_permissao_papel), pra testar a defesa
+    // independente em atribuir_papel_usuario().
+    await admin.from("role_permissions").insert({ role_id: papelAlvoId, permission_id: permFinanceiro.id });
+
+    const { error: atribuirEscaladoError } = await limitadoClient.rpc("atribuir_papel_usuario", {
+      p_profile_id: limitadoAuthId, p_role_id: papelAlvoId, p_valid_until: null,
+    });
+    check("usuário com users.manage não atribui a si mesmo papel com permissão que não possui", !!atribuirEscaladoError);
+
+    const { error: atribuirComPermError } = await admTenant.client.rpc("atribuir_papel_usuario", {
+      p_profile_id: limitadoAuthId, p_role_id: papelAlvoId, p_valid_until: null,
+    });
+    check("ADMIN (que já possui todas as permissões) continua atribuindo papéis normalmente", !atribuirComPermError);
+  }
+
+  console.log("\n6. Isolamento cross-tenant de leitura (RLS já existente da Fundação)");
   {
     const { data: profilesOutros } = await otherTenant.client.from("profiles").select("id").eq("company_id", admTenant.company.id);
     check("tenant B não lê perfis do tenant A via SELECT direto", (profilesOutros ?? []).length === 0);
