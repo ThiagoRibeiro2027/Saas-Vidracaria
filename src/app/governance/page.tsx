@@ -40,9 +40,10 @@ async function PlatformAdminView({ supabase }: { supabase: Awaited<ReturnType<ty
   const companyIds = (subscriptions ?? []).map((s) => s.company_id);
   const { data: companies } =
     companyIds.length > 0
-      ? await supabase.from("companies").select("id, name").in("id", companyIds)
-      : { data: [] as { id: string; name: string }[] };
+      ? await supabase.from("companies").select("id, name, status").in("id", companyIds)
+      : { data: [] as { id: string; name: string; status: string }[] };
   const companyNameById = new Map((companies ?? []).map((c) => [c.id, c.name]));
+  const companyStatusById = new Map((companies ?? []).map((c) => [c.id, c.status]));
 
   const usageRows = await Promise.all(
     (subscriptions ?? []).map(async (sub) => {
@@ -52,6 +53,7 @@ async function PlatformAdminView({ supabase }: { supabase: Awaited<ReturnType<ty
         companyId: sub.company_id,
         companyName: companyNameById.get(sub.company_id) ?? "—",
         status: sub.status,
+        companyStatus: companyStatusById.get(sub.company_id) ?? "—",
         planName: u?.plan_name ?? null,
         userCount: u?.user_count ?? 0,
         storageBytesUsed: u?.storage_bytes_used ?? 0,

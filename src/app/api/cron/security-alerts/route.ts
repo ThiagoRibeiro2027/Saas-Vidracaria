@@ -32,6 +32,7 @@ const JOB_NAME = "security-alerts";
 const WATCHED_ACTIONS = [
   "auth.login_blocked",
   "governance.subscription_transitioned",
+  "governance.company_status_transitioned",
   "lgpd.activity_logs_anonymized",
   "governance.activity_logs_retention_purge",
 ] as const;

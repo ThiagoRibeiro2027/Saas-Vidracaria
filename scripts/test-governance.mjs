@@ -200,6 +200,100 @@ async function main() {
     check("transição de status foi auditada", (transitionLog ?? []).length > 0);
   }
 
+  console.log("\n2.5. transition_company_status() — ciclo de EXISTÊNCIA do tenant (fix 20261011165430)");
+  {
+    // Reexecução sem reset de banco: garante partida limpa (mesmo cuidado
+    // de idempotência já necessário noutros scripts desta sessão).
+    await admin.from("companies").update({ status: "active", deleted_at: null }).eq("id", tenantB.company.id);
+
+    const { data: antes } = await admin.from("companies").select("status").eq("id", tenantB.company.id).single();
+    check("empresa B nasce 'active'", antes?.status === "active");
+
+    const { error: tenantAttemptError } = await tenantB.client.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "cancellation", p_reason: null,
+    });
+    check("tenant comum não consegue mudar o próprio status de existência", !!tenantAttemptError);
+
+    // platformClient (seção 2) já verificou MFA — a sessão fica em aal2 daí
+    // em diante, não dá pra testar "aal1 recusado" reaproveitando-o. Cria
+    // um platform_admin novo e próprio, ainda em aal1, só pra esta checagem.
+    const platformEmail2 = `governance-admin-${Date.now()}-b@saas-vidracaria.internal`;
+    const platformPassword2 = "senha-plataforma-teste-123456";
+    const { data: createdAdmin2 } = await admin.auth.admin.createUser({
+      email: platformEmail2, password: platformPassword2, email_confirm: true,
+    });
+    await admin.from("platform_admins").insert({ id: createdAdmin2.user.id, role: "SUPER_ADMIN" });
+    const platformClientAal1 = createClient(url, anonKey);
+    await platformClientAal1.auth.signInWithPassword({ email: platformEmail2, password: platformPassword2 });
+
+    const { error: aal1Error } = await platformClientAal1.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "cancellation", p_reason: "teste (aal1, deve falhar)",
+    });
+    check("platform_admin sem MFA verificado não consegue (gate mais estrito que transition_subscription)", !!aal1Error);
+
+    // platformClient já verificou MFA (aal2) na seção 2 — reaproveita aqui.
+    const { error: pularEtapaError } = await platformClient.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "suspended", p_reason: "tentando pular etapa",
+    });
+    check("não permite pular etapa (active → suspended direto, sem passar por cancellation)", !!pularEtapaError);
+
+    const { error: repetirError } = await platformClient.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "active", p_reason: "mesmo status",
+    });
+    check("recusa transicionar pro mesmo status já atual", !!repetirError);
+
+    const { error: cancelamentoError } = await platformClient.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "cancellation", p_reason: "teste automatizado",
+    });
+    check("platform_admin em aal2 move active → cancellation", !cancelamentoError);
+
+    const { error: voltarError } = await platformClient.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "active", p_reason: "tentando voltar",
+    });
+    check("não permite voltar pra active (fluxo só pra frente)", !!voltarError);
+
+    const { error: suspenderError } = await platformClient.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "suspended", p_reason: "teste automatizado",
+    });
+    check("cancellation → suspended", !suspenderError);
+
+    const { error: retencaoError } = await platformClient.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "retention", p_reason: "teste automatizado",
+    });
+    check("suspended → retention", !retencaoError);
+
+    const { data: antesExcluir } = await admin.from("companies").select("deleted_at").eq("id", tenantB.company.id).single();
+    check("deleted_at ainda nulo antes da exclusão definitiva", antesExcluir?.deleted_at === null);
+
+    const { error: excluirError } = await platformClient.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "deleted", p_reason: "teste automatizado",
+    });
+    check("retention → deleted", !excluirError);
+
+    const { data: depoisExcluir } = await admin.from("companies").select("status, deleted_at").eq("id", tenantB.company.id).single();
+    check("status final é 'deleted'", depoisExcluir?.status === "deleted");
+    check("deleted_at foi preenchido (nunca DELETE físico da linha)", !!depoisExcluir?.deleted_at);
+
+    const { error: depoisDeDeletedError } = await platformClient.rpc("transition_company_status", {
+      p_company_id: tenantB.company.id, p_new_status: "active", p_reason: "tentando reviver",
+    });
+    check("'deleted' é terminal — nenhuma transição sai dele", !!depoisDeDeletedError);
+
+    // activity_logs é append-only (nunca limpo) — reexecução deste script
+    // acumula logs de runs anteriores, então "ao menos 4" é o que dá pra
+    // garantir sem reset de banco, não "exatamente 4".
+    const { data: logs } = await admin
+      .from("activity_logs")
+      .select("metadata")
+      .eq("company_id", tenantB.company.id)
+      .eq("action", "governance.company_status_transitioned")
+      .order("created_at", { ascending: false })
+      .limit(4);
+    check("as 4 transições reais desta run foram auditadas", (logs ?? []).length === 4);
+    const logsCronologicos = [...(logs ?? [])].reverse();
+    check("log registra from/to corretos (1ª transição desta run)", logsCronologicos[0]?.metadata?.from === "active" && logsCronologicos[0]?.metadata?.to === "cancellation");
+  }
+
   console.log("\n3. Política de suspensão — bloqueia escrita, mantém leitura");
   {
     // Sufixo único por execução: register_file() grava um metadado real
