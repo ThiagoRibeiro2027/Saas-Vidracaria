@@ -282,6 +282,36 @@ async function main() {
     check("tenant B nunca recebeu nenhuma notificação gerada no tenant A", (notifOutroTenant ?? []).length === 0);
   }
 
+  console.log("\n6. Retry de e-mail que falhou (fix 20261011165130) — filtro do cron");
+  {
+    // Mesma query de src/app/api/cron/notificacoes-email/route.ts, direto
+    // contra o banco (a rota em si não é chamada aqui — mesmo critério já
+    // usado pra testar outras Server Actions/rotas neste projeto: validar
+    // a consulta/RPC que ela usa, não a função "use server" em si).
+    const MAX_TENTATIVAS = 5;
+    const base = { company_id: admTenant.company.id, profile_id: admTenant.userId, titulo: "T", mensagem: "M", prioridade: "critica", tipo_evento: "teste_retry" };
+
+    const { data: pendente } = await admin.from("notificacoes").insert({ ...base, email_status: "pendente", tentativas: 0 }).select().single();
+    const { data: falhouComRetry } = await admin.from("notificacoes").insert({ ...base, email_status: "falhou", tentativas: 2 }).select().single();
+    const { data: falhouEsgotado } = await admin.from("notificacoes").insert({ ...base, email_status: "falhou", tentativas: MAX_TENTATIVAS }).select().single();
+    const { data: jaEnviado } = await admin.from("notificacoes").insert({ ...base, email_status: "enviado", tentativas: 1 }).select().single();
+
+    // Service role, igual à rota real (createAdminClient()) — não é RLS que
+    // está sendo testado aqui, é o filtro de elegibilidade pro retry.
+    const { data: elegiveis } = await admin
+      .from("notificacoes")
+      .select("id")
+      .or(`email_status.eq.pendente,and(email_status.eq.falhou,tentativas.lt.${MAX_TENTATIVAS})`)
+      .in("id", [pendente.id, falhouComRetry.id, falhouEsgotado.id, jaEnviado.id]);
+    const idsElegiveis = (elegiveis ?? []).map((n) => n.id);
+
+    check("'pendente' entra no retry", idsElegiveis.includes(pendente.id));
+    check("'falhou' com tentativas < 5 entra no retry", idsElegiveis.includes(falhouComRetry.id));
+    check("'falhou' com tentativas esgotadas (5) NÃO entra mais", !idsElegiveis.includes(falhouEsgotado.id));
+    check("'enviado' não entra (já não precisa de retry)", !idsElegiveis.includes(jaEnviado.id));
+    check("exatamente 2 elegíveis (pendente + falhou-com-retry)", idsElegiveis.length === 2);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

@@ -61,10 +61,12 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient();
 
+  const MAX_TENTATIVAS = 5;
+
   const { data: pendentes, error } = await admin
     .from("notificacoes")
-    .select("id, titulo, mensagem, acao_necessaria, profile_id, profiles(contact_email)")
-    .eq("email_status", "pendente")
+    .select("id, titulo, mensagem, acao_necessaria, profile_id, tentativas, profiles(contact_email)")
+    .or(`email_status.eq.pendente,and(email_status.eq.falhou,tentativas.lt.${MAX_TENTATIVAS})`)
     .order("created_at", { ascending: true })
     .limit(200);
 
@@ -80,33 +82,39 @@ export async function GET(request: NextRequest) {
 
   let enviados = 0;
   let falharam = 0;
+  let aguardandoRetry = 0;
 
   for (const n of pendentes ?? []) {
     // @ts-expect-error -- relação aninhada tipada como array pelo supabase-js
     const contactEmail: string | null = n.profiles?.contact_email ?? null;
 
     if (!contactEmail) {
+      // Não é falha transitória — sem contact_email cadastrado, tentar de
+      // novo amanhã não muda nada. Já esgota as tentativas pra não ocupar
+      // 5 dias de varredura com algo que só um cadastro de perfil resolve.
       await admin
         .from("notificacoes")
-        .update({ email_status: "falhou", email_erro: "usuário sem e-mail de contato cadastrado" })
+        .update({ email_status: "falhou", email_erro: "usuário sem e-mail de contato cadastrado", tentativas: MAX_TENTATIVAS })
         .eq("id", n.id);
       falharam++;
       continue;
     }
 
     const resultado = await enviarEmail(contactEmail, n.titulo, n.mensagem, n.acao_necessaria);
+    const tentativas = (n.tentativas ?? 0) + 1;
     await admin
       .from("notificacoes")
       .update(
         resultado.ok
-          ? { email_status: "enviado" }
-          : { email_status: "falhou", email_erro: resultado.erro },
+          ? { email_status: "enviado", tentativas }
+          : { email_status: "falhou", email_erro: resultado.erro, tentativas },
       )
       .eq("id", n.id);
 
     if (resultado.ok) enviados++;
+    else if (tentativas < MAX_TENTATIVAS) aguardandoRetry++;
     else falharam++;
   }
 
-  return Response.json({ ok: true, total: (pendentes ?? []).length, enviados, falharam });
+  return Response.json({ ok: true, total: (pendentes ?? []).length, enviados, falharam, aguardandoRetry });
 }
