@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { CampoProvider } from "./CampoProvider";
 import CampoServiceWorker from "./CampoServiceWorker";
 import StatusBar from "./StatusBar";
+import InstalacaoOnboarding from "./InstalacaoOnboarding";
 
 // TÓPICO 16 — plataforma de campo (ADR-008). Escopo isolado do resto do
 // SaaS: manifest e service worker próprios (ADR-008 §5), registrados só
@@ -22,6 +23,7 @@ export default function CampoLayout({ children }: { children: React.ReactNode })
       <CampoServiceWorker />
       <div className="flex min-h-dvh flex-col bg-page-bg">
         <StatusBar />
+        <InstalacaoOnboarding />
         <div className="flex-1">{children}</div>
       </div>
     </CampoProvider>

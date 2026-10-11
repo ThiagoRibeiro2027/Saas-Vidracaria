@@ -16,6 +16,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 const TEST_SCRIPTS = [
   // Puro (sem banco): roda sozinho com `node scripts/test-formatar-data.mjs`.
   "scripts/test-formatar-data.mjs",
+  "scripts/test-offline-validade.mjs",
   "scripts/test-foundation-rls.mjs",
   "scripts/test-mfa-and-password.mjs",
   "scripts/test-governance.mjs",

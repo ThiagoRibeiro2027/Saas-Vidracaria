@@ -3,6 +3,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { atualizarNaFila, lerPacote, listarFila, removerDaFila, salvarPacote, type OperacaoFila } from "./db";
 
+export {
+  JANELA_BLOQUEIO_DIAS,
+  JANELA_EXPIRACAO_DIAS,
+  JANELA_ALERTA_BLOQUEIO_DIAS,
+  JANELA_ALERTA_EXPIRACAO_DIAS,
+  calcularValidade,
+  type EstadoValidade,
+} from "./validade";
+
 // Motor de sincronização da PWA de campo (ADR-005 §12/§13/§25). Drena a
 // fila SEQUENCIALMENTE (uma operação por vez, aguardando a resposta antes
 // de enviar a próxima) — de propósito: o mecanismo de idempotência do
@@ -11,32 +20,6 @@ import { atualizarNaFila, lerPacote, listarFila, removerDaFila, salvarPacote, ty
 // pro mesmo client_operation_id até a primeira transação terminar; enviar
 // em paralelo funcionaria, mas sequencial evita depender dessa espera e é
 // mais fácil de raciocinar sobre "o que já foi confirmado".
-
-export const JANELA_BLOQUEIO_DIAS = 3; // ADR-005 §9
-export const JANELA_EXPIRACAO_DIAS = 7; // ADR-005 §8
-
-export type EstadoValidade = {
-  diasSemSync: number | null; // null = nunca sincronizou
-  bloqueadoParaCriar: boolean; // >= 3 dias sem sync confirmado
-  expirado: boolean; // >= 7 dias sem sync confirmado
-};
-
-export function calcularValidade(syncedAt: string | null, agoraMs: number): EstadoValidade {
-  if (!syncedAt) {
-    return { diasSemSync: null, bloqueadoParaCriar: true, expirado: true };
-  }
-  // Math.max(0, ...): "now" do cliente (Date.now(), só para exibição) e
-  // syncedAt (server_now(), autoritativo) podem divergir por alguns
-  // milissegundos de latência/relógio — sem o clamp, uma sincronização
-  // muito recente mostra um valor negativo sem sentido ("-0.0d") em vez
-  // de simplesmente "0 dias".
-  const diasSemSync = Math.max(0, (agoraMs - new Date(syncedAt).getTime()) / 86_400_000);
-  return {
-    diasSemSync,
-    bloqueadoParaCriar: diasSemSync >= JANELA_BLOQUEIO_DIAS,
-    expirado: diasSemSync >= JANELA_EXPIRACAO_DIAS,
-  };
-}
 
 // Erro de rede (fetch falhou antes de qualquer resposta do servidor) versus
 // erro de validação (o servidor respondeu e rejeitou). Só o primeiro deve
