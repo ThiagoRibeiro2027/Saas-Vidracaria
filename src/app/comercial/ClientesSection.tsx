@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useActionState, useState } from "react";
-import { criarClienteAction, upsertPessoaAction, setPessoaPapelAction, upsertObraAction } from "./actions";
+import { criarClienteAction, upsertPessoaAction, setPessoaPapelAction, upsertObraAction, anonimizarPessoaAction } from "./actions";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -29,6 +29,7 @@ type Pessoa = {
   uf: string | null;
   cep: string | null;
   situacao: "ativo" | "inativo" | "bloqueado";
+  anonymized_at: string | null;
 };
 
 type Papel = { pessoa_id: string; papel: "CLIENTE" | "FORNECEDOR"; ativo: boolean };
@@ -175,6 +176,14 @@ function ClienteDetalhe({
     return <ClienteForm row={row} canManage={canManage} ehFornecedor={ehFornecedor} onSubmit={() => setEditando(false)} onCancel={() => setEditando(false)} />;
   }
 
+  if (row.anonymized_at) {
+    return (
+      <div className="text-xs text-text-muted">
+        Dados pessoais deste titular foram anonimizados em {new Date(row.anonymized_at).toLocaleDateString("pt-BR")} (pedido LGPD). O histórico de pedidos/orçamentos é preservado.
+      </div>
+    );
+  }
+
   return (
     <div>
       <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
@@ -207,12 +216,47 @@ function ClienteDetalhe({
         </div>
       </dl>
       {canManage && (
-        <div className="mt-2">
+        <div className="mt-2 flex items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(true)}>
             Editar cadastro
           </Button>
+          <AnonimizarPessoaButton pessoaId={row.id} />
         </div>
       )}
+    </div>
+  );
+}
+
+// LGPD (ADR-010 §5/§6) — pedido de exclusão/anonimização de um titular que
+// não é usuário do sistema (cliente/fornecedor/contato). Confirmação com
+// window.confirm segue o mesmo padrão já usado pra ações destrutivas em
+// Orçamentos (remover item), mas deixa explícito que é irreversível — aqui
+// não tem como desfazer, diferente de remover um item de orçamento.
+function AnonimizarPessoaButton({ pessoaId }: { pessoaId: string }) {
+  const [pending, setPending] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function anonimizar() {
+    const motivo = window.prompt(
+      "Anonimizar os dados pessoais deste titular (nome, documento, telefone, e-mail, endereço)? Isso é irreversível — o histórico de pedidos/orçamentos é preservado, mas sem identificação. Motivo do pedido (opcional):",
+    );
+    if (motivo === null) return; // cancelou o prompt
+    setPending(true);
+    setErro(null);
+    try {
+      await anonimizarPessoaAction(pessoaId, motivo.trim() || null);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível anonimizar os dados.");
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Button type="button" variant="danger" size="sm" onClick={anonimizar} disabled={pending}>
+        {pending ? "Anonimizando..." : "Anonimizar dados (LGPD)"}
+      </Button>
+      {erro && <p className="text-xs text-danger">{erro}</p>}
     </div>
   );
 }

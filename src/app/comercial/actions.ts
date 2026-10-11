@@ -442,3 +442,20 @@ export async function upsertObraAction(formData: FormData) {
 
   revalidatePath("/comercial");
 }
+
+// LGPD (ADR-010 §5/§6) — anonimiza os campos de identificação pessoal de
+// um cliente/fornecedor/contato (pessoas), sem apagar a linha: pedidos,
+// orçamentos e contratos que referenciam este id continuam íntegros.
+// Irreversível por desenho — a própria função SQL recusa repetir.
+export async function anonimizarPessoaAction(pessoaId: string, motivo: string | null) {
+  if (!pessoaId) throw new Error("Pessoa é obrigatória.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("anonimizar_pessoa", {
+    p_pessoa_id: pessoaId,
+    p_motivo: motivo,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
