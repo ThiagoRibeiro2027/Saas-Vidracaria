@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   liberarEngenhariaAction,
   criarOrdemProducaoAction,
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Table, Th, Td } from "@/components/ui/Table";
 import { DenseTable, DenseTableHeaderRow } from "@/components/ui/DenseTable";
+import EtiquetaOP, { type EtiquetaOPData } from "./EtiquetaOP";
 
 type Pessoa = { id: string; nome: string };
 type Obra = { id: string; nome: string };
@@ -282,6 +284,18 @@ export default function ProducaoSection({
     return it ? `${it.codigo} — ${it.descricao}` : "(item removido)";
   };
 
+  const [etiquetaAberta, setEtiquetaAberta] = useState<EtiquetaOPData | null>(null);
+
+  // TÓPICO 4 §18 — escanear a etiqueta de uma OP leva pra esta mesma tela
+  // com ?destacar_op=<id>; rola até o cartão da OP e destaca, pra quem
+  // escaneou cair direto onde precisa apontar, sem procurar na lista.
+  const searchParams = useSearchParams();
+  const destacarOp = searchParams.get("destacar_op");
+  useEffect(() => {
+    if (!destacarOp) return;
+    document.getElementById(`op-${destacarOp}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [destacarOp]);
+
   return (
     <section>
       <h2 className="text-sm font-semibold text-text">Pedidos liberados — itens e ordens de produção</h2>
@@ -381,7 +395,13 @@ export default function ProducaoSection({
                           <Td>
                             <div className="flex flex-col gap-2">
                               {ops.map((op) => (
-                                <div key={op.id} className="rounded border border-border-subtle p-1.5">
+                                <div
+                                  key={op.id}
+                                  id={`op-${op.id}`}
+                                  className={`rounded border p-1.5 transition-colors ${
+                                    destacarOp === op.id ? "border-primary bg-primary/5" : "border-border-subtle"
+                                  }`}
+                                >
                                   <div className="flex flex-wrap items-baseline gap-2">
                                     <strong>{op.numero}</strong>
                                     <Badge variant={STATUS_TONE[op.status]}>{statusLabels?.get(op.status) ?? STATUS_LABEL[op.status]}</Badge>
@@ -392,6 +412,25 @@ export default function ProducaoSection({
                                       produzida {num(op.quantidade_produzida)} / {num(op.quantidade_planejada)}
                                     </span>
                                     <span>perdida {num(op.quantidade_perdida)}</span>
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() =>
+                                        setEtiquetaAberta({
+                                          opNumero: op.numero,
+                                          quantidadePlanejada: Number(op.quantidade_planejada),
+                                          pedidoNumero: ped.numero,
+                                          clienteNome: pessoaNome(ped.pessoa_id),
+                                          obraNome: ped.obra_id ? obraNome(ped.obra_id) : null,
+                                          itemLabel: itemLabel(pi.item_id),
+                                          lotes: (opLotesPorOrdem.get(op.id) ?? []).map((l) => ({ numero: l.numero, status: l.status })),
+                                          urlDestino: `${window.location.origin}/producao?tab=ordens&destacar_op=${op.id}`,
+                                        })
+                                      }
+                                    >
+                                      Gerar etiqueta
+                                    </Button>
                                     {(() => {
                                       const tolerancia = toleranciaPorOrdem?.get(op.id);
                                       if (!tolerancia || tolerancia.excedida === null) return null;
@@ -639,6 +678,7 @@ export default function ProducaoSection({
           <p className="text-xs text-text-muted">Nenhum pedido liberado ainda — a produção só entra depois da liberação (TÓPICO 3).</p>
         )}
       </div>
+      {etiquetaAberta && <EtiquetaOP dados={etiquetaAberta} onFechar={() => setEtiquetaAberta(null)} />}
     </section>
   );
 }
