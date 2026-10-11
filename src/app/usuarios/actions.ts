@@ -188,3 +188,46 @@ export async function revogarPermissaoAction(formData: FormData) {
 
   revalidatePath("/usuarios");
 }
+
+// TÓPICO 14 §5/§6, achado da auditoria de gaps ADR-001 a ADR-012
+// (11/10/2026): permissão individual, além/apesar do papel — "conceder"
+// dá uma permissão que o papel não dá; "restringir" ("negar") tira uma
+// que o papel daria. Gate das 3 funções é roles.manage (mesmo de
+// conceder/revogar permissão de papel acima), não users.manage.
+export async function concederPermissaoIndividualAction(formData: FormData) {
+  const profileId = String(formData.get("profile_id") ?? "");
+  const permissionId = String(formData.get("permission_id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!profileId || !permissionId) throw new Error("Usuário e permissão são obrigatórios.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("conceder_permissao_individual", { p_profile_id: profileId, p_permission_id: permissionId, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/usuarios");
+}
+
+export async function restringirPermissaoIndividualAction(formData: FormData) {
+  const profileId = String(formData.get("profile_id") ?? "");
+  const permissionId = String(formData.get("permission_id") ?? "");
+  const motivo = String(formData.get("motivo") ?? "").trim() || null;
+  if (!profileId || !permissionId) throw new Error("Usuário e permissão são obrigatórios.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("restringir_permissao_individual", { p_profile_id: profileId, p_permission_id: permissionId, p_motivo: motivo });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/usuarios");
+}
+
+export async function removerPermissaoIndividualAction(formData: FormData) {
+  const profileId = String(formData.get("profile_id") ?? "");
+  const permissionId = String(formData.get("permission_id") ?? "");
+  if (!profileId || !permissionId) throw new Error("Usuário e permissão são obrigatórios.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remover_permissao_individual", { p_profile_id: profileId, p_permission_id: permissionId });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/usuarios");
+}

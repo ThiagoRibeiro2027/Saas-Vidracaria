@@ -122,10 +122,20 @@ export default async function UsuariosPage({
       ? await supabase.from("user_roles").select("id, profile_id, role_id, valid_until").is("valid_until", null).in("profile_id", profileIdsPagina)
       : { data: [] as never[] };
 
+  // TÓPICO 14 §5/§6, achado da auditoria de gaps ADR-001 a ADR-012
+  // (11/10/2026): precisa também na aba "usuarios" agora — pra calcular o
+  // que cada usuário tem "via papel" e mostrar a permissão individual
+  // (conceder/negar) por cima disso. Catálogo pequeno o bastante (poucas
+  // centenas no máximo) pra buscar sempre, não só na aba "papeis".
   const roleIdsDaEmpresa = (roles ?? []).filter((r) => r.company_id !== null).map((r) => r.id);
   const { data: rolePermissions } =
-    activeTab === "papeis" && roleIdsDaEmpresa.length > 0
+    roleIdsDaEmpresa.length > 0
       ? await supabase.from("role_permissions").select("role_id, permission_id").in("role_id", roleIdsDaEmpresa)
+      : { data: [] as never[] };
+
+  const { data: userPermissions } =
+    activeTab === "usuarios" && profileIdsPagina.length > 0
+      ? await supabase.from("user_permissions").select("profile_id, permission_id, efeito, motivo").in("profile_id", profileIdsPagina)
       : { data: [] as never[] };
 
   const userRolesPorProfile = new Map<string, UserRoleRow[]>();
@@ -140,6 +150,13 @@ export default async function UsuariosPage({
     const set = permissoesPorPapel.get(rp.role_id) ?? new Set<string>();
     set.add(rp.permission_id);
     permissoesPorPapel.set(rp.role_id, set);
+  }
+
+  const overridesPorPerfil = new Map<string, Map<string, "conceder" | "negar">>();
+  for (const up of userPermissions ?? []) {
+    const map = overridesPorPerfil.get(up.profile_id) ?? new Map<string, "conceder" | "negar">();
+    map.set(up.permission_id, up.efeito as "conceder" | "negar");
+    overridesPorPerfil.set(up.profile_id, map);
   }
 
   return (
@@ -159,7 +176,11 @@ export default async function UsuariosPage({
             paginacao={usPaginacao}
             roles={(roles as Role[]) ?? []}
             userRolesPorProfile={userRolesPorProfile}
+            permissions={(permissions as Permission[]) ?? []}
+            permissoesPorPapel={permissoesPorPapel}
+            overridesPorPerfil={overridesPorPerfil}
             canManage={!!canManage}
+            canManageRoles={!!canManageRoles}
           />
         )}
 

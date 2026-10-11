@@ -8,7 +8,11 @@ import {
   desativarUsuarioAction,
   reativarUsuarioAction,
   resetarSenhaAction,
+  concederPermissaoIndividualAction,
+  restringirPermissaoIndividualAction,
+  removerPermissaoIndividualAction,
 } from "./actions";
+import type { Permission } from "./PapeisSection";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -41,13 +45,21 @@ export default function UsuariosSection({
   paginacao,
   roles,
   userRolesPorProfile,
+  permissions,
+  permissoesPorPapel,
+  overridesPorPerfil,
   canManage,
+  canManageRoles,
 }: {
   profiles: Profile[];
   paginacao: PaginacaoInfo;
   roles: Role[];
   userRolesPorProfile: Map<string, UserRoleRow[]>;
+  permissions: Permission[];
+  permissoesPorPapel: Map<string, Set<string>>;
+  overridesPorPerfil: Map<string, Map<string, "conceder" | "negar">>;
   canManage: boolean;
+  canManageRoles: boolean;
 }) {
   const roleNome = (id: string) => roles.find((r) => r.id === id)?.name ?? "(papel removido)";
   const [expandido, setExpandido] = useState<string | null>(null);
@@ -158,6 +170,15 @@ export default function UsuariosSection({
                             </form>
                           )}
                         </div>
+
+                        <PermissoesIndividuais
+                          profileId={p.id}
+                          permissions={permissions}
+                          viaPapel={unirPermissoesViaPapel(userRoles, permissoesPorPapel)}
+                          overrides={overridesPorPerfil.get(p.id) ?? new Map()}
+                          canManageRoles={canManageRoles}
+                        />
+
                         {canManage && (
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <form action={p.active ? desativarUsuarioAction : reativarUsuarioAction}>
@@ -199,6 +220,97 @@ export default function UsuariosSection({
         </tbody>
       </DenseTable>
     </section>
+  );
+}
+
+function unirPermissoesViaPapel(userRoles: UserRoleRow[], permissoesPorPapel: Map<string, Set<string>>): Set<string> {
+  const via = new Set<string>();
+  for (const ur of userRoles) {
+    for (const permId of permissoesPorPapel.get(ur.role_id) ?? []) via.add(permId);
+  }
+  return via;
+}
+
+// TÓPICO 14 §5/§6, achado da auditoria de gaps ADR-001 a ADR-012
+// (11/10/2026): "permitir permissões individuais por usuário — conceder,
+// complementar ou restringir o que vem do papel" e "o administrador deve
+// conseguir responder: o que este usuário realmente pode fazer?". Mostra
+// só os overrides ATIVOS (não o catálogo inteiro de 66 permissões) — o
+// papel já é a via normal; individual é pensado pra exceção, não pra
+// configuração do dia a dia.
+function PermissoesIndividuais({
+  profileId,
+  permissions,
+  viaPapel,
+  overrides,
+  canManageRoles,
+}: {
+  profileId: string;
+  permissions: Permission[];
+  viaPapel: Set<string>;
+  overrides: Map<string, "conceder" | "negar">;
+  canManageRoles: boolean;
+}) {
+  const permLabel = (id: string) => {
+    const p = permissions.find((x) => x.id === id);
+    return p ? `${p.resource}.${p.action}` : "(permissão removida)";
+  };
+  // Permissão já concedida via papel não aparece na lista de "conceder"
+  // (seria redundante); já restringida não aparece na de "restringir"
+  // (já é o efeito atual, concedê-la de novo primeiro faria mais sentido
+  // como "remover restrição").
+  const semOverride = permissions.filter((p) => !overrides.has(p.id));
+
+  return (
+    <div className="mt-3 border-t border-border-subtle pt-2">
+      <p className="text-xs font-medium text-text">Permissões individuais (além ou apesar do papel)</p>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {[...overrides.entries()].map(([permId, efeito]) => (
+          <span
+            key={permId}
+            className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${
+              efeito === "conceder" ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+            }`}
+          >
+            {efeito === "conceder" ? "+ concede" : "– restringe"} {permLabel(permId)}
+            {viaPapel.has(permId) && efeito === "conceder" && " (já teria via papel)"}
+            {canManageRoles && (
+              <form action={removerPermissaoIndividualAction}>
+                <input type="hidden" name="profile_id" value={profileId} />
+                <input type="hidden" name="permission_id" value={permId} />
+                <button type="submit" className="cursor-pointer">
+                  ×
+                </button>
+              </form>
+            )}
+          </span>
+        ))}
+        {overrides.size === 0 && <span className="text-xs text-text-muted">nenhuma</span>}
+      </div>
+      {canManageRoles && (
+        <form className="mt-1.5 flex flex-wrap items-center gap-1">
+          <input type="hidden" name="profile_id" value={profileId} />
+          <Select name="permission_id" required defaultValue="" className="w-48 text-[11px]">
+            <option value="" disabled>
+              selecionar permissão...
+            </option>
+            {semOverride.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.resource}.{p.action}
+                {viaPapel.has(p.id) ? " (já tem via papel)" : ""}
+              </option>
+            ))}
+          </Select>
+          <Input name="motivo" placeholder="motivo (opcional)" className="w-40 text-[11px]" />
+          <Button type="submit" formAction={concederPermissaoIndividualAction} variant="primary" size="sm">
+            Conceder
+          </Button>
+          <Button type="submit" formAction={restringirPermissaoIndividualAction} variant="danger" size="sm">
+            Restringir
+          </Button>
+        </form>
+      )}
+    </div>
   );
 }
 
