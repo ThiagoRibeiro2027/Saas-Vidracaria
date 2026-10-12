@@ -290,6 +290,13 @@ trocaria a URL de produção por `127.0.0.1`.
   (precisa de fixture de instalação concluída) — validada só pela leitura da
   função; (iii) outros `description` com nome de entidade de negócio (equipe,
   recurso, regra) não são dado pessoal e ficaram.
+- **Achados 8 e 9 e política de senha — aplicados e conferidos na nuvem
+  (12/10/2026, somente leitura):** `migration list` em sincronia até
+  `20261012185105`; `anonimizar_pessoa` com a limpeza das cópias; as 12 funções do
+  achado 9 sem nome, e-mail, ficha ou resultado por linha no log; `anon` com 0
+  funções executáveis em `public`. `minimum_password_length` deixou de aparecer em
+  `config diff` (nuvem = 10) e o app passou a validar a composição da senha
+  (`validatePassword`), espelhando `password_requirements` da nuvem.
 - **Achado 10 (P0 operacional) — NÃO existe backup da produção.**
   `supabase backups list` devolve lista vazia (`pitr_enabled: false`): nenhum
   backup gerenciado; os dumps manuais em `backups/db` são de 11–12/09 e do
