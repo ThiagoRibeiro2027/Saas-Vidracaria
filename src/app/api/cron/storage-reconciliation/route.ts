@@ -71,13 +71,30 @@ export async function GET(request: NextRequest) {
   // como rastro de auditoria, não só como log operacional — company_id
   // fica nulo porque o objeto órfão nunca foi atribuído a um tenant do
   // ponto de vista da aplicação (sem metadado registrado).
-  await admin.rpc("log_activity", {
+  //
+  // Auditoria 12/10/2026: isto chamava log_activity(), que exige auth.uid()
+  // e levantava exceção para a service role — e o retorno nunca era olhado,
+  // então a purga acontecia sem rastro e a rota respondia ok. Agora usa a
+  // função de plataforma (só service_role, lista fechada de ações) e uma
+  // falha de gravação NÃO passa em silêncio: vira system_event e a rota
+  // responde 500 (o cron fica visível como falho), mesmo com a purga feita.
+  const { error: auditError } = await admin.rpc("sistema_registrar_evento_plataforma", {
     p_action: "security.storage_orphans_purged",
-    p_entity_type: "storage_object",
-    p_entity_id: null,
     p_description: `${found.length} objeto(s) órfão(s) purgado(s) do bucket company-files`,
     p_metadata: { paths },
   });
+  if (auditError) {
+    console.error("[storage-reconciliation] falha ao gravar o rastro de auditoria:", auditError.message);
+    await logSystemEvent(admin, {
+      category: "job_failure",
+      message: `storage-reconciliation: objetos órfãos purgados, mas o rastro de auditoria não foi gravado: ${auditError.message}`,
+      context: { purged_paths: paths },
+    });
+    return Response.json(
+      { ok: false, purged: found.length, error: `auditoria não gravada: ${auditError.message}` },
+      { status: 500 },
+    );
+  }
 
   return Response.json({ ok: true, purged: found.length });
 }

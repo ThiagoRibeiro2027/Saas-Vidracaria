@@ -280,6 +280,22 @@ async function main() {
   });
   check("authenticated (ADMIN) não chama submeter_aprovacao_compra direto", negado(eInterna));
 
+  // Auditoria 12/10/2026 (cron storage-reconciliation): a função de evento de
+  // plataforma é exclusiva da service role — nem usuário comum, nem anon.
+  const { error: ePlataforma } = await user.rpc("sistema_registrar_evento_plataforma", {
+    p_action: "security.storage_orphans_purged",
+    p_description: "tentativa de usuário comum",
+    p_metadata: null,
+  });
+  check("authenticated não chama sistema_registrar_evento_plataforma", negado(ePlataforma));
+  const somenteService = psql(`
+    select bool_and(has_function_privilege('service_role', p.oid, 'execute'))
+       and not bool_or(has_function_privilege('authenticated', p.oid, 'execute'))
+       and not bool_or(has_function_privilege('anon', p.oid, 'execute'))
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'sistema_registrar_evento_plataforma'`);
+  check("sistema_registrar_evento_plataforma é executável só por service_role (catálogo)", somenteService === "t");
+
   const { data: temPerm, error: ePerm } = await user.rpc("has_permission", { p_resource: "files", p_action: "read" });
   check("função legítima segue funcionando para authenticated (has_permission)", !ePerm && temPerm === true);
 

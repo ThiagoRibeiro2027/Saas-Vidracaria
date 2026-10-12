@@ -132,10 +132,6 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
 - **Signup público e rate limiting** — não testáveis localmente; conferir a
   configuração do projeto na nuvem (painel do Supabase). O `config.toml`
   local mantém `enable_signup = true` (SEC-011, supabase/auth#330).
-- **Suspeita, não verificada:** `src/app/api/cron/storage-reconciliation`
-  chama `admin.rpc("log_activity")`; a função exige `auth.uid()` não nulo e
-  com a service role ele é nulo, então a trilha de auditoria da purga de
-  órfãos provavelmente nunca é gravada (erro ignorado no handler).
 - **Matriz LGPD e controles P1/P2** além do coberto pelos testes de
   anonimização — não auditados nesta rodada. Itens que dependem de decisão
   humana: os 3 itens jurídicos do ADR-010 §15; backup automático exige
@@ -209,6 +205,34 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   próprio usuário); privilégios do achado 4 intactos (`anon` 0, `authenticated`
   353, `service_role` 387 de 387). **Não executado na nuvem:** os testes de
   comportamento (criam tenants; só rodam no banco local).
+
+- **Achado 6 (P1) — o cron `storage-reconciliation` purgava órfãos sem
+  deixar rastro de auditoria** (suspeita da primeira rodada, agora
+  **confirmada e corrigida**). A rota chamava `admin.rpc("log_activity")`, que
+  exige `auth.uid()` — nulo para a service role — e levantava exceção; a rota
+  nunca olhava o retorno. Reproduzido de ponta a ponta com o cron real
+  (`scripts/test-cron-storage-reconciliation.mjs`, sobe um `next dev`, cria
+  órfão envelhecido): resposta `200 ok:true`, objeto purgado, **nenhuma linha
+  em `activity_logs`** (7 de 11 verificações antes; 14/14 depois).
+  **Correção, NÃO aplicada na nuvem ainda:**
+  `20261012182823_sistema_registrar_evento_plataforma.sql` — função só para
+  `service_role` (revoke explícito + checagem de `auth.role()` no corpo), lista
+  FECHADA de ações (hoje só `security.storage_orphans_purged`; regra 8 do
+  CLAUDE.md), grava como evento de plataforma (`company_id` e `user_id` nulos).
+  A rota agora checa o retorno: falha de auditoria vira `system_event`
+  (`job_failure`) e a resposta é 500, mesmo com a purga feita. Não se abriu
+  `log_activity()` para `service_role` de propósito (é a escrita padrão de
+  dezenas de funções de negócio). **Não coberto por teste:** o caminho em que a
+  gravação da auditoria falha (resposta 500 + system_event).
+- **Observação (não corrigida, decisão do responsável):** o padrão "chamada
+  `rpc` com retorno descartado" ainda existe em (a)
+  `src/app/api/cron/integracoes-webhooks-saida/route.ts` (`sistema_iniciar_
+  processamento_operacao`, `sistema_falhar_operacao`, `sistema_concluir_operacao`)
+  e (b) `log_platform_admin_access` nas telas `audit` e `governance` (trilha de
+  acesso de suporte do platform_admin), além dos `log_client_event` de
+  login/MFA/export. Nenhum deles foi reproduzido como falha; apenas não
+  deixariam rastro de que falharam. Vale decidir, caso a caso, se a falha deve
+  ser visível.
 
 ### Ambiente de teste local (aprendizado)
 
