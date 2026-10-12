@@ -452,6 +452,10 @@ async function main() {
     check("ADMIN (com instalacao.aceite) registra aceite", !error);
     const { data: inst } = await admin.from("instalacoes").select("status, aceite_nome_cliente").eq("id", instalacaoId).single();
     check("status vira 'aceita' com nome do cliente registrado", inst?.status === "aceita" && inst?.aceite_nome_cliente === "Fulano de Tal");
+    // Auditoria TR Systems 12/10/2026, achado 9: o nome de quem aceitou fica em
+    // instalacoes.aceite_nome_cliente (anonimizável), NÃO na trilha imutável.
+    const { data: logAceite } = await admin.from("activity_logs").select("description, metadata").eq("entity_id", instalacaoId).eq("action", "instalacao.aceite_registrado");
+    check("log do aceite gravado e SEM o nome do cliente", (logAceite ?? []).length === 1 && !JSON.stringify(logAceite).includes("Fulano de Tal"));
   }
 
   console.log("\n21. cancelar_instalacao() rejeita depois de 'aceita'");

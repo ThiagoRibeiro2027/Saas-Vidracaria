@@ -862,7 +862,7 @@ async function main() {
     await admin.from("platform_admins").insert({ id: aprov2Tenant.userId, role: "SUPER_ADMIN" });
     const { error: errPlatformAal1 } = await aprov2Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa1Id, p_decisao: "aprovar" });
     await admin.from("platform_admins").delete().eq("id", aprov2Tenant.userId);
-    check("platform_admin em AAL1 NÃO dispensa o papel aprovador da etapa de compra", !!errPlatformAal1);
+    check("platform_admin em AAL1 NÃO dispensa o papel aprovador da etapa de compra (erro de ALÇADA, não de outra regra)", /exige o perfil aprovador/.test(errPlatformAal1?.message ?? ""));
 
     const { error: e1 } = await aprov1Tenant.client.rpc("decidir_etapa_aprovacao_compra", { p_etapa_id: etapa1Id, p_decisao: "aprovar", p_observacao: "ok" });
     check("perfil COMERCIAL aprova a etapa 1", !e1);

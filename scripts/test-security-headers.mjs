@@ -59,7 +59,10 @@ const ROTAS = [
 async function main() {
   const port = await freePort();
   const base = `http://localhost:${port}`;
-  const child = spawn("npx", ["next", "dev", "-p", String(port)], {
+  // HEADERS_MODE=prod testa o build de produção (`next build` antes; `next start`
+  // aqui), onde a CSP não pode ter 'unsafe-eval'. Padrão: `next dev`.
+  const prod = process.env.HEADERS_MODE === "prod";
+  const child = spawn("npx", ["next", prod ? "start" : "dev", "-p", String(port)], {
     stdio: "ignore",
     env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
   });
@@ -100,6 +103,7 @@ async function main() {
     const res = await fetch(`${base}/login`);
     const scriptSrc = (res.headers.get("content-security-policy") ?? "").split(";").map((s) => s.trim()).find((s) => s.startsWith("script-src")) ?? "";
     check("script-src não aceita '*' nem http:/https: genérico", !/(^|\s)(\*|https?:)(\s|$)/.test(scriptSrc));
+    if (prod) check("build de produção: script-src SEM 'unsafe-eval'", !/unsafe-eval/.test(scriptSrc));
   } finally {
     child.kill("SIGTERM");
   }

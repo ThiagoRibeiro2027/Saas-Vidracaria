@@ -33,7 +33,7 @@ Legenda de evidência: **V** = teste automatizado vermelho antes e verde depois.
 
 | Controle | Antes | Depois | Evidência | Prio. |
 |---|---|---|---|---|
-| MFA de `platform_admin` imposto no banco | Imposto, com exceção em 3 funções de alçada | 3 funções passaram a exigir AAL2 (achado 1) | **V** parcial: testes AAL1 negam e passam, mas a rodada "sem a migration" não foi feita e falta o caso positivo em AAL2 | P2 |
+| MFA de `platform_admin` imposto no banco | Imposto, com exceção em 3 funções de alçada | 3 funções passaram a exigir AAL2 (achado 1) | **V** `test-comercial` (88 passam, 3 falham com o comportamento antigo emulado; 91/91 com a correção), `test-compras` (293/2 e 295/0) e caso positivo AAL2 no comercial | P2 |
 | Storage com RBAC (`files.read`/`files.upload`) | Já imposto | Sem mudança | **R** | P0 |
 | Funções RPC com EXECUTE aberto | **325 de 387 executáveis por `anon`** | `anon` 0 de 388 (na nuvem); `authenticated` 353; `service_role` 388 | **V** `test-execute-grants-varredura` (12 falhas antes, verde depois) + conferência no catálogo da nuvem | P0 |
 | `log_activity` forjável por usuário | Não era forjável (já fechada pela SEC-005) | Sem mudança | **R**. Minha suspeita inicial estava errada e foi retratada | P1 |
@@ -48,14 +48,14 @@ Legenda de evidência: **V** = teste automatizado vermelho antes e verde depois.
 | ID | Achado | Antes | Depois | Evidência | Prio. | Nuvem |
 |---|---|---|---|---|---|---|
 | 1 | Alçada dispensada por `is_platform_admin()` sem checar AAL | Defesa em profundidade ausente, sem exploração conhecida | `is_platform_admin_mfa_verified()` | **V** parcial (ver 2.1) | P2 | Aplicado |
-| 2 | Sem CSP, `X-Frame-Options` nem `nosniff` (clickjacking) | Nenhum header | CSP, XFO, nosniff, Referrer-Policy, Permissions-Policy, HSTS | **V** `test-security-headers`: 45 falhas antes, 53/53 depois. Testado só no `next dev` | P1 | **Não implantado** |
+| 2 | Sem CSP, `X-Frame-Options` nem `nosniff` (clickjacking) | Nenhum header | CSP, XFO, nosniff, Referrer-Policy, Permissions-Policy, HSTS | **V** `test-security-headers`: 45 falhas antes, 53/53 no `next dev` e 54/54 no build de produção (`HEADERS_MODE=prod`, sem `unsafe-eval`). No Chrome, o build de produção hidrata sob a CSP sem erro | P1 | **Não implantado** |
 | 3 | 9 funções sem guarda de suspensão | Empresa suspensa conseguia escrever | Guarda em todas | **V** | P1 | Aplicado |
 | 4 | EXECUTE aberto a `PUBLIC`/`anon` | `anon` chamava `log_system_event` com empresa alheia | `anon` 0 | **V** | **P0** | Aplicado |
 | 5 | `log_system_event` confiava em `p_company_id` do cliente | Usuário gravava evento em outro tenant | Valida a empresa do chamador | **V** `test-governance` seção 6 | P1 | Aplicado |
-| 6 | Cron `storage-reconciliation` purgava sem rastro | `200 ok`, objeto apagado, zero linha de auditoria | Função `sistema_registrar_evento_plataforma` + rota checa o retorno | **V** `test-cron-storage-reconciliation` (14/14). **O caminho de falha da auditoria (500) não tem teste** | P1 | Migration aplicada; **rota sem deploy** |
+| 6 | Cron `storage-reconciliation` purgava sem rastro | `200 ok`, objeto apagado, zero linha de auditoria | Função `sistema_registrar_evento_plataforma` + rota checa o retorno | **V** `test-cron-storage-reconciliation` (14/14). Caminho de falha coberto (500 + `system_event`): 18/18 | P1 | Migration aplicada; **rota sem deploy** |
 | 7 | Política de senha divergente (6 na nuvem; 10, 8 e 8 no app) | Três mínimos; nuvem em 6 | Mínimo único de 10 no app e na nuvem; app valida maiúscula, minúscula, número e símbolo | **V** `test-password-policy`. Composição validada como função pura; telas não testadas no navegador | P1 | `config diff` sem divergência; **código sem deploy** |
 | 8 | `anonimizar_pessoa` só limpava `pessoas` | Ficavam nome e endereço da obra, e-mail da proposta, banco e PIX do fornecedor | Limpa as cópias, preservando o que tem guarda legal | **V** `test-lgpd-pessoa` seção 4 | P1 | Aplicado |
-| 9 | Nome, e-mail e ficha na trilha de auditoria imutável | Dado pessoal gravado em `description` e `metadata` | Logs novos sem dado pessoal (12 funções) | **V** `test-lgpd-pessoa` seção 5. `registrar_aceite_instalacao` sem teste de comportamento | P1 | Aplicado |
+| 9 | Nome, e-mail e ficha na trilha de auditoria imutável | Dado pessoal gravado em `description` e `metadata` | Logs novos sem dado pessoal (12 funções) | **V** `test-lgpd-pessoa` seção 5. `registrar_aceite_instalacao`: asserção escrita em `test-instalacao`, ainda sem execução limpa | P1 | Aplicado |
 | 10 | **Sem backup da produção** | `pitr_enabled: false`, nenhum backup | **Sem mudança** | **E** `backups list` | **P0** | **Aberto** |
 | 11 | Headers de segurança não estão em produção | Só HSTS e `X-Powered-By` na resposta | **Sem mudança** até o deploy | **E** `curl -I` | P1 | **Aberto** |
 
@@ -83,12 +83,11 @@ Também foi coberta a minimização de fotos: `test-imagem-exif` prova que a fot
 ## 4. O que não foi testado
 
 - **Produção.** Nenhum teste de comportamento rodou contra a nuvem. A inspeção foi somente leitura, e a conferência das funções foi feita lendo o corpo no catálogo. As 24 telas do menu foram abertas contra a nuvem depois do achado 4, sem as ações de escrita.
-- **`npm test` completo na última rodada:** foi executado por você após os achados 8 e 9 e a política de senha. Eu não vi a saída, então este relatório não afirma o resultado. Antes dessas mudanças, a suíte completa passou (42/42 scripts).
-- **Achado 1:** falta a rodada "sem a migration" e o caso positivo em AAL2.
-- **Achado 2:** a CSP foi testada só no `next dev`.
-- **Achado 6:** o caminho em que a gravação da auditoria falha não tem teste.
-- **Achado 7:** a validação de senha não foi exercitada nas telas, no navegador.
-- **Achado 9:** `registrar_aceite_instalacao` foi validada só por leitura da função.
+- **A suíte completa na última rodada:** você executou `npm test` após os achados 8 e 9. Eu não vi a saída, e depois dela mudei `test-comercial`, `test-compras`, `test-bancario`, `test-instalacao`, `test-cron-storage-reconciliation` e `test-security-headers`. Falta um `npm test` limpo (com `db reset`) sobre esse estado final.
+- **`test-bancario` e `test-instalacao`:** foram editados, mas não consegui rodá-los neste banco sujo. A asserção nova de `test-bancario` (mensagem de alçada) e a de `test-instalacao` (log do aceite sem nome) só ficam provadas no `npm test` limpo.
+- **Achado 7:** a validação de senha foi vista no Chrome (formulário com mínimo 10 e dica), mas nenhum envio de senha fraca foi feito pela tela.
+- **CSP:** conferida no `next start` local, não na Vercel. Falta olhar o site publicado depois do deploy, inclusive download por URL assinada e sincronização do app de campo.
+- **Teste de alçada que passava por motivo errado:** `test-comercial` movia o perfil de empresa com `UPDATE`, que o trigger `profiles_company_id_immutable` recusa em silêncio. Os "bloqueios" de alçada passavam por falta de permissão. Foi corrigido (usuário criado na empresa certa) e as asserções agora exigem a mensagem da alçada. Convém revisar outros testes que usem esse padrão.
 - **Cobertura geral:** a auditoria cobriu os controles listados no prompt e os achados da varredura. Não houve revisão exaustiva de cada controle P1/P2 da matriz LGPD, nem teste de carga, pentest externo ou revisão de dependências.
 
 ---

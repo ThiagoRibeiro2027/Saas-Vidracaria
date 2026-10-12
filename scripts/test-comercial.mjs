@@ -6,6 +6,7 @@
 // Uso: set -a; source .env.local; set +a; node scripts/test-comercial.mjs
 
 import { createClient } from "@supabase/supabase-js";
+import { authenticator } from "otplib";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -96,6 +97,27 @@ async function createTenant(slug, name, identifier, roleKey = "ADMIN") {
 // pra isso — usado para simular um usuário "COMERCIAL" com orcamentos.manage
 // mas sem ser ADMIN (e sem a permissão de configuracoes.manage, que o ADMIN
 // tem por padrão via seed).
+// Usuário novo DENTRO de uma empresa existente (profiles.company_id é imutável).
+async function createUserInCompany(company, slug, identifier, roleKey) {
+  const email = `${identifier}.${slug}@users.internal`;
+  const password = "senha-de-teste-123456";
+  const { data: created } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+  let userId = created?.user?.id;
+  if (!userId) {
+    const { data: list } = await admin.auth.admin.listUsers({ perPage: 10000 });
+    userId = list.users.find((u) => u.email === email)?.id;
+  }
+  await admin.from("profiles").upsert(
+    { id: userId, company_id: company.id, login_identifier: `${identifier}-${slug}`.slice(0, 40), display_name: slug },
+    { onConflict: "id" },
+  );
+  const { data: role } = await admin.from("roles").select("id").is("company_id", null).eq("key", roleKey).single();
+  await admin.from("user_roles").insert({ profile_id: userId, role_id: role.id });
+  const client = createClient(url, anonKey);
+  await client.auth.signInWithPassword({ email, password });
+  return { client, company, userId };
+}
+
 async function grantOnlyPermission(tenant, resource, action, roleKeySuffix) {
   const { data: perm } = await admin
     .from("permissions")
@@ -261,14 +283,18 @@ async function main() {
     // Para testar o bloqueio de fato, um segundo usuário no MESMO tenant
     // com orcamentos.manage mas sem o papel ADMIN (o aprovador da alçada
     // acima).
-    const semAlcadaTenant = await createTenant(`comercial-test-semalcada-${RUN}`, "Sem Alçada", "9804", "COMERCIAL");
-    await admin.from("profiles").update({ company_id: admTenant.company.id }).eq("id", semAlcadaTenant.userId);
+    // O usuário nasce JÁ na empresa do ADMIN. (A versão anterior criava um tenant
+    // próprio e tentava mover o perfil com UPDATE de company_id — o trigger
+    // profiles_company_id_immutable recusa, o UPDATE falhava em silêncio e o
+    // usuário ficava sem orcamentos.manage na empresa do orçamento: os "bloqueios"
+    // abaixo passavam por falta de permissão, não pela alçada.)
+    const semAlcadaTenant = await createUserInCompany(admTenant.company, `comercial-test-semalcada-${RUN}`, "9804", "COMERCIAL");
     await grantOnlyPermission({ company: admTenant.company, userId: semAlcadaTenant.userId }, "orcamentos", "manage", "ORC_MANAGE");
 
     const { error: bloqueadoError } = await semAlcadaTenant.client.rpc("decidir_orcamento", {
       p_id: orcamentoId, p_decisao: "aprovado",
     });
-    check("aprovação acima da alçada é bloqueada sem o papel aprovador", !!bloqueadoError);
+    check("aprovação acima da alçada é bloqueada sem o papel aprovador (erro de ALÇADA, não de permissão)", /exige o perfil aprovador/.test(bloqueadoError?.message ?? ""));
 
     // Auditoria TR Systems 12/10/2026, achado 1 (migration
     // 20261012*_alcada_platform_admin_mfa): o bypass da alçada para
@@ -279,9 +305,33 @@ async function main() {
       p_id: orcamentoId, p_decisao: "aprovado",
     });
     await admin.from("platform_admins").delete().eq("id", semAlcadaTenant.userId);
-    check("platform_admin em AAL1 NÃO dispensa a alçada do orçamento", !!platformAal1Error);
+    check("platform_admin em AAL1 NÃO dispensa a alçada do orçamento (erro de ALÇADA)", /exige o perfil aprovador/.test(platformAal1Error?.message ?? ""));
     const { data: aindaRascunho } = await admin.from("orcamentos").select("status").eq("id", orcamentoId).single();
     check("orçamento não mudou de status após a tentativa em AAL1", aindaRascunho?.status !== "aprovado");
+
+    // Caso POSITIVO do achado 1: o mesmo platform_admin, agora com MFA verificado
+    // (AAL2), dispensa a alçada. Usa um segundo orçamento (mesmo valor, 1505) para
+    // não consumir o orçamento que o ADMIN aprova logo abaixo.
+    const { data: orcAal2Id } = await admTenant.client.rpc("upsert_orcamento", {
+      p_id: null, p_pessoa_id: clienteId, p_obra_id: obraId, p_validade: "2026-12-31",
+      p_condicao_comercial: "30 dias", p_observacoes: "Teste AAL2",
+    });
+    await admTenant.client.rpc("upsert_orcamento_item", {
+      p_id: null, p_orcamento_id: orcAal2Id, p_item_id: itemId, p_quantidade: 10, p_preco_unitario: 150.5,
+    });
+    await admin.from("platform_admins").insert({ id: semAlcadaTenant.userId, role: "SUPER_ADMIN" });
+    const { data: enrollAal2 } = await semAlcadaTenant.client.auth.mfa.enroll({ factorType: "totp" });
+    const { data: challengeAal2 } = await semAlcadaTenant.client.auth.mfa.challenge({ factorId: enrollAal2.id });
+    await semAlcadaTenant.client.auth.mfa.verify({
+      factorId: enrollAal2.id, challengeId: challengeAal2.id, code: authenticator.generate(enrollAal2.totp.secret),
+    });
+    const { error: platformAal2Error } = await semAlcadaTenant.client.rpc("decidir_orcamento", {
+      p_id: orcAal2Id, p_decisao: "aprovado",
+    });
+    await admin.from("platform_admins").delete().eq("id", semAlcadaTenant.userId);
+    check("platform_admin em AAL2 (MFA verificado) dispensa a alçada do orçamento", !platformAal2Error);
+    const { data: aprovadoAal2 } = await admin.from("orcamentos").select("status").eq("id", orcAal2Id).single();
+    check("orçamento aprovado em AAL2 muda de status", aprovadoAal2?.status === "aprovado");
 
     const { error: aprovadoError } = await admTenant.client.rpc("decidir_orcamento", {
       p_id: orcamentoId, p_decisao: "aprovado",

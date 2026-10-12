@@ -80,6 +80,14 @@ async function waitUp(base, child) {
   throw new Error("next dev não subiu em 90s");
 }
 
+let auditoriaQuebrada = false;
+function restaurarAuditoria() {
+  if (!auditoriaQuebrada) return;
+  const existe = psql("select count(*) from pg_proc where proname = 'sistema_registrar_evento_plataforma__off' and pronamespace = 'public'::regnamespace");
+  if (existe === "1") psql("alter function public.sistema_registrar_evento_plataforma__off(text, text, jsonb) rename to sistema_registrar_evento_plataforma");
+  auditoriaQuebrada = false;
+}
+
 async function main() {
   const cronSecret = `test-cron-${randomUUID()}`;
   const port = await freePort();
@@ -169,7 +177,37 @@ async function main() {
       .select("id", { count: "exact", head: true })
       .eq("description", marcaForjada);
     check("nenhuma linha forjada chegou a activity_logs", (forjadas ?? 0) === 0);
+
+    console.log("\n6. Falha ao gravar a auditoria NÃO passa em silêncio (resposta 500 + system_event)");
+    // Simula a falha tirando a função de auditoria do caminho (renomeada e depois
+    // restaurada no finally). Só afeta este banco local, por poucos segundos.
+    const orfaoFalha = `${randomUUID()}/geral/geral/${runId}-cron-orfao-falha.png`;
+    const upF = await admin.storage.from(BUCKET).upload(orfaoFalha, PNG_1X1, { contentType: "image/png" });
+    check("(fixture) órfão para o cenário de falha criado", !upF.error);
+    psql(`update storage.objects set created_at = now() - interval '3 hours' where bucket_id = '${BUCKET}' and name = '${orfaoFalha}'`);
+    try {
+      auditoriaQuebrada = true;
+      psql("alter function public.sistema_registrar_evento_plataforma(text, text, jsonb) rename to sistema_registrar_evento_plataforma__off");
+      const resF = await fetch(`${base}/api/cron/storage-reconciliation`, { headers: { Authorization: `Bearer ${cronSecret}` } });
+      const corpoF = await resF.json().catch(() => ({}));
+      check("com a auditoria indisponível a rota responde 500 com ok=false", resF.status === 500 && corpoF.ok === false);
+      check("a resposta informa que a purga aconteceu mas a auditoria não foi gravada", (corpoF.purged ?? 0) >= 1 && /auditoria/i.test(corpoF.error ?? ""));
+      const { data: evs } = await admin
+        .from("system_events")
+        .select("category, message, context")
+        .eq("category", "job_failure")
+        .order("created_at", { ascending: false })
+        .limit(20);
+      check(
+        "a falha virou system_event job_failure com o caminho purgado",
+        (evs ?? []).some((e) => /storage-reconciliation/.test(e.message ?? "") && (e.context?.purged_paths ?? []).includes(orfaoFalha)),
+      );
+    } finally {
+      restaurarAuditoria();
+    }
+    await admin.storage.from(BUCKET).remove([orfaoFalha]);
   } finally {
+    restaurarAuditoria();
     child.kill("SIGTERM");
     await admin.storage.from(BUCKET).remove([orfaoAntigo, orfaoRecente]);
   }
