@@ -33,6 +33,9 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+// Mesma convenção dos outros testes que usam psql (test-rls-performance.mjs):
+// no macOS o psql do Homebrew (libpq) não está no PATH por padrão.
+const PATH_WITH_LIBPQ = `/opt/homebrew/opt/libpq/bin:${process.env.PATH ?? ""}`;
 
 let passed = 0;
 let failed = 0;
@@ -51,6 +54,7 @@ function psql(sql, { allowError = false } = {}) {
     return execFileSync("psql", [DATABASE_URL, "-t", "-A", "-v", "ON_ERROR_STOP=1", "-c", sql], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, PATH: PATH_WITH_LIBPQ },
     }).trim();
   } catch (err) {
     if (allowError) return `${err.stderr ?? ""}${err.stdout ?? ""}`;

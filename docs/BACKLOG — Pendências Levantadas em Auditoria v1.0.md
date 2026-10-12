@@ -158,10 +158,12 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   onde já existia, exceto triggers e 16 funções internas; mantém
   `service_role`; verificações internas abortam a migration em caso de
   divergência). Teste: `scripts/test-execute-grants-varredura.mjs` — 12
-  falhas antes, 21/21 depois, no banco local. **Falta:** `npm test` completo
-  com `db reset` (uma tentativa sem reset falhou 16 scripts por e-mail
-  repetido/dado residual; não é prova nem contra nem a favor da migration) e
-  `db push` com aprovação.
+  falhas antes, 21/21 depois, no banco local. **Regressão:** `npm test`
+  completo com `db reset` (migration reaplicada pelo arquivo): os 39 scripts
+  anteriores passaram (12/10/2026); o único vermelho foi o próprio teste novo,
+  por `psql` fora do PATH (faltava o `PATH_WITH_LIBPQ` dos outros testes),
+  corrigido e revalidado sem o libpq no PATH. **Falta:** `db push` na nuvem,
+  com aprovação do responsável.
 - **Achado 3 (P1) — 9 funções de escrita de tenant sem
   `assert_company_not_suspended()`** (regra 2): `ajustar_saldo`,
   `delete_file`, `upsert_oportunidade`, `mudar_estagio_oportunidade`,

@@ -28,6 +28,9 @@ import { execFileSync } from "node:child_process";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+// Mesma convenção dos outros testes que usam psql (test-rls-performance.mjs):
+// no macOS o psql do Homebrew (libpq) não está no PATH por padrão.
+const PATH_WITH_LIBPQ = `/opt/homebrew/opt/libpq/bin:${process.env.PATH ?? ""}`;
 
 let passed = 0;
 let failed = 0;
@@ -44,6 +47,7 @@ function check(label, condition) {
 function psql(sql) {
   return execFileSync("psql", [DATABASE_URL, "-t", "-A", "-v", "ON_ERROR_STOP=1", "-c", sql], {
     encoding: "utf8",
+    env: { ...process.env, PATH: PATH_WITH_LIBPQ },
   }).trim();
 }
 
