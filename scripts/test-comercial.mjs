@@ -270,6 +270,19 @@ async function main() {
     });
     check("aprovação acima da alçada é bloqueada sem o papel aprovador", !!bloqueadoError);
 
+    // Auditoria TR Systems 12/10/2026, achado 1 (migration
+    // 20261012*_alcada_platform_admin_mfa): o bypass da alçada para
+    // platform_admin precisa de AAL2. Mesmo usuário, agora também
+    // platform_admin, mas sessão em AAL1 — continua bloqueado.
+    await admin.from("platform_admins").insert({ id: semAlcadaTenant.userId, role: "SUPER_ADMIN" });
+    const { error: platformAal1Error } = await semAlcadaTenant.client.rpc("decidir_orcamento", {
+      p_id: orcamentoId, p_decisao: "aprovado",
+    });
+    await admin.from("platform_admins").delete().eq("id", semAlcadaTenant.userId);
+    check("platform_admin em AAL1 NÃO dispensa a alçada do orçamento", !!platformAal1Error);
+    const { data: aindaRascunho } = await admin.from("orcamentos").select("status").eq("id", orcamentoId).single();
+    check("orçamento não mudou de status após a tentativa em AAL1", aindaRascunho?.status !== "aprovado");
+
     const { error: aprovadoError } = await admTenant.client.rpc("decidir_orcamento", {
       p_id: orcamentoId, p_decisao: "aprovado",
     });

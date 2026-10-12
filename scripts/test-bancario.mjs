@@ -277,6 +277,13 @@ async function main() {
     const { error: ePerfilErrado } = await erradoTenant.client.rpc("decidir_etapa_aprovacao_financeiro", { p_etapa_id: etapas[0].id, p_decisao: "aprovar" });
     check("perfil errado (PRODUCAO tentando etapa da COMERCIAL) é rejeitado", !!ePerfilErrado);
 
+    // Auditoria TR Systems 12/10/2026, achado 1: platform_admin em AAL1 não
+    // dispensa o papel aprovador da etapa (bypass exige AAL2).
+    await admin.from("platform_admins").insert({ id: erradoTenant.userId, role: "SUPER_ADMIN" });
+    const { error: ePlatformAal1 } = await erradoTenant.client.rpc("decidir_etapa_aprovacao_financeiro", { p_etapa_id: etapas[0].id, p_decisao: "aprovar" });
+    await admin.from("platform_admins").delete().eq("id", erradoTenant.userId);
+    check("platform_admin em AAL1 NÃO dispensa o papel aprovador da etapa financeira", !!ePlatformAal1);
+
     const { error: eDecidir } = await aprovadorTenant.client.rpc("decidir_etapa_aprovacao_financeiro", { p_etapa_id: etapas[0].id, p_decisao: "aprovar", p_observacao: "ok" });
     check("perfil COMERCIAL (com financeiro.aprovar) aprova a etapa", !eDecidir);
     const { data: aprovDepois } = await admin.from("financeiro_aprovacoes").select("status").eq("id", aprovacaoId).single();
