@@ -238,6 +238,64 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   deixariam rastro de que falharam. Vale decidir, caso a caso, se a falha deve
   ser visível.
 
+### Rodada de itens abertos (12/10/2026): configuração da nuvem, LGPD e produção
+
+Verificação feita por `supabase config diff`, `supabase projects list`,
+`supabase backups list` e `db query --linked` (somente leitura), mais sondas
+com dados reais no banco local.
+
+**Confirmado na nuvem (sem ação):** região `sa-east-1` (ADR-010 §9); signup
+público FECHADO (`enable_signup = false`); confirmação de e-mail ligada; rate
+limits de Auth iguais aos do `config.toml` local (padrão do Supabase, 30
+login/cadastros por janela por IP — `email_sent` não é comparado pela API);
+`site_url` e redirects apontam para `https://saas-vidracaria.vercel.app`.
+Atenção: o `config.toml` NÃO é a configuração da nuvem (10 divergências,
+inclusive `site_url`); **nunca rodar `supabase config push` com ele**, que
+trocaria a URL de produção por `127.0.0.1`.
+
+- **Achado 7 (P1) — política de senha.** Nuvem: `minimum_password_length = 6`
+  (o `config.toml` declara 10). O app tinha três mínimos (10 na troca; 8 na
+  criação e na redefinição pelo admin) e um comentário afirmando que o GoTrue
+  rejeitaria — válido só no banco local. **Código corrigido** (commit
+  `b19fc79`): `src/lib/auth/password-policy.ts` é a fonte única (10) e
+  `test-password-policy.mjs` falha se divergir do `config.toml`. **PENDENTE
+  (decisão/ação humana):** ajustar `minimum_password_length` para 10 no painel
+  do Supabase (Authentication) — sem isso, quem chamar a Auth API direto
+  (a anon key vai no bundle do app de campo) ainda aceita senha de 6.
+- **Achado 8 (P1, LGPD) — `anonimizar_pessoa()` só limpa `pessoas`.** Provado
+  com dados reais: depois de anonimizar o titular permanecem (a) `obras`: nome
+  e endereço completo; (b) `propostas.destinatario`: o e-mail; (c)
+  `fornecedor_dados`: banco, agência, conta e `chave_pix` (aqui, o CPF). Já
+  `propostas.snapshot` só guarda ids. **Decisão pendente do responsável** (há
+  tensão com obrigação de guarda — garantia/contrato/fiscal, ADR-010 §6).
+- **Achado 9 (P1, LGPD) — nome e documento na TRILHA DE AUDITORIA imutável.**
+  `cadastro.pessoa_upserted` grava o nome em `description`;
+  `users.usuario_criado`, `rh.funcionario_admitido/atualizado` e
+  `instalacao.aceite_registrado` idem; os eventos de importação gravam CPF/CNPJ
+  e nomes em `metadata`. O trigger torna a linha intocável e a anonimização
+  existente (`anonymize_activity_logs_for_user`) é por `user_id`, então o nome
+  de uma PESSOA (cliente, fornecedor, funcionário) nunca sai de lá. Contraria
+  ADR-009/010 §8 (log sem dado pessoal desnecessário ao diagnóstico). O teste
+  F11 de `test-cadastros` só olha `metadata` de edição, não `description`.
+- **Achado 10 (P0 operacional) — NÃO existe backup da produção.**
+  `supabase backups list` devolve lista vazia (`pitr_enabled: false`): nenhum
+  backup gerenciado; os dumps manuais em `backups/db` são de 11–12/09 e do
+  banco LOCAL, anteriores aos dados reais. O ADR-010 §15 já registrava o plano
+  Free sem backup. Mitigação imediata possível: dump manual da nuvem
+  (`supabase db dump --linked`), com os cuidados de LGPD do arquivo gerado.
+- **Achado 11 (P1) — os headers de segurança do achado 2 NÃO estão em
+  produção.** `curl -I https://saas-vidracaria.vercel.app/login` mostra só
+  HSTS (da Vercel) e `X-Powered-By`; sem CSP, `X-Frame-Options` nem `nosniff`.
+  O código está pronto (commit `c5cdaf2`), falta o deploy.
+- **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
+  `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
+  `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload
+  (regressão simulada com `.withMetadata()` faz o teste falhar).
+- **Inventário de dados pessoais** (rascunho de 23/09): não cobre chave PIX
+  (`contas_bancarias`, `fornecedor_dados`, `cobrancas`), `propostas`
+  (`destinatario`), `documentos_fiscais.dados` nem `integracao_operacoes.payload`.
+  A validação jurídica (finalidade, base, prazo) segue sendo decisão humana.
+
 ### Ambiente de teste local (aprendizado)
 
 `npm test` falhou em 6 scripts (todos por upload na Storage) porque o
