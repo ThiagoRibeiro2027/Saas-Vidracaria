@@ -326,6 +326,22 @@ trocaria a URL de produção por `127.0.0.1`.
   `activity_logs` impede apagar empresas com histórico). Decisão do
   responsável: quais empresas são reais (`jrbox`?). Recomendação estrutural:
   projeto Supabase de produção separado do de desenvolvimento/teste.
+- **Achado 12, plano de limpeza (decisão do responsável, 12/10/2026: apagar
+  tudo, manter só a `jrbox`; nenhuma outra empresa é real).** Scripts em
+  `scripts/limpeza/`: `01-simulacao.sql` (só leitura), `02-executar.sql`
+  (transação única, `session_replication_role = replica` só dentro dela,
+  aborta e desfaz se sobrar algo além da `jrbox`; apaga também os 11
+  `platform_admins` de teste) e `03-auth-storage.mjs` (usuários do Auth sem
+  perfil e arquivos do Storage de empresas apagadas; simulação por padrão).
+  **Testado de ponta a ponta no banco LOCAL**: 96 empresas, 155 usuários e
+  2664 logs de teste viraram 1 empresa, 1 usuário e 0 arquivos; o trigger de
+  imutabilidade de `activity_logs` continuou ativo e recusando `DELETE`.
+  **Ainda NÃO executado na nuvem.** Efeitos a saber: sem platform_admin depois
+  (criar um novo, com senha forte e MFA; não usar `seed-platform-admin.mjs`,
+  cuja senha é fixa no repositório); o usuário `0001` da `jrbox` nasceu do
+  `seed-dev-tenant.mjs` com senha de bootstrap pública e deve ser redefinido
+  ou desativado; a limpeza não tem volta e a nuvem não tem backup (fazer dump
+  antes).
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload
