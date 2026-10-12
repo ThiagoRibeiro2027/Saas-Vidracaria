@@ -141,6 +141,42 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   humana: os 3 itens jurídicos do ADR-010 §15; backup automático exige
   Supabase Pro.
 
+### Achados novos da varredura (12/10/2026, após a primeira entrega)
+
+- **Achado 4 (P0/P1) — EXECUTE aberto a `PUBLIC`/`anon`.** O reset de
+  `20260914090000` fez `alter default privileges in schema public revoke …`,
+  que não remove o default GLOBAL do Postgres (função nova nasce com
+  `PUBLIC=EXECUTE`). No banco local, 325 de 387 funções de `public` estavam
+  executáveis por `anon`. PoC (local, transação revertida; depois também pela
+  Data API): sem login, `rpc/log_system_event` aceitou `p_company_id` de
+  outra empresa e gravou o evento nela. Outras internas
+  (`submeter_aprovacao_compra/financeiro`, `criar_op_lote_operacoes`,
+  `calcular_necessidade_liquida_item`) recebem `p_company_id` do cliente e não
+  checam identidade (regras 1 e 7 do CLAUDE.md). **Correção rascunhada, NÃO
+  aplicada na nuvem:** `20261012175409_fecha_execute_public_anon.sql`
+  (fecha o default global; tira PUBLIC/anon de tudo; preserva `authenticated`
+  onde já existia, exceto triggers e 16 funções internas; mantém
+  `service_role`; verificações internas abortam a migration em caso de
+  divergência). Teste: `scripts/test-execute-grants-varredura.mjs` — 12
+  falhas antes, 21/21 depois, no banco local. **Falta:** `npm test` completo
+  com `db reset` (uma tentativa sem reset falhou 16 scripts por e-mail
+  repetido/dado residual; não é prova nem contra nem a favor da migration) e
+  `db push` com aprovação.
+- **Achado 3 (P1) — 9 funções de escrita de tenant sem
+  `assert_company_not_suspended()`** (regra 2): `ajustar_saldo`,
+  `delete_file`, `upsert_oportunidade`, `mudar_estagio_oportunidade`,
+  `cancelar_proposta`, `marcar_proposta_enviada`, `registrar_aceite_proposta`,
+  `registrar_recusa_proposta`, `remover_permissao_individual`. Detectadas por
+  `scripts/test-suspensao-varredura.mjs` (vermelho de propósito, fora do
+  `run-tests.mjs` até a correção). Corpo de `delete_file` e
+  `mudar_estagio_oportunidade` lido no banco: só checam permissão.
+- **Achado 5 (P1, aberto) — `log_system_event()`** continua chamável por
+  `authenticated` (o `test-governance` exige) mas confia em `p_company_id`
+  do cliente: um usuário de um tenant consegue gravar evento em outro. Exige
+  reescrever o corpo para `current_company_id()`; a migration do achado 4
+  não resolve isso. Está na lista de exceções do teste de grants, marcada
+  como achado 5 aberto.
+
 ### Ambiente de teste local (aprendizado)
 
 `npm test` falhou em 6 scripts (todos por upload na Storage) porque o
