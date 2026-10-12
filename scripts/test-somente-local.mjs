@@ -33,7 +33,7 @@ check("localhost passa", rodarTrava({ NEXT_PUBLIC_SUPABASE_URL: "http://localhos
 check("sem variáveis passa (os testes puros não usam banco)", rodarTrava({}).status === 0);
 
 console.log("\n3. Todo teste/seed que usa banco importa a trava");
-const PUROS = new Set(["test-imagem-exif.mjs", "test-formatar-data.mjs", "test-offline-validade.mjs", "test-security-headers.mjs", "test-password-policy.mjs", "test-somente-local.mjs"]);
+const PUROS = new Set(["test-imagem-exif.mjs", "test-formatar-data.mjs", "test-offline-validade.mjs", "test-security-headers.mjs", "test-password-policy.mjs", "test-usuarios-senha-ordem.mjs", "test-somente-local.mjs"]);
 const sem = [];
 for (const f of readdirSync("scripts")) {
   if (!/^(test|seed)-.*\.mjs$/.test(f) || PUROS.has(f)) continue;
