@@ -307,6 +307,25 @@ trocaria a URL de produção por `127.0.0.1`.
   produção.** `curl -I https://saas-vidracaria.vercel.app/login` mostra só
   HSTS (da Vercel) e `X-Powered-By`; sem CSP, `X-Frame-Options` nem `nosniff`.
   O código está pronto (commit `c5cdaf2`), falta o deploy.
+- **Achado 12 (P0 antes de ter cliente real) — o banco da nuvem está cheio de
+  dados e contas de TESTE (12/10/2026, somente leitura).** `companies`: 248
+  (247 ativas), quase todas fixtures de teste (`audit-test`, `bi-test-*`,
+  `smoke-*`...); `auth.users`: 382, dos quais 371 `@users.internal`;
+  **`platform_admins`: 11 SUPER_ADMIN, todos de teste** (`mfa-test-*`,
+  `governance-admin-*`, `9402/9502.platform-admin`), criados de 13/09 a 11/10.
+  As fixtures dos testes usam senha fixa e conhecida no repositório
+  (`senha-de-teste-123456` e variantes), então essas contas são, na prática,
+  credenciais públicas, ativas, com papel ADMIN nos tenants de teste e
+  SUPER_ADMIN na plataforma. O login exige empresa+matrícula+senha e o
+  cadastro público está fechado, mas isso não protege conta que já existe. A
+  senha mínima de 10 só vale para senhas novas. Causa: testes rodados contra a
+  nuvem (CLAUDE.md "um único banco") e nunca limpos. **Não foi corrigido nem
+  executado nenhum login de prova.** Plano proposto, reversível: banir os
+  usuários `@users.internal` de teste e desativar os 11 `platform_admins` de
+  teste (Admin API + `active=false`), preservando dados (o trigger de
+  `activity_logs` impede apagar empresas com histórico). Decisão do
+  responsável: quais empresas são reais (`jrbox`?). Recomendação estrutural:
+  projeto Supabase de produção separado do de desenvolvimento/teste.
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload
