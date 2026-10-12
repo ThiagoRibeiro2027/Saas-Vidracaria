@@ -18,6 +18,7 @@ const TEST_SCRIPTS = [
   "scripts/test-formatar-data.mjs",
   "scripts/test-offline-validade.mjs",
   "scripts/test-password-policy.mjs",
+  "scripts/test-somente-local.mjs",
   "scripts/test-imagem-exif.mjs",
   "scripts/test-foundation-rls.mjs",
   "scripts/test-mfa-and-password.mjs",

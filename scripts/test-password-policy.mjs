@@ -12,6 +12,7 @@
 //
 // Uso: node scripts/test-password-policy.mjs
 
+import "./lib/somente-local.mjs";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 

@@ -5,6 +5,7 @@
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-comercial.mjs
 
+import "./lib/somente-local.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { authenticator } from "otplib";
 

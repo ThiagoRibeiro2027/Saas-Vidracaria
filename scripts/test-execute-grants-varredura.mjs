@@ -23,6 +23,7 @@
 // Uso: set -a; source .env.local; set +a; node scripts/test-execute-grants-varredura.mjs
 // (no `npm test` as variáveis vêm do `supabase status`).
 
+import "./lib/somente-local.mjs";
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";

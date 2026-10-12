@@ -9,14 +9,20 @@
 
 ## 1. Resumo executivo
 
-**Pronto para produção comercial? Com ressalvas. Hoje: não.**
+**Pronto para produção comercial? Com ressalvas conhecidas, que são decisões de contrato e jurídicas, não falhas técnicas abertas.**
 
-O que mudou nesta auditoria é substancial. As funções do banco estavam executáveis por usuário sem login (`anon`), e agora estão fechadas. Nove funções de escrita ignoravam a suspensão de empresa. Um usuário de um tenant conseguia gravar evento de auditoria em outro. O LGPD tinha duas lacunas reais: a anonimização deixava cópias do titular para trás e a trilha de auditoria imutável guardava nome e e-mail. Tudo isso está corrigido e aplicado na nuvem, com teste automatizado.
+O que mudou nesta auditoria é substancial. As funções do banco estavam executáveis por usuário sem login (`anon`), e agora estão fechadas. Nove funções de escrita ignoravam a suspensão de empresa. Um usuário de um tenant conseguia gravar evento de auditoria em outro. O LGPD tinha duas lacunas reais: a anonimização deixava cópias do titular para trás e a trilha de auditoria imutável guardava nome e e-mail. O banco de produção estava cheio de contas de teste com senha fixa pública (achado 12). Tudo isso foi corrigido, com teste automatizado e conferência na nuvem. A suíte completa passa (47/47 no estado anterior ao achado 12; a trava `somente-local` entrou depois e tem teste próprio).
 
-Três coisas ainda impedem chamar o sistema de pronto:
+**O que continua aberto, de propósito:**
 
-| # | Bloqueio | Natureza |
-|---|---|---|
+| # | Pendência | Natureza | Situação |
+|---|---|---|---|
+| 1 | **Não existe backup automático da produção** (achado 10, P0 operacional) | Plano Supabase Pro, previsto na assinatura do contrato | **Risco aceito até o contrato.** Só existe o dump manual de 12/10/2026 |
+| 2 | **Itens jurídicos da LGPD** (ADR-010 §15, validação do inventário, suboperadores) | Decisão humana | Aguardando informação do responsável |
+
+**Ações operacionais para o responsável do produto**, que não dependem de código: criar o platform_admin com `scripts/criar-platform-admin.mjs`; redefinir ou desativar o usuário `0001` da `jrbox`; conferir o `CRON_SECRET` na Vercel; e fazer um teste manual de login, download e troca de senha no site publicado.
+
+---|---|---|
 | 1 | **Não existe backup da produção** (achado 10, P0 operacional). Nenhum backup gerenciado e nenhum dump da nuvem. | Plano pago ou ação manual |
 | 2 | **Parte das correções está só no código, sem deploy:** headers de segurança (CSP, anti-clickjacking), correção do cron de storage e validação de senha forte. Em produção os headers continuam ausentes. | `git push` |
 | 3 | **Itens jurídicos da LGPD em aberto** (ADR-010 §15, validação do inventário, suboperadores). | Decisão humana |
@@ -58,6 +64,7 @@ Legenda de evidência: **V** = teste automatizado vermelho antes e verde depois.
 | 9 | Nome, e-mail e ficha na trilha de auditoria imutável | Dado pessoal gravado em `description` e `metadata` | Logs novos sem dado pessoal (12 funções) | **V** `test-lgpd-pessoa` seção 5. `registrar_aceite_instalacao`: asserção escrita em `test-instalacao`, ainda sem execução limpa | P1 | Aplicado |
 | 10 | **Sem backup da produção** | `pitr_enabled: false`, nenhum backup | **Sem mudança** | **E** `backups list` | **P0** | **Aberto** |
 | 11 | Headers de segurança não estão em produção | Só HSTS e `X-Powered-By` na resposta | **Sem mudança** até o deploy | **E** `curl -I` | P1 | **Aberto** |
+| 12 | **Contas e dados de teste no banco de produção**: 248 empresas, 382 usuários e 11 `platform_admins` com senha fixa pública | Credenciais conhecidas e ativas na nuvem | Limpeza executada: 1 empresa (`jrbox`), 2 usuários, 0 platform_admins, 1 arquivo; trava `somente-local` impede teste contra a nuvem; regra no `CLAUDE.md` | **V** `test-somente-local` (7/7) + limpeza validada de ponta a ponta no local e conferida na nuvem | **P0** | Executado e conferido |
 
 Também foi coberta a minimização de fotos: `test-imagem-exif` prova que a foto de obra perde EXIF e GPS no upload (**V**, com regressão simulada). Três testes que existiam e não rodavam (`test-lgpd-pessoa`, `test-export`, `test-limite-usuarios`) entraram na suíte.
 

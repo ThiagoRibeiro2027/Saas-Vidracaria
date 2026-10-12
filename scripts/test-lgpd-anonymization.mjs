@@ -16,6 +16,7 @@
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-lgpd-anonymization.mjs
 
+import "./lib/somente-local.mjs";
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import { authenticator } from "otplib";

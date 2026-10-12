@@ -9,6 +9,7 @@
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-fiscal.mjs
 
+import "./lib/somente-local.mjs";
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

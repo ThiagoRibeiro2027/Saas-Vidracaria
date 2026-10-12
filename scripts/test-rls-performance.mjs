@@ -19,6 +19,7 @@
 //
 // Uso: set -a; source .env.local; set +a; node scripts/test-rls-performance.mjs
 
+import "./lib/somente-local.mjs";
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 

@@ -24,6 +24,7 @@
 //
 // Uso: node scripts/test-suspensao-varredura.mjs
 
+import "./lib/somente-local.mjs";
 import { execFileSync } from "node:child_process";
 
 const DATABASE_URL =

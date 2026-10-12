@@ -16,6 +16,7 @@
 // Uso: set -a; source .env.local; set +a; node scripts/test-cron-storage-reconciliation.mjs
 // (no `npm test` as variáveis vêm do `supabase status`).
 
+import "./lib/somente-local.mjs";
 import { spawn, execFileSync } from "node:child_process";
 import { createServer } from "node:net";
 import { randomUUID } from "node:crypto";

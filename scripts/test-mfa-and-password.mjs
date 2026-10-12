@@ -2,6 +2,7 @@
 // platform_admins (ADR-001 §26) e troca de senha forçada.
 // Uso: set -a; source .env.local; set +a; node scripts/test-mfa-and-password.mjs
 
+import "./lib/somente-local.mjs";
 import { createClient } from "@supabase/supabase-js";
 import { authenticator } from "otplib";
 

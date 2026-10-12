@@ -10,6 +10,7 @@
 //
 // Uso: node scripts/test-restore.mjs
 
+import "./lib/somente-local.mjs";
 import { execFileSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";

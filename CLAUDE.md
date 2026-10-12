@@ -55,10 +55,17 @@ que foi corrigido no Security Gate P0:
 
 ## Banco e ambiente de trabalho
 
-O projeto é desenvolvido em mais de uma máquina, contra **um único banco**:
-o projeto Supabase na nuvem, ref `kisjfapdbyhgszvxyugc`. O código se
-sincroniza pelo git; o banco, pelas migrations. Só funciona se as duas
-pontas andarem juntas.
+O projeto é desenvolvido em mais de uma máquina. O banco **de verdade** é o
+projeto Supabase na nuvem, ref `kisjfapdbyhgszvxyugc`; o código se sincroniza
+pelo git e o banco, pelas migrations. Só funciona se as duas pontas andarem
+juntas.
+
+**Testes e seeds NUNCA rodam contra a nuvem.** Em 12/10/2026 a auditoria achou
+248 empresas, 382 usuários e 11 `platform_admins` de teste, com senha fixa
+pública, no banco de produção (achado 12). Teste roda só no banco local
+(`npm test` sobe o Supabase local e faz `db reset`). `scripts/lib/
+somente-local.mjs` recusa qualquer `test-*`/`seed-*` cuja URL não seja local, e
+`scripts/test-somente-local.mjs` garante que a trava continua instalada.
 
 1. **Migration só existe quando está aplicada.** Ao criar migration em
    `supabase/migrations/`, rodar `npx supabase db push` antes de encerrar a
@@ -72,8 +79,10 @@ pontas andarem juntas.
    migration versionada. Alteração feita na mão não existe para a outra
    máquina e aparece como drift (`remote` sem `local`), que é o caso difícil
    de desfazer.
-4. **Não usar `supabase start`** (banco local em Docker). Com duas máquinas,
-   bancos locais divergem em silêncio. O banco é o da nuvem, sempre.
+4. **O banco local (`supabase start`) existe só para testes** e é recriado do
+   zero pelas migrations (`db reset`), então não diverge em silêncio. Nunca
+   guarda dado que importe. A estrutura da nuvem é sempre a das migrations
+   (regras 1 e 3).
 5. `.env.local` não é versionado e é configurado à mão em cada máquina — as
    variáveis estão documentadas em `.env.example`. A `SUPABASE_SERVICE_ROLE_KEY`
    ignora o RLS: nunca em commit, nunca em log, nunca no browser.
@@ -98,3 +107,15 @@ pontas andarem juntas.
    ficado com datas de 11/10 a 14/12/2026 (agora `20261010000100` a
    `20261010010000`); o ajuste exigiu `supabase migration repair` no banco e
    `git pull` na outra máquina antes de qualquer `db push`.
+8. **Proibido na nuvem:** `seed-dev-tenant.mjs`, `seed-platform-admin.mjs` e
+   qualquer script que crie usuário com senha fixa. Usuário novo só pelo app
+   ou por `scripts/criar-platform-admin.mjs` (senha pedida sem eco, política
+   forte, MFA no primeiro login). Troca de senha de suporte: `scripts/
+   reset-password.mjs`.
+9. **Operação destrutiva na nuvem** (apagar dados, limpeza, `db reset` remoto)
+   exige dump prévio (`supabase db dump --linked --data-only`), simulação
+   antes da execução e confirmação do responsável do produto. A nuvem ainda
+   não tem backup automático (depende do plano Pro).
+10. **Chave de service role e senhas nunca vão para chat, commit, log ou
+    histórico do terminal.** Se uma vazar, gerar chave nova, atualizar Vercel
+    e `.env.local`, redeployar e só então desativar a antiga.
