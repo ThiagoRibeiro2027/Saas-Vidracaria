@@ -162,8 +162,16 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   completo com `db reset` (migration reaplicada pelo arquivo): os 39 scripts
   anteriores passaram (12/10/2026); o único vermelho foi o próprio teste novo,
   por `psql` fora do PATH (faltava o `PATH_WITH_LIBPQ` dos outros testes),
-  corrigido e revalidado sem o libpq no PATH. **Falta:** `db push` na nuvem,
-  com aprovação do responsável.
+  corrigido e revalidado sem o libpq no PATH. **Aplicada no banco da nuvem em
+  12/10/2026** (`supabase migration list`: local = remoto, última
+  `20261012175409`). Conferido na nuvem por `supabase db query --linked`
+  (somente SELECT no catálogo): `anon` com 0 de 387 funções executáveis,
+  `authenticated` com 353 (igual ao local), `service_role` com 387, internas e
+  triggers fechados, default global do `postgres` sem `PUBLIC`. Regressão no
+  app contra a nuvem: as 24 telas do menu responderam 200 sem erro de
+  permissão e o BI carregou os dados reais pelas RPCs. **Não executado na
+  nuvem:** o `test-execute-grants-varredura` (cria tenant de teste; só roda no
+  banco local) e as ações de escrita das telas.
 - **Achado 3 (P1) — 9 funções de escrita de tenant sem
   `assert_company_not_suspended()`** (regra 2): `ajustar_saldo`,
   `delete_file`, `upsert_oportunidade`, `mudar_estagio_oportunidade`,
