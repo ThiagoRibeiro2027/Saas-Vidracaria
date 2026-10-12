@@ -373,6 +373,12 @@ trocaria a URL de produção por `127.0.0.1`.
   exceção e mostram a página genérica em erro esperado. Não é falha de
   segurança (o banco valida tudo), é usabilidade. Outras telas do app seguem o
   mesmo padrão.
+- **Encerramento (12/10/2026):** auditoria encerrada com ressalvas conhecidas.
+  Concluídos: platform_admin novo com MFA; `0001` redefinido e desativado;
+  `CRON_SECRET` conferido; teste manual no site publicado (login, upload,
+  download, exclusão, senha fraca). **Abertos por decisão:** backup automático
+  (Supabase Pro, na assinatura do contrato; risco aceito até lá) e itens
+  jurídicos da LGPD (aguardando informação do responsável).
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload
