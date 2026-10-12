@@ -3,12 +3,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getClientContext } from "@/lib/audit/log";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
 
-// F16 (Mapa_Fases_Lacunas_Risco.md, 15/09/2026): supabase/config.toml
-// (minimum_password_length) é a fonte de verdade real — o GoTrue rejeita
-// mesmo se este valor divergisse. Este constante existe só para dar
-// feedback de UX antes do round-trip; manter os dois números iguais.
-const MIN_LENGTH = 10;
+// O mínimo vem de src/lib/auth/password-policy.ts (fonte única; ver o comentário
+// lá sobre por que o config.toml sozinho não basta na nuvem).
 
 export async function changePasswordAction(
   _prevState: { error?: string } | undefined,
@@ -17,8 +15,8 @@ export async function changePasswordAction(
   const password = String(formData.get("password") ?? "");
   const confirmation = String(formData.get("confirmation") ?? "");
 
-  if (password.length < MIN_LENGTH) {
-    return { error: `A senha precisa ter pelo menos ${MIN_LENGTH} caracteres.` };
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return { error: `A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.` };
   }
   if (password !== confirmation) {
     return { error: "As senhas digitadas não são iguais." };

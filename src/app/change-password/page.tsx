@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
 import { changePasswordAction } from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -22,11 +23,11 @@ export default function ChangePasswordPage() {
 
           <label className="flex flex-col gap-1 text-sm text-text">
             Nova senha
-            <Input name="password" type="password" required minLength={10} />
+            <Input name="password" type="password" required minLength={MIN_PASSWORD_LENGTH} />
           </label>
           <label className="flex flex-col gap-1 text-sm text-text">
             Confirmar nova senha
-            <Input name="confirmation" type="password" required minLength={10} />
+            <Input name="confirmation" type="password" required minLength={MIN_PASSWORD_LENGTH} />
           </label>
 
           {state?.error && <p className="text-sm text-danger">{state.error}</p>}
