@@ -24,6 +24,7 @@ const TEST_SCRIPTS = [
   "scripts/test-storage-rls.mjs",
   "scripts/test-rls-performance.mjs",
   "scripts/test-security-phase7.mjs",
+  "scripts/test-security-headers.mjs",
   "scripts/test-lgpd-anonymization.mjs",
   "scripts/test-activity-logs-retention.mjs",
   "scripts/test-configuracoes.mjs",
