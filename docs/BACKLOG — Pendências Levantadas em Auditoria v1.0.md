@@ -76,3 +76,76 @@ paralelo em vez de substituir a função real, deixando `p_localizacao`
 inacessível junto de `p_custo_hora` e regredindo o gate pra só 'manage'
 nessa sobrecarga nova. Corrigido na mesma sessão
 (`20261010004100_fix_recurso_produtivo_custo_hora_localizacao.sql`).
+
+## 5. Auditoria de segurança TR Systems (12/10/2026)
+
+Executada a partir de `auditoria-seguranca-tr-systems.md`. Metodologia:
+leitura estática das migrations + testes automatizados direto na Data API
+(banco local recriado por `supabase db reset`). Este registro não é
+certificação de segurança nem garantia de conformidade integral com a LGPD.
+
+### Achados corrigidos, com teste
+
+- **Achado 1 (P2, defesa em profundidade)** — `decidir_orcamento()`,
+  `decidir_etapa_aprovacao_compra()` e `decidir_etapa_aprovacao_financeiro()`
+  dispensavam o papel aprovador da alçada com `is_platform_admin()` (sem
+  checar AAL), contra a regra 4 do CLAUDE.md. Não havia exploração conhecida:
+  o caminho só era alcançável com AAL2, porque `assert_tenant_write()` já
+  passa por `has_permission()`. Troca por `is_platform_admin_mfa_verified()`
+  em `20261012165725_alcada_platform_admin_mfa.sql` (só essa chamada muda;
+  restante do corpo idêntico à última definição). **Aplicada no banco da
+  nuvem em 12/10/2026** (`supabase migration list`: local = remoto).
+  Testes negativos "platform_admin em AAL1 não dispensa a alçada" em
+  `test-comercial` (seção 6), `test-compras` (41) e `test-bancario` (5).
+  Verde no banco local (89/89, 295/295, 79/79). **Não executado:** a
+  rodada "sem a migration" (prova de que o teste falha antes) e o caso
+  positivo em AAL2.
+- **Achado 2 (P1)** — nenhuma resposta enviava CSP, `X-Frame-Options` nem
+  `nosniff` (clickjacking). `next.config.ts` passa a enviar CSP
+  (`frame-ancestors 'none'`, `object-src 'none'`, `base-uri`/`form-action`
+  `'self'`, `connect-src` com o Supabase por causa do app de campo),
+  `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` e
+  HSTS, e remove `X-Powered-By`. `'unsafe-inline'` em `script-src` é
+  concessão consciente (hidratação do Next.js; nonce exigiria renderização
+  dinâmica em todas as rotas). `scripts/test-security-headers.mjs`: 45
+  falhas sem a correção, 53/53 com ela. **Pendente:** validar no
+  `next build && next start` e em produção (testado só no `next dev`), com
+  atenção a download por URL assinada e à sincronização do campo.
+
+### Pendências reconfirmadas, sem mudança
+
+Confirmadas por teste no banco local: MFA do `platform_admin` imposto no
+banco (AAL1 nega, AAL2 permite); Storage com RBAC e escrita direta fechada;
+`log_activity()` fechada a `authenticated` (SEC-005); papel de outra empresa
+recusado (SEC-009); quota de storage aplicada (SEC-012); `anon` sem acesso
+a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
+`SECURITY DEFINER` sem `search_path`, nenhum grant de EXECUTE a `anon` ou
+`PUBLIC`.
+
+### Abertas
+
+- **`assert_company_not_suspended()` em todos os pontos de entrada** —
+  testado em 4 entradas (`test-governance` seção 3); uniformidade total não
+  provada. Falta um teste de varredura sobre toda função de escrita de tenant.
+- **`next_document_number()`** — gate por permissão testado; exposição a
+  `anon` só com prova indireta.
+- **Signup público e rate limiting** — não testáveis localmente; conferir a
+  configuração do projeto na nuvem (painel do Supabase). O `config.toml`
+  local mantém `enable_signup = true` (SEC-011, supabase/auth#330).
+- **Suspeita, não verificada:** `src/app/api/cron/storage-reconciliation`
+  chama `admin.rpc("log_activity")`; a função exige `auth.uid()` não nulo e
+  com a service role ele é nulo, então a trilha de auditoria da purga de
+  órfãos provavelmente nunca é gravada (erro ignorado no handler).
+- **Matriz LGPD e controles P1/P2** além do coberto pelos testes de
+  anonimização — não auditados nesta rodada. Itens que dependem de decisão
+  humana: os 3 itens jurídicos do ADR-010 §15; backup automático exige
+  Supabase Pro.
+
+### Ambiente de teste local (aprendizado)
+
+`npm test` falhou em 6 scripts (todos por upload na Storage) porque o
+container da Storage ficou numa versão antiga (1.73.1) enquanto o schema foi
+migrado pela v1.77.5 fixada pelo CLI: `INSERT … ON CONFLICT (name,
+bucket_id)` retornava `42P10`. Resolvido com `supabase stop && supabase
+start` (recria os containers). Se a falha reaparecer após atualizar o CLI,
+repetir. Não era defeito do código do projeto.
