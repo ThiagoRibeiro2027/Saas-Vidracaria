@@ -88,6 +88,19 @@ Também foi coberta a minimização de fotos: `test-imagem-exif` prova que a fot
 
 ---
 
+## 3.1. Teste de ataque de ponta a ponta (OWASP ZAP, 12/10/2026)
+
+Scan automatizado não autenticado + scan autenticado (login manual no Chrome
+proxiado pelo ZAP, navegação pelas principais telas, Varredura Ativa com XSS/SQLi/etc.)
+contra o ambiente local (banco local + build de produção `next start`). 13 tipos
+de alerta, todos revisados manualmente: **nenhuma vulnerabilidade real**. O
+registro completo, achado a achado, está no backlog (seção correspondente).
+Os dois pontos que exigiram investigação de código — cookie de sessão sem
+`HttpOnly` e a rota `/__nextjs_font/*` — foram confirmados como necessários
+(app de campo offline) ou sem exposição em produção (verificado direto contra
+`saas-vidracaria.vercel.app`), respectivamente. Este teste não substitui um
+pentest profissional externo.
+
 ## 4. O que não foi testado
 
 - **Produção.** Nenhum teste de comportamento rodou contra a nuvem. A inspeção foi somente leitura, e a conferência das funções foi feita lendo o corpo no catálogo. As 24 telas do menu foram abertas contra a nuvem depois do achado 4, sem as ações de escrita.

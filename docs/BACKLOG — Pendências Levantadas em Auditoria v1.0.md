@@ -379,6 +379,37 @@ trocaria a URL de produção por `127.0.0.1`.
   download, exclusão, senha fraca). **Abertos por decisão:** backup automático
   (Supabase Pro, na assinatura do contrato; risco aceito até lá) e itens
   jurídicos da LGPD (aguardando informação do responsável).
+- **Teste de ataque de ponta a ponta com OWASP ZAP (12/10/2026).** Scan não
+  autenticado + scan autenticado (login manual guiado no Chrome proxiado pelo
+  ZAP, navegação por Comercial, Usuários, Arquivos, Configurações, Engenharia,
+  Export) seguido de Varredura Ativa (política "Dev Standard": XSS, SQLi, etc.)
+  contra o banco e o `next start` (build de produção) LOCAIS. **13 tipos de
+  alerta, todos revisados manualmente — nenhuma vulnerabilidade real:**
+  CSRF ausente (falso positivo — Next.js protege via checagem de `Origin`,
+  não por token visível no HTML), XSS potencial em atributo HTML (falso
+  positivo — campo interno `$ACTION_1:0` do Next.js, não dado de usuário),
+  divulgação de data Unix e comentário suspeito (falsos positivos — código
+  de `node_modules`/React, não do projeto), CSP unsafe-eval/inline (decisão já
+  documentada, só em dev), Content-Type/HSTS/X-Content-Type-Options "ausentes"
+  (na maioria tráfego de fundo do Chrome para domínios do Google que entrou
+  no proxy por engano, não do app) e Modern Web Application/Session Management
+  Response (puramente informativos, o próprio ZAP marca "nada a corrigir").
+  **Achado único que mereceu investigação de código:** cookie `sb-*-auth-token`
+  sem `HttpOnly` — confirmado como o DEFAULT da própria biblioteca
+  `@supabase/ssr` (`httpOnly:false` em `node_modules/@supabase/ssr/.../
+  constants.js`) e **necessário**: o app de campo (`src/app/campo/
+  CampoProvider.tsx`, PWA offline dos instaladores) usa `createBrowserClient`
+  e precisa ler o token de sessão via JS para chamar RPCs direto do navegador
+  quando offline. Risco aceito, mitigado pela CSP (`script-src 'self'`, sem
+  `unsafe-eval` em produção) que é a defesa real contra o XSS que tornaria
+  esse cookie explorável. **Achado de rota real, verificado também contra a
+  nuvem:** `/__nextjs_font/<arquivo>.woff2` respondia 200 sem os headers de
+  segurança no `next start` local — mas o mesmo caminho na Vercel
+  (`https://saas-vidracaria.vercel.app`) responde 307 para `/login` com todos
+  os headers presentes (CSP, HSTS, nosniff, X-Frame-Options); sem exposição em
+  produção. **Limite do teste:** cobriu as telas navegadas manualmente; não é
+  substituto de um pentest profissional externo, recomendado antes de dado
+  real de cliente em volume.
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload
