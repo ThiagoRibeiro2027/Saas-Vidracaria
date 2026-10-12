@@ -348,6 +348,30 @@ async function main() {
     });
     check("empresa suspensa não consegue vincular oportunidade a orçamento", !!vincularOportunidadeError);
 
+    // Auditoria TR Systems 12/10/2026, achado 3 (migration
+    // 20261012181317_guarda_suspensao_escrita_tenant): 9 funções de escrita só
+    // checavam permissão. tenantA é ADMIN (passa no gate de permissão), então
+    // o único motivo de recusa possível é a suspensão — conferimos a MENSAGEM,
+    // porque com ids inexistentes a função também erra ("não encontrado") sem a
+    // guarda, e um `!!error` passaria mesmo com o defeito.
+    const ID = () => crypto.randomUUID();
+    const ehSuspensao = (error) => /Empresa suspensa/i.test(error?.message ?? "");
+    const chamadasDoAchado3 = [
+      ["ajustar_saldo", { p_item_id: ID(), p_quantidade_delta: 1, p_motivo: "teste suspensão" }],
+      ["delete_file", { p_file_id: ID() }],
+      ["upsert_oportunidade", { p_id: null, p_pessoa_id: ID(), p_origem: "teste", p_descricao: "teste suspensão", p_valor_potencial: 1, p_probabilidade: 10, p_previsao_fechamento: null, p_observacoes: null }],
+      ["mudar_estagio_oportunidade", { p_id: ID(), p_estagio: "contato", p_motivo_perda: null }],
+      ["cancelar_proposta", { p_id: ID() }],
+      ["marcar_proposta_enviada", { p_id: ID(), p_canal: "email", p_destinatario: "x@x.com" }],
+      ["registrar_aceite_proposta", { p_id: ID(), p_forcar: false }],
+      ["registrar_recusa_proposta", { p_id: ID(), p_observacao: null }],
+      ["remover_permissao_individual", { p_profile_id: ID(), p_permission_id: ID() }],
+    ];
+    for (const [fn, args] of chamadasDoAchado3) {
+      const { error } = await tenantA.client.rpc(fn, args);
+      check(`empresa suspensa não consegue executar ${fn}() (rejeição por suspensão, não por dado inexistente)`, ehSuspensao(error));
+    }
+
     const { error: readError } = await tenantA.client.from("files").select("id");
     check("empresa suspensa ainda consegue ler seus próprios dados", !readError);
 
@@ -479,6 +503,68 @@ async function main() {
     check(
       "category fora do enum fechado é rejeitada (item 8 do CLAUDE.md — sem 'action' livre)",
       !!invalidCategoryError,
+    );
+
+    // Auditoria TR Systems 12/10/2026, achado 5 (migration
+    // 20261012181332_log_system_event_valida_empresa): a empresa gravada nunca
+    // vem do cliente. Marca única por execução, porque system_events é
+    // append-only e o banco pode ter resíduo de rodadas anteriores.
+    const marca = `achado5 ${crypto.randomUUID()}`;
+    const eventoDe = async (message) => {
+      const { data } = await admin.from("system_events").select("company_id").eq("message", message);
+      return data ?? [];
+    };
+
+    const { error: outraEmpresaError } = await tenantA.client.rpc("log_system_event", {
+      p_category: "storage_failure",
+      p_message: `${marca} outra-empresa`,
+      p_company_id: tenantB.company.id,
+    });
+    check("usuário de tenant NÃO registra evento em outra empresa (achado 5)", !!outraEmpresaError);
+    check("nenhuma linha foi gravada na empresa alheia", (await eventoDe(`${marca} outra-empresa`)).length === 0);
+
+    const { error: semEmpresaError } = await tenantA.client.rpc("log_system_event", {
+      p_category: "storage_failure",
+      p_message: `${marca} sem-empresa`,
+    });
+    const semEmpresa = await eventoDe(`${marca} sem-empresa`);
+    check(
+      "evento sem p_company_id é atribuído à empresa do próprio usuário (não fica sem dono)",
+      !semEmpresaError && semEmpresa.length === 1 && semEmpresa[0].company_id === tenantA.company.id,
+    );
+
+    const { error: propriaEmpresaError } = await tenantA.client.rpc("log_system_event", {
+      p_category: "storage_failure",
+      p_message: `${marca} propria`,
+      p_company_id: tenantA.company.id,
+    });
+    const propria = await eventoDe(`${marca} propria`);
+    check(
+      "evento com a própria empresa continua aceito (o que o upload do app faz)",
+      !propriaEmpresaError && propria.length === 1 && propria[0].company_id === tenantA.company.id,
+    );
+
+    // Caminho dos crons/webhooks: service_role informa a empresa do registro que processa.
+    const { error: serviceError } = await admin.rpc("log_system_event", {
+      p_category: "job_failure",
+      p_message: `${marca} service`,
+      p_company_id: tenantB.company.id,
+    });
+    const service = await eventoDe(`${marca} service`);
+    check(
+      "service_role registra em qualquer empresa (crons e webhooks)",
+      !serviceError && service.length === 1 && service[0].company_id === tenantB.company.id,
+    );
+
+    const { error: platformError } = await platformClient.rpc("log_system_event", {
+      p_category: "job_failure",
+      p_message: `${marca} platform`,
+      p_company_id: tenantB.company.id,
+    });
+    const platform = await eventoDe(`${marca} platform`);
+    check(
+      "platform_admin em aal2 registra em qualquer empresa",
+      !platformError && platform.length === 1 && platform[0].company_id === tenantB.company.id,
     );
 
     const { data: tenantReadAttempt } = await tenantA.client.from("system_events").select("id");

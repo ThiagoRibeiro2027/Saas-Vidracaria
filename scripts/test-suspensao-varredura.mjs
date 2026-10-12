@@ -65,20 +65,11 @@ const EXCECOES = {
   complete_password_change: "o usuário troca a própria senha; não é mutação de dado do tenant",
   marcar_notificacao_lida: "marca a própria notificação como lida; sem efeito em dado de negócio",
   registrar_sincronizacao_offline: "carimbo de sincronização do próprio aparelho de campo",
-  // --- Internas: só deveriam ser chamadas por função que já tem a guarda.
-  // ATENÇÃO: hoje elas também estão com EXECUTE aberto (achado 3 da auditoria
-  // de 12/10/2026 — EXECUTE herdado de PUBLIC). Enquanto o grant não for
-  // fechado, a cobertura delas depende de ninguém chamá-las direto.
-  liberar_reserva_interna: "interna; chamada por liberar_reserva/consumir_reserva (achado 3: grant aberto)",
-  recalcular_agregados_producao: "interna; recalculo disparado por apontamento (achado 3: grant aberto)",
-  recalcular_situacao_ordem_producao: "interna; recalculo disparado por apontamento (achado 3: grant aberto)",
-  snapshot_revisao_peca: "interna; chamada pelas funções de composição de peça (achado 3: grant aberto)",
-  criar_op_lote_operacoes: "interna; chamada por criar_ordem_producao (achado 3: grant aberto)",
-  avaliar_regras_automacao: "interna; chamada pelo trigger de integracao_operacoes (achado 3: grant aberto)",
-  notificar_usuarios_com_permissao: "interna; chamada pelas funções de negócio que notificam (achado 3: grant aberto)",
-  gerar_bom_sugerida_a_partir_da_conversao: "interna; chamada por converter_orcamento_em_pedido (achado 3: grant aberto)",
-  submeter_aprovacao_compra: "interna; chamada por concluir_selecao_cotacao (achado 3: grant aberto)",
-  submeter_aprovacao_financeiro: "interna; chamada por submeter_pagamento_titulo (achado 3: grant aberto)",
+  // As funções INTERNAS (recalcular_*, criar_op_lote_operacoes, submeter_aprovacao_*
+  // etc.) não aparecem aqui: desde 20261012175409 (achado 4) `authenticated` não
+  // as executa, então a varredura nem as considera — a guarda delas é a da
+  // função de negócio que as chama. test-execute-grants-varredura.mjs prova que
+  // continuam fechadas.
 };
 
 // Fecho transitivo: base = funções que citam um helper de guarda; depois,

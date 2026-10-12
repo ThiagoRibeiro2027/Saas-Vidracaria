@@ -91,10 +91,10 @@ const COMPANY_ID_EXCECOES = {
   company_usage: "valida p_company_id contra a empresa do chamador; platform_admin só com MFA",
   transition_company_status: "gate is_platform_admin_mfa_verified() (test-governance seção 2.5)",
   transition_subscription: "gate is_platform_admin_mfa_verified() (test-governance seção 2)",
-  // ACHADO 5 ABERTO: o corpo NÃO valida p_company_id e o test-governance exige
-  // que authenticated possa chamá-la. Fecha com reescrita do corpo para
-  // current_company_id(), não com grant. Tirar daqui quando corrigido.
-  log_system_event: "ACHADO 5 ABERTO — confia em p_company_id do cliente; corrigir o corpo",
+  // Achado 5 (20261012181332): usuário comum só registra na PRÓPRIA empresa
+  // (current_company_id()); service_role e platform_admin MFA informam a
+  // empresa. Comportamento provado em test-governance.mjs, seção 6.
+  log_system_event: "valida p_company_id contra a empresa do usuário; só service_role/platform_admin MFA escolhem",
 };
 
 // RPCs que o app chama pelo client de usuário mas que NÃO são executáveis por

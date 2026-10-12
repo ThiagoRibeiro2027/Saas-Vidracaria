@@ -177,15 +177,34 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   `delete_file`, `upsert_oportunidade`, `mudar_estagio_oportunidade`,
   `cancelar_proposta`, `marcar_proposta_enviada`, `registrar_aceite_proposta`,
   `registrar_recusa_proposta`, `remover_permissao_individual`. Detectadas por
-  `scripts/test-suspensao-varredura.mjs` (vermelho de propósito, fora do
-  `run-tests.mjs` até a correção). Corpo de `delete_file` e
-  `mudar_estagio_oportunidade` lido no banco: só checam permissão.
-- **Achado 5 (P1, aberto) — `log_system_event()`** continua chamável por
-  `authenticated` (o `test-governance` exige) mas confia em `p_company_id`
-  do cliente: um usuário de um tenant consegue gravar evento em outro. Exige
-  reescrever o corpo para `current_company_id()`; a migration do achado 4
-  não resolve isso. Está na lista de exceções do teste de grants, marcada
-  como achado 5 aberto.
+  `scripts/test-suspensao-varredura.mjs`; corpo de `delete_file` e
+  `mudar_estagio_oportunidade` lido no banco: só checavam permissão.
+  **Correção rascunhada, NÃO aplicada na nuvem:**
+  `20261012181317_guarda_suspensao_escrita_tenant.sql` — a única mudança em
+  cada função é `perform public.assert_company_not_suspended()` logo depois
+  do gate de permissão (corpo gerado de `pg_get_functiondef()`, não
+  reescrito). Testes: `test-governance` seção 3 agora confere que o ERRO é de
+  suspensão (com id inexistente a função também erra sem a guarda, então
+  `!!error` não provava nada) — 9 falhas antes, verde depois (63/63); a
+  varredura passa (6/6) e entrou no `run-tests.mjs`.
+- **Achado 5 (P1) — `log_system_event()`** confiava em `p_company_id` do
+  cliente: um usuário de um tenant gravava evento em outro (ou "sem dono").
+  **Correção rascunhada, NÃO aplicada na nuvem:**
+  `20261012181332_log_system_event_valida_empresa.sql` — `service_role`
+  (crons, webhooks, `sistema_falhar_operacao`) e `platform_admin` MFA informam
+  a empresa; usuário comum só registra na PRÓPRIA (`current_company_id()`),
+  nulo vira a empresa dele, empresa alheia é recusada. Verificado antes que
+  todo chamador (11 em `src/app/api/**` via admin, `upload.ts` com a empresa
+  do usuário, `falhar_operacao`) é compatível. Testes: `test-governance`
+  seção 6 (outra empresa recusada e nada gravado; nulo atribuído; própria
+  aceita; service_role e platform_admin em qualquer empresa).
+- **Regressão dos achados 3 e 5 (banco local, migrations aplicadas via
+  `psql`, sem `db reset`):** estoque 39/39, compras 295/295, suprimentos
+  50/50, comercial 89/89, contratos 102/102, rh 83/83, storage-rls 32/32,
+  permissao-individual 27/27, integracoes 153/153, grants 21/21. O
+  `test-bancario` falhou em `prepararTituloPagar` (`null (reading '0')`), o
+  mesmo erro que já ocorria na rodada sem reset ANTES destas migrations —
+  depende de estado do banco; só o `npm test` com `db reset` confirma.
 
 ### Ambiente de teste local (aprendizado)
 
