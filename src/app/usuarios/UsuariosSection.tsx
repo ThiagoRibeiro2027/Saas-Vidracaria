@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
+import { MIN_PASSWORD_LENGTH, PASSWORD_RULE_HINT } from "@/lib/auth/password-policy";
 import {
   criarUsuarioAction,
   atribuirPapelAction,
@@ -79,7 +79,7 @@ export default function UsuariosSection({
           <Input name="login_identifier" placeholder="matrícula" required className="w-24" />
           <Input name="display_name" placeholder="nome completo" required className="w-40" />
           <Input name="contact_email" type="email" placeholder="e-mail (opcional)" className="w-44" />
-          <Input name="password" type="password" placeholder="senha inicial" required minLength={MIN_PASSWORD_LENGTH} className="w-32" />
+          <Input name="password" type="password" placeholder="senha inicial" title={PASSWORD_RULE_HINT} required minLength={MIN_PASSWORD_LENGTH} className="w-32" />
           <Select name="role_id" defaultValue="">
             <option value="">papel inicial (opcional)</option>
             {roles.map((r) => (
@@ -195,6 +195,7 @@ export default function UsuariosSection({
                                 name="nova_senha"
                                 type="password"
                                 placeholder="nova senha"
+                                title={PASSWORD_RULE_HINT}
                                 minLength={MIN_PASSWORD_LENGTH}
                                 required
                                 className="w-28 text-[11px]"

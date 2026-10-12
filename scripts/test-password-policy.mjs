@@ -62,14 +62,30 @@ check("nenhuma checagem de tamanho de senha usa número literal", literais.lengt
 if (literais.length) for (const l of literais) console.error(`    ${l}`);
 
 console.log("\n3. Os pontos que definem senha usam a constante");
-for (const arq of ["src/app/change-password/actions.ts", "src/app/usuarios/actions.ts", "src/app/change-password/page.tsx", "src/app/usuarios/UsuariosSection.tsx"]) {
-  check(`${arq} usa MIN_PASSWORD_LENGTH`, usam.has(arq));
+for (const arq of ["src/app/change-password/page.tsx", "src/app/usuarios/UsuariosSection.tsx"]) {
+  check(`${arq} usa MIN_PASSWORD_LENGTH (atributo minLength do formulário)`, usam.has(arq));
 }
 const usuariosActions = readFileSync("src/app/usuarios/actions.ts", "utf8");
 check(
-  "criação de usuário E redefinição pelo admin validam o mínimo (2 usos em usuarios/actions.ts)",
-  (usuariosActions.match(/\.length\s*<\s*MIN_PASSWORD_LENGTH/g) ?? []).length >= 2,
+  "criação de usuário E redefinição pelo admin validam a senha (2 usos de validatePassword em usuarios/actions.ts)",
+  (usuariosActions.match(/validatePassword\(/g) ?? []).length >= 2,
 );
+check(
+  "troca de senha valida com validatePassword",
+  /validatePassword\(/.test(readFileSync("src/app/change-password/actions.ts", "utf8")),
+);
+
+console.log("\n4. Composição da senha (espelha password_requirements da nuvem)");
+const { validatePassword } = await import("../src/lib/auth/password-policy.ts");
+check("senha forte é aceita", validatePassword("Abcdef123!x") === null);
+check("só minúsculas é recusada", validatePassword("abcdefghijkl") !== null);
+check("sem maiúscula é recusada", validatePassword("abcdef123!x") !== null);
+check("sem minúscula é recusada", validatePassword("ABCDEF123!X") !== null);
+check("sem número é recusada", validatePassword("Abcdefghi!x") !== null);
+check("sem símbolo é recusada", validatePassword("Abcdef1234x") !== null);
+check("curta (9) é recusada mesmo com todas as classes", validatePassword("Abcde123!") !== null);
+check("exatamente 10 com todas as classes é aceita", validatePassword("Abcde123!x") === null);
+check("a mensagem diz a regra ao usuário", /maiúscula/.test(validatePassword("abc") ?? "") && /símbolo/.test(validatePassword("abc") ?? ""));
 
 console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
 process.exit(failed > 0 ? 1 : 0);

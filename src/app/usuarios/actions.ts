@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
-import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
+import { validatePassword } from "@/lib/auth/password-policy";
 
 // TÓPICO 14 — criação de usuário é a única operação desta tela que
 // precisa da Admin API (auth.users não é gravável por RLS/RPC comum).
@@ -18,7 +18,8 @@ export async function criarUsuarioAction(formData: FormData) {
   const roleId = String(formData.get("role_id") ?? "").trim() || null;
 
   if (!loginIdentifier || !displayName) throw new Error("Matrícula e nome são obrigatórios.");
-  if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`Senha inicial deve ter ao menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+  const senhaInicialFraca = validatePassword(password);
+  if (senhaInicialFraca) throw new Error(`Senha inicial: ${senhaInicialFraca}`);
 
   const supabase = await createClient();
 
@@ -137,7 +138,8 @@ export async function resetarSenhaAction(formData: FormData) {
   const profileId = String(formData.get("profile_id") ?? "");
   const novaSenha = String(formData.get("nova_senha") ?? "");
   if (!profileId) throw new Error("Usuário inválido.");
-  if (novaSenha.length < MIN_PASSWORD_LENGTH) throw new Error(`Nova senha deve ter ao menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+  const novaSenhaFraca = validatePassword(novaSenha);
+  if (novaSenhaFraca) throw new Error(`Nova senha: ${novaSenhaFraca}`);
 
   const supabase = await createClient();
   // Checado antes de chamar a Admin API, mesmo motivo de criarUsuarioAction.

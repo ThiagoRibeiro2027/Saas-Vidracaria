@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getClientContext } from "@/lib/audit/log";
-import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
+import { validatePassword } from "@/lib/auth/password-policy";
 
 // O mínimo vem de src/lib/auth/password-policy.ts (fonte única; ver o comentário
 // lá sobre por que o config.toml sozinho não basta na nuvem).
@@ -15,8 +15,9 @@ export async function changePasswordAction(
   const password = String(formData.get("password") ?? "");
   const confirmation = String(formData.get("confirmation") ?? "");
 
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return { error: `A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.` };
+  const senhaFraca = validatePassword(password);
+  if (senhaFraca) {
+    return { error: senhaFraca };
   }
   if (password !== confirmation) {
     return { error: "As senhas digitadas não são iguais." };
