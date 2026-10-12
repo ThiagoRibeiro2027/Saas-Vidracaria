@@ -214,7 +214,11 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   (`scripts/test-cron-storage-reconciliation.mjs`, sobe um `next dev`, cria
   órfão envelhecido): resposta `200 ok:true`, objeto purgado, **nenhuma linha
   em `activity_logs`** (7 de 11 verificações antes; 14/14 depois).
-  **Correção, NÃO aplicada na nuvem ainda:**
+  **Correção — migration aplicada na nuvem em 12/10/2026** (`npm test` com
+  `db reset`: 42/42; na nuvem, por `db query --linked`: função presente, só
+  `service_role` executa, lista fechada ativa, `anon` 0/388 e `authenticated`
+  353 intactos). **O código da rota só vale em produção depois do deploy** —
+  até lá o cron publicado na Vercel ainda chama `log_activity`:
   `20261012182823_sistema_registrar_evento_plataforma.sql` — função só para
   `service_role` (revoke explícito + checagem de `auth.role()` no corpo), lista
   FECHADA de ações (hoje só `security.storage_orphans_purged`; regra 8 do
