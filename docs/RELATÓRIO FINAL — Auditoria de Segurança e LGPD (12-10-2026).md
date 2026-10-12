@@ -83,10 +83,9 @@ Também foi coberta a minimização de fotos: `test-imagem-exif` prova que a fot
 ## 4. O que não foi testado
 
 - **Produção.** Nenhum teste de comportamento rodou contra a nuvem. A inspeção foi somente leitura, e a conferência das funções foi feita lendo o corpo no catálogo. As 24 telas do menu foram abertas contra a nuvem depois do achado 4, sem as ações de escrita.
-- **A suíte completa na última rodada:** você executou `npm test` após os achados 8 e 9. Eu não vi a saída, e depois dela mudei `test-comercial`, `test-compras`, `test-bancario`, `test-instalacao`, `test-cron-storage-reconciliation` e `test-security-headers`. Falta um `npm test` limpo (com `db reset`) sobre esse estado final.
-- **`test-bancario` e `test-instalacao`:** foram editados, mas não consegui rodá-los neste banco sujo. A asserção nova de `test-bancario` (mensagem de alçada) e a de `test-instalacao` (log do aceite sem nome) só ficam provadas no `npm test` limpo.
+- **Suíte completa:** `npm test` com `db reset` em 12/10/2026, no estado final do código (commit `051a41a`): **47/47 scripts passaram**, inclusive `test-bancario` e `test-instalacao` com as asserções novas.
 - **Achado 7:** a validação de senha foi vista no Chrome (formulário com mínimo 10 e dica), mas nenhum envio de senha fraca foi feito pela tela.
-- **CSP:** conferida no `next start` local, não na Vercel. Falta olhar o site publicado depois do deploy, inclusive download por URL assinada e sincronização do app de campo.
+- **CSP em produção:** o deploy na Vercel entrou e o `curl -I` em `/login` mostra CSP, `x-frame-options: DENY` e `nosniff`, sem `x-powered-by`. Falta uma conferência manual no site publicado de login, download por URL assinada e sincronização do app de campo.
 - **Teste de alçada que passava por motivo errado:** `test-comercial` movia o perfil de empresa com `UPDATE`, que o trigger `profiles_company_id_immutable` recusa em silêncio. Os "bloqueios" de alçada passavam por falta de permissão. Foi corrigido (usuário criado na empresa certa) e as asserções agora exigem a mensagem da alçada. Convém revisar outros testes que usem esse padrão.
 - **Cobertura geral:** a auditoria cobriu os controles listados no prompt e os achados da varredura. Não houve revisão exaustiva de cada controle P1/P2 da matriz LGPD, nem teste de carga, pentest externo ou revisão de dependências.
 
