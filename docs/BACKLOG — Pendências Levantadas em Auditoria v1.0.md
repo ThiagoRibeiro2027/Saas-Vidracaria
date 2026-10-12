@@ -350,6 +350,29 @@ trocaria a URL de produção por `127.0.0.1`.
   (senha forte e MFA); redefinir ou desativar o usuário `0001` (nasceu com senha
   de bootstrap pública e `must_change_password` está false, então não dá para
   afirmar que a senha foi trocada).
+- **Achado 13 (P0 de segurança, cross-tenant) — redefinição de senha trocava a
+  senha de usuário de OUTRA empresa (12/10/2026) — CORRIGIDO.** Descoberto
+  porque, ao testar a troca de senha no site publicado, apareceu a página
+  genérica de erro do Next. A causa do erro visível: as Server Actions de
+  Usuários lançavam exceção e, em produção, o Next esconde a mensagem. Ao ler o
+  código, `resetarSenhaAction` chamava `auth.admin.updateUserById(profile_id)` (Admin
+  API, ignora RLS) com o id vindo do FORMULÁRIO e só depois o banco verificava a
+  empresa (`marcar_troca_senha_obrigatoria`). **Provado no navegador, no banco
+  local:** um ADMIN da `jrbox` adulterou o `profile_id` e a senha de um usuário
+  de outra empresa passou a ser a do atacante (a original deixou de funcionar),
+  ainda que a tela mostrasse erro. Exigia conhecer o UUID do alvo e ser ADMIN
+  de qualquer empresa; na nuvem hoje só existe a `jrbox`. **Correção:** o banco
+  valida primeiro (permissão, suspensão e empresa) e só então a Admin API é
+  chamada; `resetarSenhaAction` e `criarUsuarioAction` devolvem o erro como valor
+  e a tela o mostra (`FormsSenha.tsx`). Repetido o ataque depois: "Usuário não
+  encontrado nesta empresa" e a senha da vítima intacta; senha fraca mostra a
+  regra na tela; caminho legítimo funciona. Teste automatizado:
+  `scripts/test-usuarios-senha-ordem.mjs` (6 falhas no código antigo, 8/8 no
+  novo; estático, garante a ordem e a ausência de `throw`). **Pendente:** as demais
+  Server Actions de `/usuarios` (papéis, permissões, desativar) ainda lançam
+  exceção e mostram a página genérica em erro esperado. Não é falha de
+  segurança (o banco valida tudo), é usabilidade. Outras telas do app seguem o
+  mesmo padrão.
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload

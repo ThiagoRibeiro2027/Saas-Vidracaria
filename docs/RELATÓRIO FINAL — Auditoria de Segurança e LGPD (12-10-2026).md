@@ -11,7 +11,7 @@
 
 **Pronto para produção comercial? Com ressalvas conhecidas, que são decisões de contrato e jurídicas, não falhas técnicas abertas.**
 
-O que mudou nesta auditoria é substancial. As funções do banco estavam executáveis por usuário sem login (`anon`), e agora estão fechadas. Nove funções de escrita ignoravam a suspensão de empresa. Um usuário de um tenant conseguia gravar evento de auditoria em outro. O LGPD tinha duas lacunas reais: a anonimização deixava cópias do titular para trás e a trilha de auditoria imutável guardava nome e e-mail. O banco de produção estava cheio de contas de teste com senha fixa pública (achado 12). Tudo isso foi corrigido, com teste automatizado e conferência na nuvem. A suíte completa passa (47/47 no estado anterior ao achado 12; a trava `somente-local` entrou depois e tem teste próprio).
+O que mudou nesta auditoria é substancial. As funções do banco estavam executáveis por usuário sem login (`anon`), e agora estão fechadas. Nove funções de escrita ignoravam a suspensão de empresa. Um usuário de um tenant conseguia gravar evento de auditoria em outro. O LGPD tinha duas lacunas reais: a anonimização deixava cópias do titular para trás e a trilha de auditoria imutável guardava nome e e-mail. O banco de produção estava cheio de contas de teste com senha fixa pública (achado 12), e a redefinição de senha da tela Usuários permitia trocar a senha de usuário de outra empresa (achado 13). Tudo isso foi corrigido, com teste automatizado e conferência na nuvem. A suíte completa passa (47/47 no estado anterior ao achado 12; a trava `somente-local` entrou depois e tem teste próprio).
 
 **O que continua aberto, de propósito:**
 
@@ -65,6 +65,7 @@ Legenda de evidência: **V** = teste automatizado vermelho antes e verde depois.
 | 10 | **Sem backup da produção** | `pitr_enabled: false`, nenhum backup | **Sem mudança** | **E** `backups list` | **P0** | **Aberto** |
 | 11 | Headers de segurança não estão em produção | Só HSTS e `X-Powered-By` na resposta | **Sem mudança** até o deploy | **E** `curl -I` | P1 | **Aberto** |
 | 12 | **Contas e dados de teste no banco de produção**: 248 empresas, 382 usuários e 11 `platform_admins` com senha fixa pública | Credenciais conhecidas e ativas na nuvem | Limpeza executada: 1 empresa (`jrbox`), 2 usuários, 0 platform_admins, 1 arquivo; trava `somente-local` impede teste contra a nuvem; regra no `CLAUDE.md` | **V** `test-somente-local` (7/7) + limpeza validada de ponta a ponta no local e conferida na nuvem | **P0** | Executado e conferido |
+| 13 | **Redefinição de senha na tela Usuários trocava a senha de usuário de OUTRA empresa**: a Admin API agia antes de o banco validar a empresa | Um ADMIN de qualquer empresa, conhecendo o UUID do alvo, assumia a conta | O banco valida (permissão, suspensão, empresa) antes da Admin API; erros voltam como mensagem | **V** `test-usuarios-senha-ordem` (6 falhas antes, 8/8 depois) + ataque reproduzido e bloqueado no navegador, no banco local | **P0** | Corrigido; publicado com o próximo deploy |
 
 Também foi coberta a minimização de fotos: `test-imagem-exif` prova que a foto de obra perde EXIF e GPS no upload (**V**, com regressão simulada). Três testes que existiam e não rodavam (`test-lgpd-pessoa`, `test-export`, `test-limite-usuarios`) entraram na suíte.
 

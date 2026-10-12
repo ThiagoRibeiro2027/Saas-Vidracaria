@@ -10,16 +10,22 @@ import { validatePassword } from "@/lib/auth/password-policy";
 // Todo o resto (perfil, papel, papel de empresa, permissão) é função
 // SECURITY DEFINER normal, chamada pelo client autenticado — mesmo
 // padrão de todo o resto do schema.
-export async function criarUsuarioAction(formData: FormData) {
+// Resultado das ações de formulário com mensagem para o usuário. Em produção o
+// Next.js esconde a mensagem de uma exceção lançada por Server Action e mostra a
+// página genérica "This page couldn't load" — por isso erro ESPERADO (senha fraca,
+// matrícula repetida, sem permissão) volta como valor, não como throw.
+export type ResultadoAcao = { error?: string; ok?: string } | undefined;
+
+export async function criarUsuarioAction(_prev: ResultadoAcao, formData: FormData): Promise<ResultadoAcao> {
   const loginIdentifier = String(formData.get("login_identifier") ?? "").trim();
   const displayName = String(formData.get("display_name") ?? "").trim();
   const contactEmail = String(formData.get("contact_email") ?? "").trim() || null;
   const password = String(formData.get("password") ?? "");
   const roleId = String(formData.get("role_id") ?? "").trim() || null;
 
-  if (!loginIdentifier || !displayName) throw new Error("Matrícula e nome são obrigatórios.");
+  if (!loginIdentifier || !displayName) return { error: "Matrícula e nome são obrigatórios." };
   const senhaInicialFraca = validatePassword(password);
-  if (senhaInicialFraca) throw new Error(`Senha inicial: ${senhaInicialFraca}`);
+  if (senhaInicialFraca) return { error: `Senha inicial: ${senhaInicialFraca}` };
 
   const supabase = await createClient();
 
@@ -27,11 +33,11 @@ export async function criarUsuarioAction(formData: FormData) {
   // quando o chamador não tem permissão (a função SQL abaixo checa de
   // novo, redundância intencional).
   const { data: canManage } = await supabase.rpc("has_permission", { p_resource: "users", p_action: "manage" });
-  if (!canManage) throw new Error("Sem permissão para criar usuário (users.manage).");
+  if (!canManage) return { error: "Sem permissão para criar usuário (users.manage)." };
 
   const { data: companyId } = await supabase.rpc("current_company_id");
   const { data: company } = await supabase.from("companies").select("slug").eq("id", companyId).single();
-  if (!company) throw new Error("Empresa não encontrada.");
+  if (!company) return { error: "Empresa não encontrada." };
 
   // auth.users.email é sempre sintético — login continua por matrícula
   // (mesmo padrão de login/actions.ts). Único por empresa via slug.
@@ -44,7 +50,7 @@ export async function criarUsuarioAction(formData: FormData) {
     email_confirm: true,
   });
   if (createError || !created?.user) {
-    throw new Error(createError?.message ?? "Falha ao criar usuário.");
+    return { error: createError?.message ?? "Falha ao criar usuário." };
   }
 
   const { error: perfilError } = await supabase.rpc("criar_perfil_usuario", {
@@ -58,7 +64,7 @@ export async function criarUsuarioAction(formData: FormData) {
     // órfã e inacessível (login resolve por profiles, nunca direto) —
     // remove pra não acumular lixo.
     await admin.auth.admin.deleteUser(created.user.id);
-    throw new Error(perfilError.message);
+    return { error: perfilError.message };
   }
 
   if (roleId) {
@@ -67,10 +73,14 @@ export async function criarUsuarioAction(formData: FormData) {
       p_role_id: roleId,
       p_valid_until: null,
     });
-    if (papelError) throw new Error(`Usuário criado, mas falha ao atribuir papel: ${papelError.message}`);
+    if (papelError) {
+      revalidatePath("/usuarios");
+      return { error: `Usuário criado, mas falha ao atribuir papel: ${papelError.message}` };
+    }
   }
 
   revalidatePath("/usuarios");
+  return { ok: `Usuário ${loginIdentifier} criado.` };
 }
 
 export async function atribuirPapelAction(formData: FormData) {
@@ -134,26 +144,30 @@ export async function reativarUsuarioAction(formData: FormData) {
   revalidatePath("/usuarios");
 }
 
-export async function resetarSenhaAction(formData: FormData) {
+export async function resetarSenhaAction(_prev: ResultadoAcao, formData: FormData): Promise<ResultadoAcao> {
   const profileId = String(formData.get("profile_id") ?? "");
   const novaSenha = String(formData.get("nova_senha") ?? "");
-  if (!profileId) throw new Error("Usuário inválido.");
+  if (!profileId) return { error: "Usuário inválido." };
   const novaSenhaFraca = validatePassword(novaSenha);
-  if (novaSenhaFraca) throw new Error(`Nova senha: ${novaSenhaFraca}`);
+  if (novaSenhaFraca) return { error: `Nova senha: ${novaSenhaFraca}` };
 
   const supabase = await createClient();
-  // Checado antes de chamar a Admin API, mesmo motivo de criarUsuarioAction.
-  const { data: canManage } = await supabase.rpc("has_permission", { p_resource: "users", p_action: "manage" });
-  if (!canManage) throw new Error("Sem permissão para redefinir senha (users.manage).");
+
+  // ORDEM IMPORTA (auditoria 12/10/2026): a Admin API ignora RLS e troca a senha de
+  // QUALQUER id recebido. O profile_id vem do formulário, ou seja, do cliente. Por
+  // isso o banco valida PRIMEIRO — permissão users.manage, empresa suspensa e se o
+  // perfil é desta empresa (marcar_troca_senha_obrigatoria) — e só depois a
+  // senha é alterada. A ordem anterior trocava a senha e só então o banco recusava:
+  // um ADMIN de uma empresa redefinia a senha de usuário de outra.
+  const { error: gateError } = await supabase.rpc("marcar_troca_senha_obrigatoria", { p_profile_id: profileId });
+  if (gateError) return { error: gateError.message };
 
   const admin = createAdminClient();
   const { error: updateError } = await admin.auth.admin.updateUserById(profileId, { password: novaSenha });
-  if (updateError) throw new Error(updateError.message);
-
-  const { error } = await supabase.rpc("marcar_troca_senha_obrigatoria", { p_profile_id: profileId });
-  if (error) throw new Error(error.message);
+  if (updateError) return { error: updateError.message };
 
   revalidatePath("/usuarios");
+  return { ok: "Senha redefinida. O usuário deverá trocá-la no próximo acesso." };
 }
 
 export async function criarPapelAction(formData: FormData) {

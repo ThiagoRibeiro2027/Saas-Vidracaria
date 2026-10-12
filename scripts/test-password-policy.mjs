@@ -63,7 +63,7 @@ check("nenhuma checagem de tamanho de senha usa número literal", literais.lengt
 if (literais.length) for (const l of literais) console.error(`    ${l}`);
 
 console.log("\n3. Os pontos que definem senha usam a constante");
-for (const arq of ["src/app/change-password/page.tsx", "src/app/usuarios/UsuariosSection.tsx"]) {
+for (const arq of ["src/app/change-password/page.tsx", "src/app/usuarios/FormsSenha.tsx"]) {
   check(`${arq} usa MIN_PASSWORD_LENGTH (atributo minLength do formulário)`, usam.has(arq));
 }
 const usuariosActions = readFileSync("src/app/usuarios/actions.ts", "utf8");

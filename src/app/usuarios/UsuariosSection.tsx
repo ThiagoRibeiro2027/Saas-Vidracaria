@@ -1,14 +1,12 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { MIN_PASSWORD_LENGTH, PASSWORD_RULE_HINT } from "@/lib/auth/password-policy";
+import { CriarUsuarioForm, ResetSenhaForm } from "./FormsSenha";
 import {
-  criarUsuarioAction,
   atribuirPapelAction,
   revogarPapelAction,
   desativarUsuarioAction,
   reativarUsuarioAction,
-  resetarSenhaAction,
   concederPermissaoIndividualAction,
   restringirPermissaoIndividualAction,
   removerPermissaoIndividualAction,
@@ -75,23 +73,7 @@ export default function UsuariosSection({
       </p>
 
       {canManage && (
-        <form action={criarUsuarioAction} className="mt-3 flex flex-wrap items-center gap-1.5">
-          <Input name="login_identifier" placeholder="matrícula" required className="w-24" />
-          <Input name="display_name" placeholder="nome completo" required className="w-40" />
-          <Input name="contact_email" type="email" placeholder="e-mail (opcional)" className="w-44" />
-          <Input name="password" type="password" placeholder="senha inicial" title={PASSWORD_RULE_HINT} required minLength={MIN_PASSWORD_LENGTH} className="w-32" />
-          <Select name="role_id" defaultValue="">
-            <option value="">papel inicial (opcional)</option>
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </Select>
-          <Button type="submit" variant="primary">
-            Criar usuário
-          </Button>
-        </form>
+        <CriarUsuarioForm roles={roles} />
       )}
 
       <div className="mb-2 mt-3 flex flex-wrap items-center gap-2">
@@ -189,21 +171,7 @@ export default function UsuariosSection({
                                 {p.active ? "Desativar" : "Reativar"}
                               </Button>
                             </form>
-                            <form action={resetarSenhaAction} className="flex gap-1">
-                              <input type="hidden" name="profile_id" value={p.id} />
-                              <Input
-                                name="nova_senha"
-                                type="password"
-                                placeholder="nova senha"
-                                title={PASSWORD_RULE_HINT}
-                                minLength={MIN_PASSWORD_LENGTH}
-                                required
-                                className="w-28 text-[11px]"
-                              />
-                              <Button type="submit" variant="secondary" size="sm">
-                                resetar
-                              </Button>
-                            </form>
+                            <ResetSenhaForm profileId={p.id} />
                           </div>
                         )}
                       </Td>
