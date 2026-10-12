@@ -179,7 +179,7 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   `registrar_recusa_proposta`, `remover_permissao_individual`. Detectadas por
   `scripts/test-suspensao-varredura.mjs`; corpo de `delete_file` e
   `mudar_estagio_oportunidade` lido no banco: só checavam permissão.
-  **Correção rascunhada, NÃO aplicada na nuvem:**
+  **Corrigido — aplicada na nuvem em 12/10/2026:**
   `20261012181317_guarda_suspensao_escrita_tenant.sql` — a única mudança em
   cada função é `perform public.assert_company_not_suspended()` logo depois
   do gate de permissão (corpo gerado de `pg_get_functiondef()`, não
@@ -189,7 +189,7 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   varredura passa (6/6) e entrou no `run-tests.mjs`.
 - **Achado 5 (P1) — `log_system_event()`** confiava em `p_company_id` do
   cliente: um usuário de um tenant gravava evento em outro (ou "sem dono").
-  **Correção rascunhada, NÃO aplicada na nuvem:**
+  **Corrigido — aplicada na nuvem em 12/10/2026:**
   `20261012181332_log_system_event_valida_empresa.sql` — `service_role`
   (crons, webhooks, `sistema_falhar_operacao`) e `platform_admin` MFA informam
   a empresa; usuário comum só registra na PRÓPRIA (`current_company_id()`),
@@ -198,13 +198,17 @@ a tabelas e RPCs sensíveis. Leitura estática: nenhuma função
   do usuário, `falhar_operacao`) é compatível. Testes: `test-governance`
   seção 6 (outra empresa recusada e nada gravado; nulo atribuído; própria
   aceita; service_role e platform_admin em qualquer empresa).
-- **Regressão dos achados 3 e 5 (banco local, migrations aplicadas via
-  `psql`, sem `db reset`):** estoque 39/39, compras 295/295, suprimentos
-  50/50, comercial 89/89, contratos 102/102, rh 83/83, storage-rls 32/32,
-  permissao-individual 27/27, integracoes 153/153, grants 21/21. O
-  `test-bancario` falhou em `prepararTituloPagar` (`null (reading '0')`), o
-  mesmo erro que já ocorria na rodada sem reset ANTES destas migrations —
-  depende de estado do banco; só o `npm test` com `db reset` confirma.
+- **Regressão dos achados 3 e 5:** `npm test` completo com `db reset`
+  (migrations reaplicadas pelo arquivo): **41/41 scripts** (12/10/2026),
+  inclusive `test-bancario`, cuja falha anterior era só estado residual do
+  banco sem reset. **Conferido na nuvem** após o `db push`
+  (`supabase db query --linked`, somente SELECT): as 9 funções do achado 3
+  têm `assert_company_not_suspended()` no corpo; `log_system_event` tem a
+  validação de empresa; a varredura de suspensão na nuvem deixa sem guarda
+  só as 9 exceções justificadas do teste (platform_admin, rastro técnico e do
+  próprio usuário); privilégios do achado 4 intactos (`anon` 0, `authenticated`
+  353, `service_role` 387 de 387). **Não executado na nuvem:** os testes de
+  comportamento (criam tenants; só rodam no banco local).
 
 ### Ambiente de teste local (aprendizado)
 
