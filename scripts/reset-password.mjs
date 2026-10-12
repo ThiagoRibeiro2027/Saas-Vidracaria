@@ -37,17 +37,20 @@ if (!url || !serviceKey || !email) {
   process.exit(1);
 }
 
+const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: Boolean(process.stdin.isTTY) });
+let mudo = false;
+const escreverOriginal = rl._writeToOutput?.bind(rl);
+rl._writeToOutput = (s) => { if (!mudo) (escreverOriginal ? escreverOriginal(s) : rl.output.write(s)); };
+const fila = [];
+let aguardando = null;
+rl.on("line", (l) => { if (aguardando) { const r = aguardando; aguardando = null; r(l); } else fila.push(l); });
+rl.on("close", () => { if (aguardando) { const r = aguardando; aguardando = null; r(""); } });
 function perguntar(texto, { oculto = false } = {}) {
   return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    if (oculto) {
-      rl._writeToOutput = (s) => { if (s.includes(texto)) rl.output.write(s); };
-    }
-    rl.question(texto, (resp) => {
-      rl.close();
-      if (oculto) process.stdout.write("\n");
-      resolve(resp);
-    });
+    process.stdout.write(texto);
+    mudo = oculto;
+    const fim = (r) => { mudo = false; if (oculto) process.stdout.write("\n"); resolve(r); };
+    if (fila.length) fim(fila.shift()); else aguardando = fim;
   });
 }
 
@@ -86,3 +89,4 @@ const { error: profError } = await admin.from("profiles").update({ must_change_p
 if (profError) console.warn("Aviso: não consegui marcar must_change_password:", profError.message);
 
 console.log("Senha redefinida. No login, o usuário será levado a trocá-la.");
+rl.close();
