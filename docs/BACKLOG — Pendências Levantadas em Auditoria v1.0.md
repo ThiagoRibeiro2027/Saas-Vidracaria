@@ -342,6 +342,14 @@ trocaria a URL de produção por `127.0.0.1`.
   `seed-dev-tenant.mjs` com senha de bootstrap pública e deve ser redefinido
   ou desativado; a limpeza não tem volta e a nuvem não tem backup (fazer dump
   antes).
+- **Achado 12, limpeza executada na nuvem e conferida (12/10/2026, somente
+  leitura):** 1 empresa (`jrbox`), 2 perfis, 2 usuários no Auth (de 382), 1
+  arquivo no Storage (de 33, nenhum de outra empresa), 0 `platform_admins`,
+  967 logs (trigger de imutabilidade ativo). Dump prévio dos dados de `public`
+  em `backups/db/` (fora do git). **Pendente:** criar um platform_admin novo
+  (senha forte e MFA); redefinir ou desativar o usuário `0001` (nasceu com senha
+  de bootstrap pública e `must_change_password` está false, então não dá para
+  afirmar que a senha foi trocada).
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload
