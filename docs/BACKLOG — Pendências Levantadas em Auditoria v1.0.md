@@ -262,21 +262,34 @@ trocaria a URL de produção por `127.0.0.1`.
   (decisão/ação humana):** ajustar `minimum_password_length` para 10 no painel
   do Supabase (Authentication) — sem isso, quem chamar a Auth API direto
   (a anon key vai no bundle do app de campo) ainda aceita senha de 6.
-- **Achado 8 (P1, LGPD) — `anonimizar_pessoa()` só limpa `pessoas`.** Provado
-  com dados reais: depois de anonimizar o titular permanecem (a) `obras`: nome
-  e endereço completo; (b) `propostas.destinatario`: o e-mail; (c)
-  `fornecedor_dados`: banco, agência, conta e `chave_pix` (aqui, o CPF). Já
-  `propostas.snapshot` só guarda ids. **Decisão pendente do responsável** (há
-  tensão com obrigação de guarda — garantia/contrato/fiscal, ADR-010 §6).
-- **Achado 9 (P1, LGPD) — nome e documento na TRILHA DE AUDITORIA imutável.**
-  `cadastro.pessoa_upserted` grava o nome em `description`;
-  `users.usuario_criado`, `rh.funcionario_admitido/atualizado` e
-  `instalacao.aceite_registrado` idem; os eventos de importação gravam CPF/CNPJ
-  e nomes em `metadata`. O trigger torna a linha intocável e a anonimização
-  existente (`anonymize_activity_logs_for_user`) é por `user_id`, então o nome
-  de uma PESSOA (cliente, fornecedor, funcionário) nunca sai de lá. Contraria
-  ADR-009/010 §8 (log sem dado pessoal desnecessário ao diagnóstico). O teste
-  F11 de `test-cadastros` só olha `metadata` de edição, não `description`.
+- **Achado 8 (P1, LGPD) — `anonimizar_pessoa()` só limpava `pessoas` — CORRIGIDO
+  (migration `20261012184715`, seção 4 de `test-lgpd-pessoa`).** Provado com
+  dados reais: depois de anonimizar o titular permaneciam (a) `obras`: nome e
+  endereço; (b) `propostas.destinatario`: o e-mail; (c) `fornecedor_dados`:
+  banco, agência, conta e `chave_pix` (aqui, o CPF). **Decisão do responsável
+  (12/10): limpar as cópias, preservando o que tem guarda legal** (ADR-010 §6).
+  A função agora limpa essas três cópias (só as linhas do titular, na própria
+  empresa) e NÃO toca documentos fiscais, contratos, títulos, `propostas.snapshot`
+  (só ids/valores — verificado) nem o vínculo `pessoa_id`. O log registra contagens,
+  nunca o conteúdo. Fora de alcance, por serem texto livre: `observacoes` e
+  descrições de qualquer tabela — não há como higienizar de forma confiável
+  automaticamente; registrar no ADR-010.
+- **Achado 9 (P1, LGPD) — nome, e-mail e documento na TRILHA DE AUDITORIA
+  imutável — CORRIGIDO PARA LOGS NOVOS (migration `20261012185105`, seção 5 de
+  `test-lgpd-pessoa`).** O log é imutável por trigger e a anonimização existente
+  é por `user_id`, então o nome de uma PESSOA nunca saía de lá. **Decisão do
+  responsável (12/10): parar de gravar dado pessoal nos logs novos, sem
+  rotina de limpeza do histórico.** Mudado: `upsert_pessoa`/`upsert_obra`/
+  `upsert_funcionario`/`criar_perfil_usuario`/`registrar_aceite_instalacao`
+  (description sem nome; funcionário sem a ficha em `metadata.before`),
+  `marcar_proposta_enviada` (sem o e-mail) e as importações de pessoas, obras,
+  funcionários, papéis e dados de fornecedor (log com contagem, sem resultado por
+  linha). O log mantém quem/o quê/qual entidade e os NOMES dos campos alterados.
+  **Pendente/limitação:** (i) os logs antigos continuam com dado pessoal (decisão
+  explícita); (ii) `registrar_aceite_instalacao` não tem teste comportamental
+  (precisa de fixture de instalação concluída) — validada só pela leitura da
+  função; (iii) outros `description` com nome de entidade de negócio (equipe,
+  recurso, regra) não são dado pessoal e ficaram.
 - **Achado 10 (P0 operacional) — NÃO existe backup da produção.**
   `supabase backups list` devolve lista vazia (`pitr_enabled: false`): nenhum
   backup gerenciado; os dumps manuais em `backups/db` são de 11–12/09 e do
