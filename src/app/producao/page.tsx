@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import FilaProducaoSection, { type FilaProducaoRow } from "./FilaProducaoSection";
 import ProducaoSection, {
   type ListaCorteRow,
   type RastreioOrdemProducao,
@@ -25,6 +26,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 type TabSlug =
   | "ordens"
+  | "fila"
   | "lotes-fabris"
   | "recursos"
   | "programacao"
@@ -36,6 +38,11 @@ type TabSlug =
 // ADR-013 (Identidade D), Fase 4.
 const TAB_TITLE: Record<TabSlug, string> = {
   ordens: "Ordens de produção",
+  // Melhorias 12/10/2026, item 9 — "Fila de Produção" sai do menu de topo
+  // (era uma rota irmã, /fila-producao) e entra como aba de Produção, mesmo
+  // padrão das demais. A rota antiga /fila-producao foi removida; o
+  // componente (FilaProducaoSection) é o mesmo de antes, só a casca mudou.
+  fila: "Fila de Produção",
   "lotes-fabris": "Lotes fabris",
   recursos: "Recursos e capacidade",
   programacao: "Programação",
@@ -149,6 +156,7 @@ export default async function ProducaoPage({
 
   const availableTabs: { slug: TabSlug; label: string }[] = [
     { slug: "ordens", label: "Ordens de produção" },
+    { slug: "fila", label: "Fila de Produção" },
     { slug: "lotes-fabris", label: "Lotes fabris" },
     { slug: "recursos", label: "Recursos e capacidade" },
     { slug: "programacao", label: "Programação" },
@@ -175,6 +183,7 @@ export default async function ProducaoPage({
 
       <div className="mt-6">
         {activeTab === "ordens" && <OrdensTab supabase={supabase} canManage={canManageBool} />}
+        {activeTab === "fila" && <FilaTab supabase={supabase} />}
         {activeTab === "lotes-fabris" && <LotesFabrisTab supabase={supabase} canManage={canManageBool} />}
         {activeTab === "recursos" && <RecursosTab supabase={supabase} canManage={canManageBool} />}
         {activeTab === "programacao" && <ProgramacaoTab supabase={supabase} canManage={canManageBool} />}
@@ -333,6 +342,34 @@ async function OrdensTab({ supabase, canManage }: { supabase: SupabaseServerClie
 }
 
 // TÓPICO 4 §14: lotes fabris, itens agrupados e lista de corte combinada.
+// Melhorias 12/10/2026, item 9 — Fase B do plano de 23/09/2026 (fila por
+// pedido de cliente, peças fabricadas reutilizáveis e necessidades
+// automáticas de suprimentos), migrada de /fila-producao pra aba aqui. Só
+// leitura sobre listar_fila_producao() — nenhuma tabela/coluna/permissão
+// nova, reaproveita producao.view já seedada (igual à versão em rota própria
+// que existia antes).
+async function FilaTab({ supabase }: { supabase: SupabaseServerClient }) {
+  const { data: fila } = await supabase.rpc("listar_fila_producao", {
+    p_pessoa_id: null,
+    p_obra_id: null,
+    p_status_op: null,
+  });
+
+  return (
+    <>
+      <p className="text-sm text-text">
+        Painel de leitura agregando ordens de produção de todos os pedidos, agrupadas por
+        cliente/obra/pedido — pensado pro chão de fábrica ver de uma vez só o que está em fila,
+        sem abrir cada pedido individualmente. Gestão de OP/lote/roteiro continua nas demais abas
+        de Produção.
+      </p>
+      <div className="mt-4">
+        <FilaProducaoSection linhas={(fila as FilaProducaoRow[]) ?? []} />
+      </div>
+    </>
+  );
+}
+
 async function LotesFabrisTab({ supabase, canManage }: { supabase: SupabaseServerClient; canManage: boolean }) {
   const [{ data: lotesFabris }, { data: loteFabrilItens }, { data: opLotes }, { data: ordensNumero }] = await Promise.all([
     supabase.from("lotes_fabris").select("*").order("created_at", { ascending: true }),

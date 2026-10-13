@@ -2,7 +2,6 @@ import {
   LayoutDashboard,
   ShoppingCart,
   ClipboardList,
-  ListOrdered,
   Ruler,
   Factory,
   BadgeCheck,
@@ -121,6 +120,9 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Factory,
         children: [
           { label: "Ordens de produção", href: "/producao", tab: "ordens" },
+          // Melhorias 12/10/2026, item 9 — "Fila de Produção" sai do topo do
+          // menu (era /fila-producao, item irmão de Produção) e entra aqui.
+          { label: "Fila de Produção", href: "/producao?tab=fila", tab: "fila" },
           { label: "Lotes fabris", href: "/producao?tab=lotes-fabris", tab: "lotes-fabris" },
           { label: "Recursos e capacidade", href: "/producao?tab=recursos", tab: "recursos" },
           { label: "Programação", href: "/producao?tab=programacao", tab: "programacao" },
@@ -130,7 +132,6 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Rótulos de status", href: "/producao?tab=rotulos", tab: "rotulos" },
         ],
       },
-      { label: "Fila de Produção", href: "/fila-producao", icon: ListOrdered },
       { label: "Qualidade", href: "/qualidade", icon: BadgeCheck },
       { label: "Expedição", href: "/expedicao", icon: Truck },
       {

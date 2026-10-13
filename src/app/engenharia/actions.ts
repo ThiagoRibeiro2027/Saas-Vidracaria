@@ -120,6 +120,13 @@ export async function upsertItemAction(formData: FormData) {
   const classificacao = String(formData.get("classificacao") ?? "").trim() || null;
   const unidadePrincipal = String(formData.get("unidade_principal") ?? "").trim();
   const situacao = String(formData.get("situacao") ?? "ativo");
+  // Melhorias 12/10/2026, item 4: percentual de quebra passa a viver no
+  // próprio item (antes era configurado por tipo de material + processo em
+  // Configurações). Campo opcional na tela — vazio fica null ("sem quebra
+  // conhecida pra este item", não "quebra zero" — ver comentário da migration
+  // 20261012235145 sobre por que isso não pode ser 0 por padrão).
+  const percentualQuebraRaw = String(formData.get("percentual_quebra") ?? "").trim();
+  const percentualQuebra = percentualQuebraRaw ? Number(percentualQuebraRaw) : null;
 
   if (
     !codigo ||
@@ -128,6 +135,9 @@ export async function upsertItemAction(formData: FormData) {
     !ITEM_TIPOS.includes(tipo as (typeof ITEM_TIPOS)[number])
   ) {
     throw new Error("Código, descrição, tipo e unidade principal são obrigatórios.");
+  }
+  if (percentualQuebra !== null && (!Number.isFinite(percentualQuebra) || percentualQuebra < 0)) {
+    throw new Error("Percentual de quebra inválido.");
   }
 
   const supabase = await createClient();
@@ -139,6 +149,7 @@ export async function upsertItemAction(formData: FormData) {
     p_classificacao: classificacao,
     p_unidade_principal: unidadePrincipal,
     p_situacao: situacao,
+    p_percentual_quebra: percentualQuebra,
   });
   if (error) throw new Error(error.message);
 

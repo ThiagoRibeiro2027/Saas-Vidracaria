@@ -560,18 +560,16 @@ async function main() {
 
   console.log("\n11. Lista de corte (TÓPICO 4 §54)");
   {
-    // Achado de code-review (15/09): lista_corte() comparava
-    // get_cutting_margin() contra itens.tipo (enum) em vez de
-    // itens.classificacao (a classificação livre que get_cutting_margin
-    // realmente usa — ver scripts/test-configuracoes.mjs). Sem configurar
-    // uma margem de verdade aqui, o teste anterior passava com ou sem o
-    // bug (NULL por falta de configuração é indistinguível de NULL por
-    // comparar a coluna errada) — agora configura 4,5% pra
-    // 'vidro_temperado' (mesma classificação usada em
-    // prepararPedidoLiberado) e verifica o valor exato de volta.
-    await admTenant.client.rpc("upsert_cutting_margin", {
-      p_material_tipo: "vidro_temperado", p_processo: "", p_percentual: 4.5, p_ativo: true,
+    // Melhorias 12/10/2026, item 4: a margem de quebra deixou de vir da
+    // configuração por classificação (cutting_margin_settings) e passou a
+    // ser um campo do próprio item — grava 4,5% no item desta fixture e
+    // confere o valor exato de volta em lista_corte.
+    const { error: quebraErr } = await admTenant.client.rpc("upsert_item", {
+      p_id: bloqueio.itemId, p_codigo: `VD-3`, p_descricao: "Vidro temperado 10mm",
+      p_tipo: bloqueio.itemTipo, p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
+      p_situacao: "ativo", p_percentual_quebra: 4.5,
     });
+    if (quebraErr) console.error("[fixture] upsert_item (percentual_quebra) falhou:", quebraErr);
 
     const { data: opParaLista } = await admin.from("ordens_producao").select("id").eq("pedido_item_id", bloqueio.pedidoItemId).single();
     const { data: linhas, error } = await admTenant.client.rpc("lista_corte", { p_ordem_producao_id: opParaLista.id });
@@ -579,7 +577,7 @@ async function main() {
     const linha = linhas?.[0];
     check("lista_corte traz a medida confirmada em obra", Number(linha?.largura_mm) === 1200 && Number(linha?.altura_mm) === 800);
     check(
-      "lista_corte traz a margem de quebra configurada pela classificação do item (TÓPICO 15)",
+      "lista_corte traz a margem de quebra configurada no cadastro do item (Melhorias 12/10/2026, item 4)",
       Number(linha?.margem_quebra_percentual) === 4.5,
     );
     check("lista_corte traz pedido/pessoa/OP corretos", linha?.pessoa_nome === "JR Box Vidros" && linha?.numero?.length > 0);
@@ -2206,12 +2204,18 @@ async function main() {
 
   console.log("\n28. Tolerância de perdas com alerta (TÓPICO 4 §30/§51, Fase 7f)");
   {
-    await admTenant.client.rpc("upsert_cutting_margin", {
-      p_material_tipo: "vidro_temperado", p_processo: "", p_percentual: 10, p_ativo: true,
+    // Melhorias 12/10/2026, item 4: a margem de quebra é do item, não mais
+    // de uma configuração por classificação — grava 10% no item desta
+    // fixture (sem afetar outros itens 'vidro_temperado' de outras seções).
+    const tol = await prepararPedidoLiberado(admTenant, "280", { quantidade: 10 });
+    const { error: tolQuebraErr } = await admTenant.client.rpc("upsert_item", {
+      p_id: tol.itemId, p_codigo: "VD-280", p_descricao: "Vidro temperado 10mm",
+      p_tipo: tol.itemTipo, p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
+      p_situacao: "ativo", p_percentual_quebra: 10,
     });
+    if (tolQuebraErr) console.error("[fixture] upsert_item (percentual_quebra 280) falhou:", tolQuebraErr);
 
     // quantidade_planejada 10 × 10% = perda tolerada 1.
-    const tol = await prepararPedidoLiberado(admTenant, "280", { quantidade: 10 });
     const { data: opTolId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: tol.pedidoItemId });
     const opTolOperacaoId = await operacaoUnica(opTolId);
 
@@ -2221,7 +2225,7 @@ async function main() {
     const { data: dentroRows, error: dentroError } = await admTenant.client.rpc("verificar_tolerancia_perda", { p_ordem_producao_id: opTolId });
     const dentro = dentroRows?.[0];
     check("verificar_tolerancia_perda() executa sem erro", !dentroError && !!dentro);
-    check("percentual_tolerancia vem de cutting_margin_settings (10)", Number(dentro?.percentual_tolerancia) === 10);
+    check("percentual_tolerancia vem do percentual de quebra do item (10)", Number(dentro?.percentual_tolerancia) === 10);
     check("perda_tolerada = quantidade_planejada × percentual / 100 (10×10%=1)", Number(dentro?.perda_tolerada) === 1);
     check("perda igual à tolerância não é excedida (1 <= 1)", dentro?.excedida === false);
 

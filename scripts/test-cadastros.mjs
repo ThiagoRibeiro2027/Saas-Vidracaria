@@ -259,6 +259,50 @@ async function main() {
     check("código duplicado na mesma empresa é rejeitado", !!dupError);
   }
 
+  console.log("\n4a. Percentual de quebra no cadastro do item (Melhorias 12/10/2026, item 4)");
+  {
+    const { data: semQuebraId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "VD-PQ-01", p_descricao: "Item sem quebra informada",
+      p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
+      p_situacao: "ativo",
+    });
+    const { data: semQuebra } = await admin.from("itens").select("percentual_quebra").eq("id", semQuebraId).single();
+    check(
+      "sem informar o percentual, fica null (não 0 — null é 'sem quebra conhecida', não dispara alerta de tolerância)",
+      semQuebra?.percentual_quebra === null,
+    );
+
+    const { data: comQuebraId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "VD-PQ-02", p_descricao: "Item com quebra própria",
+      p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
+      p_situacao: "ativo", p_percentual_quebra: 7.5,
+    });
+    const { data: comQuebra } = await admin.from("itens").select("percentual_quebra").eq("id", comQuebraId).single();
+    check("percentual de quebra do item é gravado (7.5)", Number(comQuebra?.percentual_quebra) === 7.5);
+
+    const { error: negativoError } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "VD-PQ-03", p_descricao: "Percentual inválido",
+      p_tipo: "materia_prima", p_classificacao: null, p_unidade_principal: "UN",
+      p_situacao: "ativo", p_percentual_quebra: -1,
+    });
+    check("percentual de quebra negativo é rejeitado", !!negativoError);
+
+    const { error: editError } = await admTenant.client.rpc("upsert_item", {
+      p_id: comQuebraId, p_codigo: "VD-PQ-02", p_descricao: "Item com quebra própria",
+      p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2",
+      p_situacao: "ativo", p_percentual_quebra: 3,
+    });
+    const { data: editado } = await admin.from("itens").select("percentual_quebra").eq("id", comQuebraId).single();
+    check("editar o item atualiza o percentual de quebra (7.5 -> 3)", !editError && Number(editado?.percentual_quebra) === 3);
+
+    // Dois itens da MESMA classificação com percentuais diferentes — era
+    // impossível antes (a config valia por classificação, não por item).
+    check(
+      "dois itens da mesma classificação têm percentuais de quebra independentes",
+      semQuebra?.percentual_quebra === null && Number(editado?.percentual_quebra) === 3,
+    );
+  }
+
   console.log("\n5. Isolamento entre tenants");
   {
     const { data: crossPessoas } = await otherTenant.client

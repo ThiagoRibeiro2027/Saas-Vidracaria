@@ -36,6 +36,9 @@ type Item = {
   tipo: string;
   classificacao: string | null;
   unidade_principal: string;
+  // Melhorias 12/10/2026, item 4 — substitui a configuração por tipo de
+  // material + processo que existia em Configurações (cutting_margin_settings).
+  percentual_quebra: number | null;
   situacao: "ativo" | "inativo";
   // Fase 2 da ADR-011. null = item escalar, que é o padrão de todo o
   // catálogo — só quem opta por controle por peça física preenche.
@@ -98,6 +101,7 @@ export default function ItensSection({
             <SortableTh field="descricao">Descrição</SortableTh>
             <SortableTh field="tipo">Tipo</SortableTh>
             <Th>Unidade</Th>
+            <Th>% Quebra</Th>
             <Th>Situação</Th>
           </DenseTableHeaderRow>
         </thead>
@@ -108,6 +112,7 @@ export default function ItensSection({
               <Td>{row.descricao}</Td>
               <Td className="text-text-muted">{TIPO_LABEL[row.tipo] ?? row.tipo}</Td>
               <Td className="text-text-muted">{row.unidade_principal}</Td>
+              <Td className="text-text-muted">{row.percentual_quebra === null ? "—" : `${row.percentual_quebra}%`}</Td>
               <Td>
                 <StatusPill tone={row.situacao === "ativo" ? "success" : "neutral"}>
                   {row.situacao === "ativo" ? "Ativo" : "Inativo"}
@@ -198,6 +203,17 @@ function ItemForm({ row, canManage, onSaved }: { row: Item | null; canManage: bo
             placeholder="unidade (ex.: M2)"
             defaultValue={row?.unidade_principal ?? ""}
             required
+            disabled={!canManage}
+            className="w-24"
+          />
+          <Input
+            name="percentual_quebra"
+            type="number"
+            step="0.001"
+            min="0"
+            placeholder="% quebra"
+            title="Percentual de quebra deste item (substitui a configuração por tipo de material)"
+            defaultValue={row?.percentual_quebra ?? ""}
             disabled={!canManage}
             className="w-24"
           />

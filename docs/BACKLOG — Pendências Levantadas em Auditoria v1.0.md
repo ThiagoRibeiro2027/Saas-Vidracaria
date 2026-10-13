@@ -410,6 +410,45 @@ trocaria a URL de produção por `127.0.0.1`.
   produção. **Limite do teste:** cobriu as telas navegadas manualmente; não é
   substituto de um pentest profissional externo, recomendado antes de dado
   real de cliente em volume.
+- **Melhorias do responsável do produto, item 4 (12/10/2026) — percentual de
+  quebra passa a ser do item, não mais de uma configuração por tipo de
+  material + processo.** Decisão: substituir totalmente (não é um override).
+  Migration `20261012235145_percentual_quebra_no_item.sql`: coluna
+  `itens.percentual_quebra` (nullable — NULL preserva "sem quebra conhecida",
+  nunca dispara alerta de tolerância; backfill a partir do valor geral já
+  configurado em `cutting_margin_settings` por classificação, quando havia);
+  `upsert_item()` ganha `p_percentual_quebra`; `lista_corte`,
+  `lista_corte_lote_fabril` e `verificar_tolerancia_perda` passam a ler
+  `itens.percentual_quebra` em vez de `get_cutting_margin(classificação, '')`.
+  UI (Engenharia → Itens) ganhou o campo e a coluna na lista.
+  **Duas pegadinhas achadas e corrigidas no processo:**
+  (1) `CREATE OR REPLACE FUNCTION` com uma assinatura de aridade diferente
+  cria uma SOBRECARGA nova em vez de substituir a função antiga — sem o
+  `DROP FUNCTION` explícito da versão de 7 argumentos, ficavam duas
+  `upsert_item` coexistindo e a chamada nomeada via PostgREST ficava ambígua.
+  (2) a função nova (mesmo via `CREATE OR REPLACE`) nasce sem `EXECUTE` pra
+  `authenticated` — efeito colateral do achado 4 da auditoria (fechamento do
+  `EXECUTE` padrão), exigiu `GRANT` explícito na própria migration.
+  Testado: `test-cadastros.mjs` seção 4a (vermelho sem a migration, verde
+  com ela) e `test-producao.mjs` seções 11 e 28 atualizadas pra configurar o
+  percentual no item da fixture em vez de via `upsert_cutting_margin`.
+  **Pendência deixada em aberto, sem ação ainda:** `cutting_margin_settings`,
+  `get_cutting_margin()`, `upsert_cutting_margin()`, `importar_cutting_margin_
+  settings()` e a aba "Margem de quebra" em Configurações Gerais continuam
+  no ar, mas não alimentam mais nenhum cálculo — ficou uma tela que configura
+  algo que não tem mais efeito. Decidir com o responsável se remove.
+  `importar_itens()` também não ganhou a coluna nesta rodada (import de item
+  continua sem jeito de trazer o percentual de quebra já preenchido).
+- **Melhorias do responsável do produto, item 9 (12/10/2026) — Fila de
+  Produção sai do topo do menu e entra como aba de Produção.** Era uma rota
+  irmã (`/fila-producao`, item próprio no menu), virou a aba "Fila de
+  Produção" dentro de `/producao` (`?tab=fila`), mesmo padrão das outras 8
+  abas do módulo. `FilaProducaoSection.tsx` e a função (`listar_fila_
+  producao()`, sem mudança nenhuma no banco) migraram de pasta; a rota
+  `/app/fila-producao` foi removida. `test-fila-producao.mjs` continua
+  verde sem alteração (testa a RPC direto, não a página). Reorganização de
+  tela, sem decisão de produto nova — não precisou de pergunta ao
+  responsável.
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload
