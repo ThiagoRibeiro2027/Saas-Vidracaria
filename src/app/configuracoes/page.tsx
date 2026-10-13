@@ -5,10 +5,11 @@ import MeasurementRulesSection from "./MeasurementRulesSection";
 import ApprovalThresholdsSection from "./ApprovalThresholdsSection";
 import MargemPrecoSection from "./MargemPrecoSection";
 import VariaveisConfiguradorSection from "./VariaveisConfiguradorSection";
+import UnidadesMedidaSection from "./UnidadesMedidaSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { PageHeader } from "@/components/ui/PageHeader";
 
-type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada" | "preco" | "variaveis";
+type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada" | "preco" | "variaveis" | "unidades";
 
 // ADR-013 (Identidade D), Fase 4.
 const TAB_TITLE: Record<TabSlug, string> = {
@@ -18,6 +19,8 @@ const TAB_TITLE: Record<TabSlug, string> = {
   alcada: "Alçada de aprovação",
   preco: "Margem de preço",
   variaveis: "Variáveis do configurador",
+  // Melhorias 12/10/2026, item 8.
+  unidades: "Unidades de medida",
 };
 
 // TÓPICO 15 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
@@ -60,6 +63,7 @@ export default async function ConfiguracoesPage({
     { data: pricingSettings },
     { data: variavelCategorias },
     { data: variavelTemplates },
+    { data: companyUnits },
   ] = await Promise.all([
     supabase.from("numbering_sequences").select("*").order("document_type"),
     supabase
@@ -81,6 +85,8 @@ export default async function ConfiguracoesPage({
     // Pré-engenharia (ver PecasSection.tsx).
     supabase.from("variavel_categorias").select("id, nome").order("nome"),
     supabase.from("variavel_templates").select("*").order("nome"),
+    // Melhorias 12/10/2026, item 8.
+    supabase.from("company_measurement_units").select("*").order("unidade"),
   ]);
 
   const documentTypeKeys = Array.from(new Set((documentTypes ?? []).map((d) => d.document_type))).sort();
@@ -92,6 +98,7 @@ export default async function ConfiguracoesPage({
     { slug: "alcada", label: "Alçada de aprovação" },
     { slug: "preco", label: "Margem de preço" },
     { slug: "variaveis", label: "Variáveis do configurador" },
+    { slug: "unidades", label: "Unidades de medida" },
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "numeracao";
 
@@ -131,6 +138,7 @@ export default async function ConfiguracoesPage({
             canManage={!!canManage}
           />
         )}
+        {activeTab === "unidades" && <UnidadesMedidaSection rows={companyUnits ?? []} canManage={!!canManage} />}
       </div>
       </div>
     </>

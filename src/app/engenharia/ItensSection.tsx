@@ -55,10 +55,13 @@ export default function ItensSection({
   rows,
   paginacao,
   canManage,
+  unidadesDisponiveis,
 }: {
   rows: Item[];
   paginacao: PaginacaoInfo;
   canManage: boolean;
+  // Melhorias 12/10/2026, item 8 — unidades ativas em Configurações Gerais.
+  unidadesDisponiveis: string[];
 }) {
   const [viewId, setViewId] = useState<string | null>(null);
   const criando = viewId === "novo";
@@ -136,13 +139,33 @@ export default function ItensSection({
         title={criando ? "Novo item" : (viewing?.codigo ?? "Item")}
         size="md"
       >
-        {(criando || viewing) && <ItemForm row={viewing} canManage={canManage} onSaved={aoSalvar} />}
+        {(criando || viewing) && (
+          <ItemForm row={viewing} canManage={canManage} onSaved={aoSalvar} unidadesDisponiveis={unidadesDisponiveis} />
+        )}
       </Modal>
     </section>
   );
 }
 
-function ItemForm({ row, canManage, onSaved }: { row: Item | null; canManage: boolean; onSaved: () => void }) {
+function ItemForm({
+  row,
+  canManage,
+  onSaved,
+  unidadesDisponiveis,
+}: {
+  row: Item | null;
+  canManage: boolean;
+  onSaved: () => void;
+  unidadesDisponiveis: string[];
+}) {
+  // Item já cadastrado com uma unidade fora do catálogo atual (texto livre de
+  // antes desta tela existir, ou unidade desativada depois) — mantém o valor
+  // visível e selecionado, em vez de forçar a trocar pra outra unidade sem o
+  // usuário pedir.
+  const opcoesUnidade =
+    row?.unidade_principal && !unidadesDisponiveis.includes(row.unidade_principal)
+      ? [row.unidade_principal, ...unidadesDisponiveis]
+      : unidadesDisponiveis;
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -198,14 +221,22 @@ function ItemForm({ row, canManage, onSaved }: { row: Item | null; canManage: bo
             disabled={!canManage}
             className="w-40"
           />
-          <Input
+          <Select
             name="unidade_principal"
-            placeholder="unidade (ex.: M2)"
             defaultValue={row?.unidade_principal ?? ""}
             required
             disabled={!canManage}
             className="w-24"
-          />
+          >
+            <option value="" disabled>
+              unidade
+            </option>
+            {opcoesUnidade.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </Select>
           <Input
             name="percentual_quebra"
             type="number"

@@ -173,6 +173,29 @@ export async function upsertMeasurementRuleAction(formData: FormData) {
   revalidatePath("/configuracoes");
 }
 
+// Melhorias 12/10/2026, item 8 — unidades de medida que a empresa escolheu
+// usar; alimenta o dropdown de "unidade" no cadastro de item (Engenharia).
+export async function upsertCompanyMeasurementUnitAction(formData: FormData) {
+  const unidade = String(formData.get("unidade") ?? "").trim();
+  const descricao = String(formData.get("descricao") ?? "").trim() || null;
+  const ativo = formData.get("ativo") === "on";
+
+  if (!unidade) {
+    throw new Error("Unidade é obrigatória.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_company_measurement_unit", {
+    p_unidade: unidade,
+    p_descricao: descricao,
+    p_ativo: ativo,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/engenharia");
+}
+
 export async function upsertApprovalThresholdAction(formData: FormData) {
   const processo = String(formData.get("processo") ?? "").trim();
   const valorMinimo = Number(formData.get("valor_minimo") ?? "");

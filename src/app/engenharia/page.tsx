@@ -324,7 +324,22 @@ async function ItensTab({
     : itensQuery.order("codigo");
   const { data: itens } = await itensQuery.range(from, to);
 
-  return <ItensSection rows={itens ?? []} paginacao={paginacao} canManage={canManage} />;
+  // Melhorias 12/10/2026, item 8 — unidades que a empresa escolheu em
+  // Configurações Gerais, pra oferecer num dropdown em vez de texto livre.
+  const { data: unidadesAtivas } = await supabase
+    .from("company_measurement_units")
+    .select("unidade")
+    .eq("ativo", true)
+    .order("unidade");
+
+  return (
+    <ItensSection
+      rows={itens ?? []}
+      paginacao={paginacao}
+      canManage={canManage}
+      unidadesDisponiveis={(unidadesAtivas ?? []).map((u) => u.unidade)}
+    />
+  );
 }
 
 // 2026-10-11: filtro por situação (ativo/inativo) e ordenação por

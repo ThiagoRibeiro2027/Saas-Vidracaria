@@ -449,6 +449,25 @@ trocaria a URL de produção por `127.0.0.1`.
   verde sem alteração (testa a RPC direto, não a página). Reorganização de
   tela, sem decisão de produto nova — não precisou de pergunta ao
   responsável.
+- **Melhorias do responsável do produto, item 8 (12/10/2026) — unidades de
+  medida padrão por empresa, configuráveis em Configurações Gerais.**
+  Decisão: itens já cadastrados com texto livre inconsistente ("UN", "m",
+  "M", "M2") NÃO são normalizados; só itens novos/editados passam a usar o
+  dropdown. Migration `20261013000749_unidades_medida_padrao.sql`: tabela
+  `company_measurement_units` (mesmo padrão das outras 4 tabelas de TÓPICO
+  15 — leitura liberada a qualquer autenticado da empresa, escrita via
+  `upsert_company_measurement_unit()` com `has_permission('configuracoes',
+  'manage')`); `itens.unidade_principal` continua `text` livre, sem FK (uma
+  FK quebraria todo item com valor fora do catálogo). Toda empresa — as que
+  já existiam (backfill) e as novas (trigger `seed_default_measurement_
+  units` em `companies`) — nasce com um catálogo padrão (UN, M, M2, KG, L,
+  PC). Nova aba "Unidades de medida" em Configurações; o cadastro de item
+  (Engenharia) virou `<Select>` com as unidades ativas, mais a unidade atual
+  do item quando ela não está mais no catálogo (não força trocar).
+  Testado: `test-configuracoes.mjs` seção 10 (vermelho sem a migration,
+  verde com ela): gate de permissão, unidade vazia rejeitada, upsert
+  idempotente, isolamento cross-tenant, catálogo padrão presente numa
+  empresa nova.
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload

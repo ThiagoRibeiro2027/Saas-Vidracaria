@@ -334,12 +334,49 @@ async function main() {
         "config.cutting_margin_upserted",
         "config.measurement_rule_upserted",
         "config.approval_threshold_upserted",
+        "config.unidade_medida_upserted",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("numbering_sequence_upserted registrado", actions.has("config.numbering_sequence_upserted"));
     check("cutting_margin_upserted registrado", actions.has("config.cutting_margin_upserted"));
     check("measurement_rule_upserted registrado", actions.has("config.measurement_rule_upserted"));
     check("approval_threshold_upserted registrado", actions.has("config.approval_threshold_upserted"));
+  }
+
+  console.log("\n10. Unidades de medida (Melhorias 12/10/2026, item 8)");
+  {
+    const { data: seedUnits } = await admTenant.client.from("company_measurement_units").select("unidade, ativo");
+    check(
+      "empresa nasce com o catálogo padrão (UN, M, M2, KG, L, PC)",
+      ["UN", "M", "M2", "KG", "L", "PC"].every((u) => (seedUnits ?? []).some((r) => r.unidade === u)),
+    );
+
+    const { error: semPermError } = await noPermTenant.client.rpc("upsert_company_measurement_unit", {
+      p_unidade: "CX", p_descricao: "Caixa", p_ativo: true,
+    });
+    check("sem configuracoes.manage não cria unidade", !!semPermError);
+
+    const { error: vazioError } = await admTenant.client.rpc("upsert_company_measurement_unit", {
+      p_unidade: "   ", p_descricao: null, p_ativo: true,
+    });
+    check("unidade vazia/só espaço é rejeitada", !!vazioError);
+
+    const { data: cxId, error: criarError } = await admTenant.client.rpc("upsert_company_measurement_unit", {
+      p_unidade: "CX", p_descricao: "Caixa", p_ativo: true,
+    });
+    check("ADMIN cria unidade nova", !criarError && !!cxId);
+
+    const { error: upsertError } = await admTenant.client.rpc("upsert_company_measurement_unit", {
+      p_unidade: "CX", p_descricao: "Caixa fechada", p_ativo: false,
+    });
+    const { data: cxAtualizada } = await admin.from("company_measurement_units").select("id, descricao, ativo").eq("id", cxId).single();
+    check(
+      "upsert pela mesma unidade atualiza em vez de duplicar (mesmo id, descrição e ativo novos)",
+      !upsertError && cxAtualizada?.id === cxId && cxAtualizada?.descricao === "Caixa fechada" && cxAtualizada?.ativo === false,
+    );
+
+    const { data: crossUnits } = await otherTenant.client.from("company_measurement_units").select("id").eq("company_id", admTenant.company.id);
+    check("tenant B não enxerga unidades do tenant A", (crossUnits ?? []).length === 0);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
