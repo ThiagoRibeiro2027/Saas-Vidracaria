@@ -76,12 +76,13 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     rotulo: "Itens (produtos/materiais)",
     modulo: "Engenharia",
     rpc: "importar_itens",
-    campos: ["codigo", "descricao", "tipo", "classificacao", "unidade_principal"],
+    campos: ["codigo", "descricao", "tipo", "classificacao", "unidade_principal", "percentual_quebra"],
     colunaIdentificador: "codigo",
     colunaRotulo: "descricao",
     caminhoRevalidar: "/engenharia",
     descricao:
-      "Produto e material são o mesmo cadastro, diferenciados pelo tipo. O código é a chave.",
+      "Produto e material são o mesmo cadastro, diferenciados pelo tipo. O código é a chave. " +
+      "percentual_quebra é opcional (Melhorias 12/10/2026, item 4) — em branco, fica sem quebra conhecida.",
   },
   {
     chave: "pessoa_papeis",
@@ -414,19 +415,6 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     colunaRotulo: "conta",
     caminhoRevalidar: "/financeiro",
     descricao: "Contas da empresa. Sem chave única no banco: a identificação é banco + agência + conta.",
-  },
-  {
-    chave: "cutting_margin_settings",
-    recursoPermissao: "configuracoes",
-    rotulo: "Margem de quebra",
-    modulo: "Configurações",
-    rpc: "importar_cutting_margin_settings",
-    campos: ["material_tipo", "processo", "percentual", "ativo"],
-    colunaIdentificador: "material",
-    colunaRotulo: "processo",
-    caminhoRevalidar: "/configuracoes",
-    descricao:
-      "Perda por tipo de material e processo. material_tipo deve casar com a classificação usada nos itens. Processo vazio vale para qualquer processo — é um valor, não ausência.",
   },
   {
     chave: "measurement_rules",

@@ -87,7 +87,7 @@ const TENANT_TABLES = [
   "pedido_item_divergencia_preco",
   "itens", "pecas", "peca_categorias", "peca_caracteristicas", "peca_composicao",
   "peca_composicao_comprimentos_barra", "peca_regras", "peca_revisoes", "engenharia_versoes",
-  "itens_pecas_dimensionais", "item_materiais_alternativos", "measurement_rules", "cutting_margin_settings",
+  "itens_pecas_dimensionais", "item_materiais_alternativos", "measurement_rules", "company_measurement_units",
   "ordens_producao", "itens_producao", "op_lotes", "op_lote_operacoes", "op_lote_operacao_recursos",
   "lotes_fabris", "lote_fabril_itens", "roteiros_produtivos", "roteiro_operacoes", "recursos_produtivos",
   "producao_apontamentos", "producao_horizontes", "producao_status_labels", "sequenciamento_decisoes",

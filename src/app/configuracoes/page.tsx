@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import NumberingSequencesSection from "./NumberingSequencesSection";
-import CuttingMarginsSection from "./CuttingMarginsSection";
 import MeasurementRulesSection from "./MeasurementRulesSection";
 import ApprovalThresholdsSection from "./ApprovalThresholdsSection";
 import MargemPrecoSection from "./MargemPrecoSection";
@@ -9,12 +8,11 @@ import UnidadesMedidaSection from "./UnidadesMedidaSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { PageHeader } from "@/components/ui/PageHeader";
 
-type TabSlug = "numeracao" | "quebra" | "medicao" | "alcada" | "preco" | "variaveis" | "unidades";
+type TabSlug = "numeracao" | "medicao" | "alcada" | "preco" | "variaveis" | "unidades";
 
 // ADR-013 (Identidade D), Fase 4.
 const TAB_TITLE: Record<TabSlug, string> = {
   numeracao: "Numeração",
-  quebra: "Margem de quebra",
   medicao: "Regra de medição",
   alcada: "Alçada de aprovação",
   preco: "Margem de preço",
@@ -24,8 +22,10 @@ const TAB_TITLE: Record<TabSlug, string> = {
 };
 
 // TÓPICO 15 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
-// seção 4): numeração, margem de quebra, regra de medição e alçadas de
-// aprovação. Leitura das 4 tabelas é liberada a qualquer usuário
+// seção 4): numeração, regra de medição e alçadas de aprovação (a margem de
+// quebra saiu daqui em 12/10/2026, Melhorias item 4 — virou um campo do
+// próprio item, ver itens.percentual_quebra). Leitura das tabelas é liberada
+// a qualquer usuário
 // autenticado da empresa (RLS só verifica company_id — módulos futuros vão
 // precisar ler isso); a TELA em si exige configuracoes.view.
 export default async function ConfiguracoesPage({
@@ -55,7 +55,6 @@ export default async function ConfiguracoesPage({
 
   const [
     { data: numberingSequences },
-    { data: cuttingMargins },
     { data: measurementRules },
     { data: roles },
     { data: approvalThresholds },
@@ -66,11 +65,6 @@ export default async function ConfiguracoesPage({
     { data: companyUnits },
   ] = await Promise.all([
     supabase.from("numbering_sequences").select("*").order("document_type"),
-    supabase
-      .from("cutting_margin_settings")
-      .select("*")
-      .order("material_tipo")
-      .order("processo"),
     supabase.from("measurement_rules").select("*").order("tipo_item"),
     supabase.from("roles").select("id, key, name, company_id").order("name"),
     supabase.from("approval_thresholds").select("*").order("processo"),
@@ -93,7 +87,6 @@ export default async function ConfiguracoesPage({
 
   const availableTabs: { slug: TabSlug; label: string }[] = [
     { slug: "numeracao", label: "Numeração" },
-    { slug: "quebra", label: "Margem de quebra" },
     { slug: "medicao", label: "Regra de medição" },
     { slug: "alcada", label: "Alçada de aprovação" },
     { slug: "preco", label: "Margem de preço" },
@@ -107,7 +100,7 @@ export default async function ConfiguracoesPage({
       <PageHeader breadcrumb={["Configurações"]} title={TAB_TITLE[activeTab]} />
       <div className="mx-auto max-w-7xl p-6">
       <p className="text-sm text-text">
-        Recorte mínimo do M1: numeração, margem de quebra, regra de medição e alçada de
+        Recorte mínimo do M1: numeração, regra de medição e alçada de
         aprovação, mais a margem de preço do orçamento (ADR-012). Não substitui os cadastros dos módulos operacionais (item 1 do TÓPICO 15).
       </p>
 
@@ -119,7 +112,6 @@ export default async function ConfiguracoesPage({
             canManage={!!canManage}
           />
         )}
-        {activeTab === "quebra" && <CuttingMarginsSection rows={cuttingMargins ?? []} canManage={!!canManage} />}
         {activeTab === "medicao" && (
           <MeasurementRulesSection rows={measurementRules ?? []} canManage={!!canManage} />
         )}

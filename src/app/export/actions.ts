@@ -99,7 +99,7 @@ const TENANT_TABLES = [
   "itens_pecas_dimensionais",
   "item_materiais_alternativos",
   "measurement_rules",
-  "cutting_margin_settings",
+  "company_measurement_units",
   // Produção
   "ordens_producao",
   "itens_producao",

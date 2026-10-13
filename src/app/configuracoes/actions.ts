@@ -39,28 +39,6 @@ export async function upsertNumberingSequenceAction(formData: FormData) {
   revalidatePath("/configuracoes");
 }
 
-export async function upsertCuttingMarginAction(formData: FormData) {
-  const materialTipo = String(formData.get("material_tipo") ?? "").trim();
-  const processo = String(formData.get("processo") ?? "").trim();
-  const percentual = Number(formData.get("percentual") ?? "");
-  const ativo = formData.get("ativo") === "on";
-
-  if (!materialTipo || Number.isNaN(percentual) || percentual < 0) {
-    throw new Error("Dados inválidos para margem de quebra.");
-  }
-
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("upsert_cutting_margin", {
-    p_material_tipo: materialTipo,
-    p_processo: processo,
-    p_percentual: percentual,
-    p_ativo: ativo,
-  });
-  if (error) throw new Error(error.message);
-
-  revalidatePath("/configuracoes");
-}
-
 export async function upsertMargemPrecoAction(formData: FormData) {
   const margem = Number(formData.get("margem_percentual") ?? "");
 

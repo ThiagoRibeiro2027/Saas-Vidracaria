@@ -468,6 +468,26 @@ trocaria a URL de produção por `127.0.0.1`.
   verde com ela): gate de permissão, unidade vazia rejeitada, upsert
   idempotente, isolamento cross-tenant, catálogo padrão presente numa
   empresa nova.
+- **Follow-up do item 4 (12/10/2026) — removida a margem de quebra antiga e
+  adicionado percentual_quebra na importação de itens.** Decisão do
+  responsável: já que `lista_corte`/`lista_corte_lote_fabril`/
+  `verificar_tolerancia_perda` passaram a ler `itens.percentual_quebra`, a
+  tela "Margem de quebra" de Configurações e `cutting_margin_settings`
+  ficaram configurando algo sem efeito nenhum — melhor remover do que deixar
+  uma tela morta. Migration `20261013002413_remove_margem_quebra_antiga.sql`:
+  `drop table cutting_margin_settings cascade` + `upsert_cutting_margin()` +
+  `get_cutting_margin()` + `importar_cutting_margin_settings()` removidas;
+  `recurso_permissao_importacao()` perdeu o case morto; `importar_itens()`
+  ganhou `percentual_quebra` opcional (mesma regra do cadastro manual: vazio
+  fica null, negativo é rejeitado). Removidos do app:
+  `CuttingMarginsSection.tsx`, a aba e o fetch em `configuracoes/page.tsx`,
+  a entrada no catálogo de importação (`importacao-entidades.ts`) e a
+  referência em `export/actions.ts` (trocada por `company_measurement_units`,
+  que ainda não estava na lista de exportação). Testes ajustados:
+  `test-configuracoes.mjs` (seção de margem removida, renumerada),
+  `test-importacao.mjs` (bloco de margem removido; 3 casos novos de
+  `percentual_quebra` na importação, vermelho/verde provado), `test-export.mjs`.
+  `npm test` completo: 49/49.
 - **Testes órfãos corrigidos:** `test-lgpd-pessoa`, `test-export` e
   `test-limite-usuarios` existiam e passam, mas não estavam no `run-tests.mjs`.
   `test-imagem-exif` (novo) prova que a foto de obra perde EXIF/GPS no upload

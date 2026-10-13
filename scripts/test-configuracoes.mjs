@@ -97,14 +97,6 @@ async function main() {
     });
     check("usuário sem configuracoes.manage não consegue configurar numeração", !!error);
 
-    const { error: marginError } = await noPermTenant.client.rpc("upsert_cutting_margin", {
-      p_material_tipo: "vidro_temperado",
-      p_processo: "",
-      p_percentual: 3,
-      p_ativo: true,
-    });
-    check("usuário sem configuracoes.manage não consegue configurar margem de quebra", !!marginError);
-
     const { error: ruleError } = await noPermTenant.client.rpc("upsert_measurement_rule", {
       p_tipo_item: "vidro_temperado",
       p_exige_medicao_confirmada: true,
@@ -183,41 +175,7 @@ async function main() {
     check("mudança de período reseta o contador para 0001", num === `PED-${year}0001`);
   }
 
-  console.log("\n5. Margem de quebra — fallback do específico pro padrão do material");
-  {
-    await admTenant.client.rpc("upsert_cutting_margin", {
-      p_material_tipo: "vidro_temperado",
-      p_processo: "",
-      p_percentual: 3.5,
-      p_ativo: true,
-    });
-    await admTenant.client.rpc("upsert_cutting_margin", {
-      p_material_tipo: "vidro_temperado",
-      p_processo: "tempera",
-      p_percentual: 5.0,
-      p_ativo: true,
-    });
-
-    const { data: specific } = await admTenant.client.rpc("get_cutting_margin", {
-      p_material_tipo: "vidro_temperado",
-      p_processo: "tempera",
-    });
-    check("combinação específica (material+processo) tem prioridade", specific === 5);
-
-    const { data: fallback } = await admTenant.client.rpc("get_cutting_margin", {
-      p_material_tipo: "vidro_temperado",
-      p_processo: "corte",
-    });
-    check("processo sem override cai para o padrão do material", fallback === 3.5);
-
-    const { data: unset } = await admTenant.client.rpc("get_cutting_margin", {
-      p_material_tipo: "aluminio",
-      p_processo: "corte",
-    });
-    check("material sem nenhuma configuração retorna null", unset === null);
-  }
-
-  console.log("\n6. Regra de medição — bloqueia (sob medida) vs sinaliza (padrão)");
+  console.log("\n5. Regra de medição — bloqueia (sob medida) vs sinaliza (padrão)");
   {
     await admTenant.client.rpc("upsert_measurement_rule", {
       p_tipo_item: "vidro_temperado",
@@ -245,7 +203,7 @@ async function main() {
     );
   }
 
-  console.log("\n7. Alçada de aprovação — valor mínimo + perfil aprovador");
+  console.log("\n6. Alçada de aprovação — valor mínimo + perfil aprovador");
   {
     const { data: adminRole } = await admin
       .from("roles")
@@ -278,19 +236,13 @@ async function main() {
     check("perfil aprovador inexistente é rejeitado", !!invalidRoleError);
   }
 
-  console.log("\n8. Isolamento entre tenants");
+  console.log("\n7. Isolamento entre tenants");
   {
     const { data: crossRead } = await otherTenant.client
       .from("numbering_sequences")
       .select("id")
       .eq("company_id", admTenant.company.id);
     check("tenant B não enxerga numeração do tenant A", (crossRead ?? []).length === 0);
-
-    const { data: crossMargin } = await otherTenant.client
-      .from("cutting_margin_settings")
-      .select("id")
-      .eq("company_id", admTenant.company.id);
-    check("tenant B não enxerga margem de quebra do tenant A", (crossMargin ?? []).length === 0);
 
     const { data: crossRule } = await otherTenant.client
       .from("measurement_rules")
@@ -324,26 +276,24 @@ async function main() {
     check("configuração do tenant A não foi alterada pelo tenant B", aStillIntact?.prefixo === "PED-");
   }
 
-  console.log("\n9. Cada upsert grava a própria linha de auditoria");
+  console.log("\n8. Cada upsert grava a própria linha de auditoria");
   {
     const { data: events } = await admin
       .from("activity_logs")
       .select("action")
       .in("action", [
         "config.numbering_sequence_upserted",
-        "config.cutting_margin_upserted",
         "config.measurement_rule_upserted",
         "config.approval_threshold_upserted",
         "config.unidade_medida_upserted",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("numbering_sequence_upserted registrado", actions.has("config.numbering_sequence_upserted"));
-    check("cutting_margin_upserted registrado", actions.has("config.cutting_margin_upserted"));
     check("measurement_rule_upserted registrado", actions.has("config.measurement_rule_upserted"));
     check("approval_threshold_upserted registrado", actions.has("config.approval_threshold_upserted"));
   }
 
-  console.log("\n10. Unidades de medida (Melhorias 12/10/2026, item 8)");
+  console.log("\n9. Unidades de medida (Melhorias 12/10/2026, item 8)");
   {
     const { data: seedUnits } = await admTenant.client.from("company_measurement_units").select("unidade, ativo");
     check(

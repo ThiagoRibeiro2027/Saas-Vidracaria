@@ -190,6 +190,21 @@ async function main() {
     const { data: previewAtualizacao } = await admTenant.client.rpc("importar_itens", { p_linhas: linhaAtualizacao, p_dry_run: true });
     check("reimportar mesmo código é classificado como 'atualizacao'", previewAtualizacao?.[0]?.status === "atualizacao");
     check("campos_alterados aponta descricao", previewAtualizacao?.[0]?.campos_alterados?.includes("descricao"));
+
+    // Melhorias 12/10/2026, item 4 (follow-up) — percentual_quebra na importação.
+    const linhaComQuebra = [{ codigo: "VD-IMP-03", descricao: "Item com quebra na importação", tipo: "materia_prima", unidade_principal: "M2", percentual_quebra: "6.5" }];
+    await admTenant.client.rpc("importar_itens", { p_linhas: linhaComQuebra, p_dry_run: false });
+    const { data: itemComQuebra } = await admin.from("itens").select("percentual_quebra").eq("company_id", admTenant.company.id).eq("codigo", "VD-IMP-03").single();
+    check("percentual_quebra informado na importação é gravado (6.5)", Number(itemComQuebra?.percentual_quebra) === 6.5);
+
+    const linhaSemQuebra = [{ codigo: "VD-IMP-04", descricao: "Item sem quebra na importação", tipo: "materia_prima", unidade_principal: "M2" }];
+    await admTenant.client.rpc("importar_itens", { p_linhas: linhaSemQuebra, p_dry_run: false });
+    const { data: itemSemQuebra } = await admin.from("itens").select("percentual_quebra").eq("company_id", admTenant.company.id).eq("codigo", "VD-IMP-04").single();
+    check("percentual_quebra ausente na importação fica null (não 0)", itemSemQuebra?.percentual_quebra === null);
+
+    const linhaQuebraNegativa = [{ codigo: "VD-IMP-05", descricao: "Quebra negativa", tipo: "materia_prima", unidade_principal: "UN", percentual_quebra: "-1" }];
+    const { data: previewNegativo } = await admTenant.client.rpc("importar_itens", { p_linhas: linhaQuebraNegativa, p_dry_run: true });
+    check("percentual_quebra negativo na importação é 'invalido'", previewNegativo?.[0]?.status === "invalido");
   }
 
   console.log("\n6. Histórico e reprocessamento (TÓPICO 13 §29, Fase 7)");
@@ -877,30 +892,6 @@ async function main() {
       .from("contas_bancarias").select("tipo_conta, pix_chave")
       .eq("company_id", admTenant.company.id).eq("agencia", "1234").maybeSingle();
     check("conta grava tipo e chave PIX", contaDb?.tipo_conta === "corrente" && contaDb?.pix_chave === "chave@exemplo");
-
-    // ---- margem de quebra ----
-    const MATERIAL = "vidro_temperado_8f";
-    const { data: prevMargem } = await admTenant.client.rpc("importar_cutting_margin_settings", {
-      p_linhas: [
-        { material_tipo: MATERIAL, processo: "", percentual: "5" },
-        { material_tipo: MATERIAL, processo: "", percentual: "7" },
-        { material_tipo: MATERIAL, processo: "corte", percentual: "3" },
-      ],
-      p_dry_run: true,
-    });
-    check("margem nova é 'novo'", prevMargem?.[0]?.status === "novo");
-    check("mesmo material e processo repetidos é 'duplicado_no_arquivo'", prevMargem?.[1]?.status === "duplicado_no_arquivo");
-    // Processo vazio é um VALOR ("vale em qualquer processo"), não ausência:
-    // o mesmo material com processo diferente é outra linha legítima.
-    check("mesmo material com processo diferente é linha própria", prevMargem?.[2]?.status === "novo");
-
-    await admTenant.client.rpc("importar_cutting_margin_settings", {
-      p_linhas: [{ material_tipo: MATERIAL, processo: "", percentual: "5" }], p_dry_run: false,
-    });
-    const { data: margemDb } = await admin
-      .from("cutting_margin_settings").select("percentual, processo")
-      .eq("company_id", admTenant.company.id).eq("material_tipo", MATERIAL).maybeSingle();
-    check("margem grava percentual com processo vazio", Number(margemDb?.percentual) === 5 && margemDb?.processo === "");
 
     // ---- regra de medição ----
     const TIPO_ITEM = "tipo_medicao_8f";
