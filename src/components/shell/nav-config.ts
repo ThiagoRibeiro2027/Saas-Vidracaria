@@ -243,11 +243,11 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Settings,
         children: [
           { label: "Numeração", href: "/configuracoes", tab: "numeracao" },
-          { label: "Margem de quebra", href: "/configuracoes?tab=quebra", tab: "quebra" },
           { label: "Regra de medição", href: "/configuracoes?tab=medicao", tab: "medicao" },
           { label: "Alçada de aprovação", href: "/configuracoes?tab=alcada", tab: "alcada" },
           { label: "Margem de preço", href: "/configuracoes?tab=preco", tab: "preco" },
           { label: "Variáveis do configurador", href: "/configuracoes?tab=variaveis", tab: "variaveis" },
+          { label: "Unidades de medida", href: "/configuracoes?tab=unidades", tab: "unidades" },
         ],
       },
     ],
