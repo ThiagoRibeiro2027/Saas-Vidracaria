@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import FilaProducaoSection, { type FilaProducaoRow } from "./FilaProducaoSection";
+import { type FilaProducaoRow } from "./FilaProducaoSection";
+import FilaProducaoView from "./FilaProducaoView";
+import { type FilaProducaoKanbanRow } from "./FilaProducaoKanban";
 import ProducaoSection, {
   type ListaCorteRow,
   type RastreioOrdemProducao,
@@ -348,12 +350,16 @@ async function OrdensTab({ supabase, canManage }: { supabase: SupabaseServerClie
 // leitura sobre listar_fila_producao() — nenhuma tabela/coluna/permissão
 // nova, reaproveita producao.view já seedada (igual à versão em rota própria
 // que existia antes).
+//
+// Kanban (desenho aprovado 16/10/2026): além da tabela OP a OP de sempre
+// (listar_fila_producao, inalterada), busca também listar_fila_producao_kanban
+// (um registro por pedido, com o estágio já calculado) pra alimentar a visão
+// de cards. As duas convivem — FilaProducaoView decide qual mostrar.
 async function FilaTab({ supabase }: { supabase: SupabaseServerClient }) {
-  const { data: fila } = await supabase.rpc("listar_fila_producao", {
-    p_pessoa_id: null,
-    p_obra_id: null,
-    p_status_op: null,
-  });
+  const [{ data: fila }, { data: filaKanban }] = await Promise.all([
+    supabase.rpc("listar_fila_producao", { p_pessoa_id: null, p_obra_id: null, p_status_op: null }),
+    supabase.rpc("listar_fila_producao_kanban", { p_pessoa_id: null, p_obra_id: null, p_estagio: null }),
+  ]);
 
   return (
     <>
@@ -364,7 +370,10 @@ async function FilaTab({ supabase }: { supabase: SupabaseServerClient }) {
         de Produção.
       </p>
       <div className="mt-4">
-        <FilaProducaoSection linhas={(fila as FilaProducaoRow[]) ?? []} />
+        <FilaProducaoView
+          linhas={(fila as FilaProducaoRow[]) ?? []}
+          pedidosKanban={(filaKanban as FilaProducaoKanbanRow[]) ?? []}
+        />
       </div>
     </>
   );

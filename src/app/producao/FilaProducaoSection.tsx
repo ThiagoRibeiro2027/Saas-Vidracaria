@@ -94,8 +94,7 @@ export default function FilaProducaoSection({ linhas }: { linhas: FilaProducaoRo
 
   return (
     <section>
-      <h2 className="text-sm font-semibold text-text">Fila por pedido</h2>
-      <p className="mt-1 text-xs text-text-muted">
+      <p className="text-xs text-text-muted">
         Ordens de produção agrupadas por pedido de cliente, ordenadas por prioridade e previsão de
         entrega (mesma prioridade já usada em Produção → Programação). Progresso de lotes é
         concluídos/total de op_lotes da OP. Clique num pedido para ver as OPs.

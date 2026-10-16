@@ -58,6 +58,7 @@ const TEST_SCRIPTS = [
   "scripts/test-integracoes.mjs",
   "scripts/test-contratos.mjs",
   "scripts/test-fila-producao.mjs",
+  "scripts/test-fila-producao-kanban.mjs",
   "scripts/test-pecas.mjs",
   "scripts/test-compras.mjs",
   "scripts/test-bancario.mjs",

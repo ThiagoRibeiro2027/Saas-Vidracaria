@@ -436,6 +436,24 @@ export async function definirPrioridadeOpAction(formData: FormData) {
   revalidatePath("/producao");
 }
 
+// Fila de Produção — Kanban (desenho aprovado 16/10/2026): arrastar um card
+// dentro da coluna aplica a prioridade a todas as OPs do pedido de uma vez
+// (definir_prioridade_pedido, não definir_prioridade_op). Chamada direta
+// pelo componente client via fetch de Server Action, não por <form>.
+export async function definirPrioridadePedidoAction(pedidoId: string, prioridade: number) {
+  if (!pedidoId) throw new Error("Pedido inválido.");
+  if (!Number.isFinite(prioridade)) throw new Error("Prioridade inválida.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("definir_prioridade_pedido", {
+    p_pedido_id: pedidoId,
+    p_prioridade: prioridade,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/producao");
+}
+
 export async function programarOperacaoAction(formData: FormData) {
   const opLoteOperacaoId = String(formData.get("op_lote_operacao_id") ?? "");
   const dataInicio = String(formData.get("data_planejada_inicio") ?? "").trim() || null;
