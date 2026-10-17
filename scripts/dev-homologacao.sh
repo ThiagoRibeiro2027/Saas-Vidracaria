@@ -20,4 +20,8 @@ set -a
 . ./.env.homologacao
 set +a
 
+# distDir próprio: sem isso, o Next recusa rodar um 2º dev server no mesmo
+# diretório de projeto enquanto o main (porta 3000) já está de pé.
+export NEXT_DIST_DIR=.next-homologacao
+
 exec npx next dev -p 3001

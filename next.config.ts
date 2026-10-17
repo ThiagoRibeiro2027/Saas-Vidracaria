@@ -67,7 +67,13 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
 ];
 
+// distDir separado para homologação (NEXT_DIST_DIR, exportado por
+// scripts/dev-homologacao.sh) — sem isso, o Next recusa um 2º `next dev` no
+// mesmo diretório de projeto mesmo em porta diferente (trava de instância
+// única fica dentro de .next). Com distDir próprio, main (porta 3000) e
+// homologação (porta 3001) rodam ao mesmo tempo sem conflito.
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
