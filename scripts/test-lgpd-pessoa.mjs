@@ -171,7 +171,6 @@ async function main() {
     const c = admTenant.client;
     const num = (d, pf) => c.rpc("upsert_numbering_sequence", { p_document_type: d, p_prefixo: pf, p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
     await num("orcamento", "ORC-");
-    await num("proposta", "PROP-");
     const sufixo = Date.now().toString().slice(-9);
     const NOME = `Maria Cópia ${sufixo}`;
     // CPF válido e único por execução (a suíte pode rodar duas vezes sem db reset).
@@ -198,13 +197,32 @@ async function main() {
     const obraId = await mkObra(pid, `Casa da ${NOME}`);
     const obraOutro = await mkObra(outro, `Obra do outro ${sufixo}`);
     const { data: itemId } = await c.rpc("upsert_item", { p_id: null, p_codigo: `VD-${sufixo}`, p_descricao: "Vidro", p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2", p_situacao: "ativo" });
+    // "Gerar proposta" foi removida do sistema (17/10/2026) — as funções
+    // gerar_proposta/marcar_proposta_enviada não existem mais. A tabela
+    // propostas e a limpeza de destinatario em anonimizar_pessoa() continuam
+    // existindo (dado histórico preservado), então o fixture agora insere
+    // direto via service role, só pra exercer esse pedaço da anonimização.
     const mkProposta = async (id, obra, dest) => {
       const { data: orc } = await c.rpc("upsert_orcamento", { p_id: null, p_pessoa_id: id, p_obra_id: obra, p_validade: null, p_condicao_comercial: null, p_observacoes: null });
       await c.rpc("upsert_orcamento_item", { p_id: null, p_orcamento_id: orc, p_item_id: itemId, p_quantidade: 1, p_preco_unitario: 100, p_custo_unitario: 50 });
       await c.rpc("decidir_orcamento", { p_id: orc, p_decisao: "aprovado" });
-      const { data: prop } = await c.rpc("gerar_proposta", { p_orcamento_id: orc, p_validade: "2027-01-31" });
-      await c.rpc("marcar_proposta_enviada", { p_id: prop, p_canal: "email", p_destinatario: dest });
-      return prop;
+      const { data: prop, error } = await admin
+        .from("propostas")
+        .insert({
+          company_id: admTenant.company.id,
+          orcamento_id: orc,
+          numero: `PROP-TESTE-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          status: "enviada",
+          validade: "2027-01-31",
+          snapshot: {},
+          gerado_por: admTenant.userId,
+          canal: "email",
+          destinatario: dest,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return prop.id;
     };
     const propId = await mkProposta(pid, obraId, `${sufixo}@exemplo.com`);
     const propOutro = await mkProposta(outro, obraOutro, `outro.${sufixo}@exemplo.com`);
@@ -284,20 +302,6 @@ async function main() {
     const { error: pErr } = await c.rpc("criar_perfil_usuario", { p_auth_user_id: authUser.user.id, p_login_identifier: `l9${u}`, p_display_name: `Usuario ${NOME}`, p_contact_email: EMAIL });
     const lu = await logsDe(authUser.user.id);
     check("criar_perfil_usuario gravou log sem o nome do usuário", !pErr && lu.length >= 1 && !vaza(lu, NOME, EMAIL));
-
-    // e-mail do destinatário da proposta
-    const num = (d, pf) => c.rpc("upsert_numbering_sequence", { p_document_type: d, p_prefixo: pf, p_sufixo: "", p_digitos: 4, p_incluir_ano: false, p_incluir_mes: false, p_reinicio: "nunca" });
-    await num("orcamento", "ORC-"); await num("proposta", "PROP-");
-    const { data: itemId } = await c.rpc("upsert_item", { p_id: null, p_codigo: `VL-${u}`, p_descricao: "Vidro", p_tipo: "materia_prima", p_classificacao: "vidro_temperado", p_unidade_principal: "M2", p_situacao: "ativo" });
-    const { data: orc } = await c.rpc("upsert_orcamento", { p_id: null, p_pessoa_id: pid, p_obra_id: obraId, p_validade: null, p_condicao_comercial: null, p_observacoes: null });
-    await c.rpc("upsert_orcamento_item", { p_id: null, p_orcamento_id: orc, p_item_id: itemId, p_quantidade: 1, p_preco_unitario: 100, p_custo_unitario: 50 });
-    await c.rpc("decidir_orcamento", { p_id: orc, p_decisao: "aprovado" });
-    const { data: prop } = await c.rpc("gerar_proposta", { p_orcamento_id: orc, p_validade: "2027-01-31" });
-    await c.rpc("marcar_proposta_enviada", { p_id: prop, p_canal: "email", p_destinatario: EMAIL });
-    const lpr = (await logsDe(prop)).filter((l) => l.action === "comercial.proposta_enviada");
-    check("proposta enviada gravou log, com o canal e SEM o e-mail do destinatário", lpr.length === 1 && lpr[0].metadata?.canal === "email" && !vaza(lpr, EMAIL));
-    const { data: propRow } = await admin.from("propostas").select("destinatario").eq("id", prop).single();
-    check("o destinatário continua na proposta (anonimizável), só saiu do log", propRow.destinatario === EMAIL);
 
     // importação: log só com contagem
     const { error: iErr } = await c.rpc("importar_pessoas", { p_linhas: [{ tipo_documento: "CNPJ", documento: `99${u}0001`.slice(0, 14).padEnd(14, "1"), nome: `Importado ${NOME}` }], p_dry_run: false });

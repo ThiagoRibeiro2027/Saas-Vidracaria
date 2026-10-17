@@ -17,7 +17,6 @@ import { Select } from "@/components/ui/Select";
 // tipo novo que apareça sem label mapeado.
 const LABELS: Record<string, string> = {
   orcamento: "Orçamento",
-  proposta: "Proposta comercial",
   pedido: "Pedido",
   ordem_producao: "Ordem de produção",
   expedicao: "Expedição",

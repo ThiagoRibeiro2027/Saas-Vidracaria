@@ -116,8 +116,6 @@ export default async function ComercialPage({
     { data: canManage },
     { data: canViewOportunidades },
     { data: canManageOportunidades },
-    { data: canViewPropostas },
-    { data: canManagePropostas },
     { data: canManagePedidos },
     { data: canViewPessoas },
     { data: canManagePessoas },
@@ -139,17 +137,10 @@ export default async function ComercialPage({
       p_resource: "oportunidades",
       p_action: "manage",
     }),
-    supabase.rpc("has_permission", {
-      p_resource: "propostas",
-      p_action: "view",
-    }),
-    supabase.rpc("has_permission", {
-      p_resource: "propostas",
-      p_action: "manage",
-    }),
-    // "Propostas" e "Conversão de orçamentos" fundidas dentro do orçamento
-    // (ver OrcamentosSection.tsx) — a conversão em pedido continua exigindo
-    // a permissão do módulo Pedidos, não a de Comercial.
+    // "Conversão de orçamentos" fundida dentro do orçamento (ver
+    // OrcamentosSection.tsx) — a conversão em pedido continua exigindo a
+    // permissão do módulo Pedidos, não a de Comercial. "Gerar proposta"
+    // existia aqui como permissão irmã e foi removida (17/10/2026).
     supabase.rpc("has_permission", {
       p_resource: "pedidos",
       p_action: "manage",
@@ -227,7 +218,6 @@ export default async function ComercialPage({
     { data: pecas },
     { data: oportunidadesPagina },
     { data: oportunidadesAbertasData },
-    { data: propostas },
     { data: pedidosGerados },
   ] = await Promise.all([
     supabase.from("pessoas").select("id, nome, situacao").order("nome"),
@@ -262,15 +252,8 @@ export default async function ComercialPage({
           .neq("estagio", "ganha")
           .neq("estagio", "perdida")
       : Promise.resolve({ data: [] as never[] }),
-    // Proposta e conversão em pedido (abaixo) ficam dentro do próprio
-    // orçamento — só dos orçamentos desta página, não da empresa inteira.
-    canViewPropostas && orcamentoIds.length > 0
-      ? supabase
-          .from("propostas")
-          .select("*")
-          .in("orcamento_id", orcamentoIds)
-          .order("created_at", { ascending: false })
-      : Promise.resolve({ data: [] as never[] }),
+    // Conversão em pedido (abaixo) fica dentro do próprio orçamento — só
+    // dos orçamentos desta página, não da empresa inteira.
     canManagePedidos && orcamentoIds.length > 0
       ? supabase
           .from("pedidos")
@@ -411,16 +394,8 @@ export default async function ComercialPage({
 
   const oportunidadesAbertas = oportunidadesAbertasData ?? [];
 
-  // Proposta e pedido viram ações dentro do próprio orçamento (ver
-  // OrcamentosSection.tsx) — agrupadas por orçamento aqui, já que cada
-  // orçamento aprovado pode ter várias propostas ao longo do tempo (ex.:
-  // uma cancelada e outra gerada depois), mas no máximo um pedido.
-  const propostasPorOrcamentoId = new Map<string, typeof propostas>();
-  for (const p of propostas ?? []) {
-    const list = propostasPorOrcamentoId.get(p.orcamento_id) ?? [];
-    list.push(p);
-    propostasPorOrcamentoId.set(p.orcamento_id, list);
-  }
+  // Pedido vira ação dentro do próprio orçamento (ver OrcamentosSection.tsx)
+  // — no máximo um pedido por orçamento.
   const pedidoPorOrcamentoId = new Map(
     (pedidosGerados ?? []).map((p) => [p.orcamento_id, p]),
   );
@@ -474,14 +449,6 @@ export default async function ComercialPage({
             caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
             oportunidadesAbertas={oportunidadesAbertas}
             canManage={!!canManage}
-            propostasPorOrcamentoId={
-              propostasPorOrcamentoId as Map<
-                string,
-                NonNullable<typeof propostas>
-              >
-            }
-            canViewPropostas={!!canViewPropostas}
-            canManagePropostas={!!canManagePropostas}
             pedidoPorOrcamentoId={pedidoPorOrcamentoId}
             canManagePedidos={!!canManagePedidos}
           />

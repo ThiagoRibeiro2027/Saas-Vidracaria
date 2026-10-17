@@ -362,10 +362,6 @@ async function main() {
       ["delete_file", { p_file_id: ID() }],
       ["upsert_oportunidade", { p_id: null, p_pessoa_id: ID(), p_origem: "teste", p_descricao: "teste suspensão", p_valor_potencial: 1, p_probabilidade: 10, p_previsao_fechamento: null, p_observacoes: null }],
       ["mudar_estagio_oportunidade", { p_id: ID(), p_estagio: "contato", p_motivo_perda: null }],
-      ["cancelar_proposta", { p_id: ID() }],
-      ["marcar_proposta_enviada", { p_id: ID(), p_canal: "email", p_destinatario: "x@x.com" }],
-      ["registrar_aceite_proposta", { p_id: ID(), p_forcar: false }],
-      ["registrar_recusa_proposta", { p_id: ID(), p_observacao: null }],
       ["remover_permissao_individual", { p_profile_id: ID(), p_permission_id: ID() }],
     ];
     for (const [fn, args] of chamadasDoAchado3) {

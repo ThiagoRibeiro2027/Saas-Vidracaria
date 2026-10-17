@@ -18,20 +18,18 @@ import {
   cancelarOrcamentoAction,
   vincularOportunidadeOrcamentoAction,
   calcularMaoObraOrcamentoItemAction,
-  gerarPropostaAction,
-  marcarPropostaEnviadaAction,
-  registrarAceitePropostaAction,
-  registrarRecusaPropostaAction,
-  cancelarPropostaAction,
 } from "./actions";
-// "Propostas" e "Conversão de orçamentos" deixaram de ser telas à parte —
-// viraram ações aqui dentro do orçamento aprovado (decisão com o usuário,
-// 2026-10-03). converterOrcamentoAction é a mesma ação que o módulo Pedidos
-// já usava; importar de lá em vez de duplicar segue o precedente já usado
-// no projeto pra actions de outro módulo (ex.: Topbar.tsx → login/actions).
+// "Conversão de orçamentos" deixou de ser tela à parte — virou ação aqui
+// dentro do orçamento aprovado (decisão com o usuário, 2026-10-03).
+// converterOrcamentoAction é a mesma ação que o módulo Pedidos já usava;
+// importar de lá em vez de duplicar segue o precedente já usado no projeto
+// pra actions de outro módulo (ex.: Topbar.tsx → login/actions).
+// "Gerar proposta" existiu como ação irmã aqui (TÓPICO 10) e foi removida
+// (17/10/2026, decisão do usuário): a conversão em pedido já não dependia
+// dela, e mantê-la só acrescentava uma etapa opcional sem uso real. A
+// tabela `propostas` e os dados já gerados continuam no banco.
 import { converterOrcamentoAction } from "@/app/pedidos/actions";
 import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -103,33 +101,6 @@ type Caracteristica = {
   valor_texto: string | null;
 };
 
-type PropostaStatus =
-  "rascunho" | "enviada" | "aceita" | "recusada" | "cancelada";
-
-type PropostaSnapshot = {
-  numero_orcamento: string;
-  valor_total: number;
-  condicao_comercial: string | null;
-  itens: {
-    codigo: string;
-    descricao: string;
-    quantidade: number;
-    preco_unitario: number;
-    subtotal: number;
-  }[];
-};
-
-type Proposta = {
-  id: string;
-  orcamento_id: string;
-  numero: string;
-  status: PropostaStatus;
-  validade: string;
-  snapshot: PropostaSnapshot;
-  canal: string | null;
-  destinatario: string | null;
-};
-
 type PedidoResumo = { id: string; numero: string; orcamento_id: string };
 
 const STATUS_LABEL: Record<Orcamento["status"], string> = {
@@ -165,9 +136,6 @@ export default function OrcamentosSection({
   caracteristicasPorOrcamentoItem,
   oportunidadesAbertas,
   canManage,
-  propostasPorOrcamentoId,
-  canViewPropostas,
-  canManagePropostas,
   pedidoPorOrcamentoId,
   canManagePedidos,
 }: {
@@ -183,11 +151,8 @@ export default function OrcamentosSection({
   caracteristicasPorOrcamentoItem: Map<string, Caracteristica[]>;
   oportunidadesAbertas: OportunidadeResumo[];
   canManage: boolean;
-  // Proposta ao cliente e conversão em pedido — ações do próprio orçamento
-  // aprovado (ver comentário no import de converterOrcamentoAction acima).
-  propostasPorOrcamentoId: Map<string, Proposta[]>;
-  canViewPropostas: boolean;
-  canManagePropostas: boolean;
+  // Conversão em pedido — ação do próprio orçamento aprovado (ver comentário
+  // no import de converterOrcamentoAction acima).
   pedidoPorOrcamentoId: Map<string, PedidoResumo>;
   canManagePedidos: boolean;
 }) {
@@ -203,7 +168,7 @@ export default function OrcamentosSection({
 
   // 2026-10-04: três níveis, aprovados em desenho — lista paginada de
   // orçamentos; clicar expande, na própria tabela, o cabeçalho/decisão/
-  // proposta-pedido e a lista numerada dos itens; clicar num item só
+  // conversão em pedido e a lista numerada dos itens; clicar num item só
   // então abre o modal com o configurador daquele item. "+ Incluir"
   // continua abrindo um modal à parte, já que ainda não existe linha
   // pra expandir (mesmo fluxo contínuo de criação já em uso).
@@ -322,9 +287,6 @@ export default function OrcamentosSection({
                           obras={obras}
                           pessoaNome={pessoaNome}
                           obraNome={obraNome}
-                          propostas={propostasPorOrcamentoId.get(orc.id) ?? []}
-                          canViewPropostas={canViewPropostas}
-                          canManagePropostas={canManagePropostas}
                           pedido={pedidoPorOrcamentoId.get(orc.id) ?? null}
                           canManagePedidos={canManagePedidos}
                         />
@@ -557,9 +519,6 @@ function OrcamentoReview({
   obras,
   pessoaNome,
   obraNome,
-  propostas,
-  canViewPropostas,
-  canManagePropostas,
   pedido,
   canManagePedidos,
 }: {
@@ -580,9 +539,6 @@ function OrcamentoReview({
   obras: Obra[];
   pessoaNome: (id: string) => string;
   obraNome: (id: string | null) => string;
-  propostas: Proposta[];
-  canViewPropostas: boolean;
-  canManagePropostas: boolean;
   pedido: PedidoResumo | null;
   canManagePedidos: boolean;
 }) {
@@ -679,17 +635,13 @@ function OrcamentoReview({
         caracteristicasPorOrcamentoItem={caracteristicasPorOrcamentoItem}
       />
 
-      {orcamento.status === "aprovado" &&
-        (canViewPropostas || canManagePedidos) && (
-          <PropostaEPedido
-            orcamento={orcamento}
-            propostas={propostas}
-            canViewPropostas={canViewPropostas}
-            canManagePropostas={canManagePropostas}
-            pedido={pedido}
-            canManagePedidos={canManagePedidos}
-          />
-        )}
+      {orcamento.status === "aprovado" && canManagePedidos && (
+        <ConversaoPedido
+          orcamento={orcamento}
+          pedido={pedido}
+          canManagePedidos={canManagePedidos}
+        />
+      )}
 
       {canManage && orcamento.status === "rascunho" && (
         <div className="flex gap-1.5">
@@ -729,221 +681,43 @@ function OrcamentoReview({
   );
 }
 
-const PROPOSTA_STATUS_LABEL: Record<PropostaStatus, string> = {
-  rascunho: "Rascunho",
-  enviada: "Enviada",
-  aceita: "Aceita",
-  recusada: "Recusada",
-  cancelada: "Cancelada",
-};
-
-const PROPOSTA_STATUS_TONE: Record<
-  PropostaStatus,
-  "neutral" | "success" | "danger" | "warning"
-> = {
-  rascunho: "neutral",
-  enviada: "warning",
-  aceita: "success",
-  recusada: "danger",
-  cancelada: "danger",
-};
-
-function propostaVencida(proposta: Proposta) {
-  return (
-    proposta.status === "enviada" &&
-    proposta.validade < new Date().toISOString().slice(0, 10)
-  );
-}
-
-// Proposta ao cliente e conversão em pedido do orçamento aprovado — ex-telas
-// "Propostas" (Comercial) e "Conversão de orçamentos" (Pedidos), fundidas
-// aqui dentro do próprio orçamento (decisão com o usuário, 2026-10-03): nada
-// de custo/margem aparece neste bloco, só o que já era visível nas telas
-// antigas.
-function PropostaEPedido({
+// Conversão em pedido do orçamento aprovado — ex-tela "Conversão de
+// orçamentos" (Pedidos), fundida aqui dentro do próprio orçamento (decisão
+// com o usuário, 2026-10-03). "Gerar proposta" existiu como ação irmã deste
+// bloco e foi removida (17/10/2026): nunca foi pré-requisito da conversão.
+function ConversaoPedido({
   orcamento,
-  propostas,
-  canViewPropostas,
-  canManagePropostas,
   pedido,
   canManagePedidos,
 }: {
   orcamento: Orcamento;
-  propostas: Proposta[];
-  canViewPropostas: boolean;
-  canManagePropostas: boolean;
   pedido: PedidoResumo | null;
   canManagePedidos: boolean;
 }) {
-  // Uma proposta "ativa" (não cancelada/recusada) bloqueia gerar outra —
-  // mesma regra que já existia na tela separada.
-  const propostaAtiva = propostas.some(
-    (p) => p.status !== "cancelada" && p.status !== "recusada",
-  );
-
+  if (!canManagePedidos) return null;
   return (
-    <div className="flex flex-col gap-3 rounded border border-border-subtle bg-page-bg p-3">
-      {canViewPropostas && (
-        <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-semibold text-text">
-            Proposta ao cliente
-          </h3>
-          {propostas.length === 0 && (
-            <p className="text-xs text-text-muted">
-              Nenhuma proposta gerada ainda.
-            </p>
-          )}
-          {propostas.map((p) => (
-            <PropostaCard
-              key={p.id}
-              proposta={p}
-              canManage={canManagePropostas}
-            />
-          ))}
-          {canManagePropostas && !propostaAtiva && (
-            <form
-              action={gerarPropostaAction}
-              className="flex flex-wrap items-center gap-1.5"
-            >
-              <input type="hidden" name="orcamento_id" value={orcamento.id} />
-              <label className="flex items-center gap-1 text-xs text-text">
-                Validade
-                <Input name="validade" type="date" required />
-              </label>
-              <Button type="submit" variant="primary">
-                Gerar proposta
-              </Button>
-            </form>
-          )}
-        </div>
-      )}
-
-      {canManagePedidos && (
-        <div className="flex flex-col gap-1.5 border-t border-border-subtle pt-3 first:border-t-0 first:pt-0">
-          <h3 className="text-xs font-semibold text-text">Pedido</h3>
-          {pedido ? (
-            <p className="text-xs text-text">
-              Convertido em{" "}
-              <a
-                href={`/pedidos?pedido=${pedido.id}`}
-                className="font-medium text-primary underline"
-              >
-                pedido {pedido.numero}
-              </a>
-              .
-            </p>
-          ) : (
-            <form action={converterOrcamentoAction}>
-              <input type="hidden" name="orcamento_id" value={orcamento.id} />
-              <Button type="submit" variant="primary">
-                Converter em pedido
-              </Button>
-            </form>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PropostaCard({
-  proposta,
-  canManage,
-}: {
-  proposta: Proposta;
-  canManage: boolean;
-}) {
-  const vencida = propostaVencida(proposta);
-  return (
-    <Card padding="xs">
-      <div className="flex flex-wrap items-baseline gap-2.5 text-xs">
-        <strong className="text-[13px] text-text">{proposta.numero}</strong>
-        <Badge variant={PROPOSTA_STATUS_TONE[proposta.status]}>
-          {PROPOSTA_STATUS_LABEL[proposta.status]}
-        </Badge>
-        {vencida && <Badge variant="danger">Vencida</Badge>}
-        <span className="text-text-muted">validade: {proposta.validade}</span>
-        <span className="ml-auto font-semibold text-text">
-          {currency(proposta.snapshot.valor_total)}
-        </span>
-      </div>
-
-      <ul className="mt-1.5 text-xs text-text-muted">
-        {proposta.snapshot.itens.map((it) => (
-          <li key={it.codigo}>
-            {it.codigo} — {it.descricao}: {it.quantidade} ×{" "}
-            {currency(it.preco_unitario)} = {currency(it.subtotal)}
-          </li>
-        ))}
-      </ul>
-
-      {canManage && proposta.status === "rascunho" && (
-        <form
-          action={marcarPropostaEnviadaAction}
-          className="mt-2 flex flex-wrap items-center gap-1.5"
-        >
-          <input type="hidden" name="id" value={proposta.id} />
-          <Input
-            name="canal"
-            placeholder="canal (e-mail, portal...)"
-            className="w-40"
-          />
-          <Input
-            name="destinatario"
-            placeholder="destinatário"
-            className="w-44"
-          />
+    <div className="flex flex-col gap-1.5 rounded border border-border-subtle bg-page-bg p-3">
+      <h3 className="text-xs font-semibold text-text">Pedido</h3>
+      {pedido ? (
+        <p className="text-xs text-text">
+          Convertido em{" "}
+          <a
+            href={`/pedidos?pedido=${pedido.id}`}
+            className="font-medium text-primary underline"
+          >
+            pedido {pedido.numero}
+          </a>
+          .
+        </p>
+      ) : (
+        <form action={converterOrcamentoAction}>
+          <input type="hidden" name="orcamento_id" value={orcamento.id} />
           <Button type="submit" variant="primary">
-            Marcar como enviada
+            Converter em pedido
           </Button>
         </form>
       )}
-
-      {canManage && proposta.status === "enviada" && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <form action={registrarAceitePropostaAction}>
-            <input type="hidden" name="id" value={proposta.id} />
-            <input type="hidden" name="forcar" value="false" />
-            <Button type="submit" variant="primary" disabled={vencida}>
-              Registrar aceite
-            </Button>
-          </form>
-          {vencida && (
-            <form action={registrarAceitePropostaAction}>
-              <input type="hidden" name="id" value={proposta.id} />
-              <input type="hidden" name="forcar" value="true" />
-              <Button type="submit" variant="secondary">
-                Aceitar mesmo vencida
-              </Button>
-            </form>
-          )}
-          <form
-            action={registrarRecusaPropostaAction}
-            className="flex items-center gap-1.5"
-          >
-            <input type="hidden" name="id" value={proposta.id} />
-            <Input
-              name="observacao"
-              placeholder="motivo da recusa"
-              className="w-40"
-            />
-            <Button type="submit" variant="danger">
-              Registrar recusa
-            </Button>
-          </form>
-        </div>
-      )}
-
-      {canManage &&
-        (proposta.status === "rascunho" || proposta.status === "enviada") && (
-          <form action={cancelarPropostaAction} className="mt-1.5">
-            <input type="hidden" name="id" value={proposta.id} />
-            <Button type="submit" variant="danger">
-              Cancelar proposta
-            </Button>
-          </form>
-        )}
-    </Card>
+    </div>
   );
 }
 
