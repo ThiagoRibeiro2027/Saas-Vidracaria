@@ -58,6 +58,9 @@ const EXCECOES = {
   // --- Operação de plataforma: é justamente o que opera sobre empresa suspensa
   transition_company_status: "platform_admin move o ciclo de existência do tenant (inclusive o suspende)",
   transition_subscription: "platform_admin suspende/reativa a assinatura; precisa funcionar em tenant suspenso",
+  criar_atualizacao_sistema: "changelog global do SaaS, gate is_platform_admin_mfa_verified(); não pertence a nenhum tenant",
+  editar_atualizacao_sistema: "changelog global do SaaS, gate is_platform_admin_mfa_verified(); não pertence a nenhum tenant",
+  remover_atualizacao_sistema: "changelog global do SaaS, gate is_platform_admin_mfa_verified(); não pertence a nenhum tenant",
   anonymize_activity_logs_for_user: "LGPD: platform_admin anonimiza mesmo com tenant suspenso (ADR-010)",
   purge_activity_logs_older_than_retention: "retenção: platform_admin expurga logs de qualquer tenant (ADR-009 §3.4)",
   log_platform_admin_access: "trilha de acesso de suporte do platform_admin; company_id nulo (evento de plataforma)",

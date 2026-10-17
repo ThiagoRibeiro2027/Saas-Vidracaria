@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useActionState, useState } from "react";
-import { criarClienteAction, upsertPessoaAction, setPessoaPapelAction, upsertObraAction, anonimizarPessoaAction } from "./actions";
+import { criarClienteAction, upsertPessoaAction, setPessoaPapelAction, upsertObraAction, anonimizarPessoaAction, ocultarDocumentoPessoaAction } from "./actions";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +20,8 @@ type Pessoa = {
   id: string;
   tipo_documento: string | null;
   documento: string | null;
+  // Melhorias 17/10/2026, item 7 — preenchido quando o número completo foi apagado.
+  documento_mascarado: string | null;
   nome: string;
   nome_fantasia: string | null;
   telefone: string | null;
@@ -119,7 +121,7 @@ export default function ClientesSection({
                       {row.nome}
                       {ehFornecedor && <span className="ml-1.5 text-[11px] text-text-muted">(também fornecedor)</span>}
                     </Td>
-                    <Td className="font-mono text-xs text-text-muted">{row.documento ?? "—"}</Td>
+                    <Td className="font-mono text-xs text-text-muted">{row.documento ?? row.documento_mascarado ?? "—"}</Td>
                     <Td className="text-text-muted">{row.telefone ?? row.email ?? "—"}</Td>
                     <Td>
                       <StatusPill tone={row.situacao === "ativo" ? "success" : row.situacao === "bloqueado" ? "danger" : "neutral"}>
@@ -189,7 +191,11 @@ function ClienteDetalhe({
       <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
         <div>
           <dt className="text-text-muted">Documento</dt>
-          <dd className="text-text">{row.documento ? `${row.tipo_documento ? `${row.tipo_documento} ` : ""}${row.documento}` : "—"}</dd>
+          <dd className="text-text">
+            {row.documento || row.documento_mascarado
+              ? `${row.tipo_documento ? `${row.tipo_documento} ` : ""}${row.documento ?? row.documento_mascarado}`
+              : "—"}
+          </dd>
         </div>
         <div>
           <dt className="text-text-muted">Nome fantasia</dt>
@@ -220,6 +226,7 @@ function ClienteDetalhe({
           <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(true)}>
             Editar cadastro
           </Button>
+          {row.documento && <OcultarDocumentoButton pessoaId={row.id} />}
           <AnonimizarPessoaButton pessoaId={row.id} />
         </div>
       )}
@@ -232,6 +239,38 @@ function ClienteDetalhe({
 // window.confirm segue o mesmo padrão já usado pra ações destrutivas em
 // Orçamentos (remover item), mas deixa explícito que é irreversível — aqui
 // não tem como desfazer, diferente de remover um item de orçamento.
+// Item 7 das Melhorias: esconde só o CPF/CNPJ (irreversível — o número
+// completo é apagado), mantendo nome e contato pra operação.
+function OcultarDocumentoButton({ pessoaId }: { pessoaId: string }) {
+  const [pending, setPending] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function ocultar() {
+    const motivo = window.prompt(
+      "Ocultar o CPF/CNPJ deste cliente? O número completo será apagado e só a versão mascarada (ex.: 034.***.***-00) fica guardada. Nome, telefone, e-mail e endereço são mantidos. Irreversível. Motivo (opcional):",
+    );
+    if (motivo === null) return;
+    setPending(true);
+    setErro(null);
+    try {
+      await ocultarDocumentoPessoaAction(pessoaId, motivo.trim() || null);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível ocultar o documento.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Button type="button" variant="secondary" size="sm" onClick={ocultar} disabled={pending}>
+        {pending ? "Ocultando..." : "Ocultar CPF/CNPJ"}
+      </Button>
+      {erro && <p className="text-xs text-danger">{erro}</p>}
+    </div>
+  );
+}
+
 function AnonimizarPessoaButton({ pessoaId }: { pessoaId: string }) {
   const [pending, setPending] = useState(false);
   const [erro, setErro] = useState<string | null>(null);

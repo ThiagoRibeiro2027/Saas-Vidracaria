@@ -41,6 +41,7 @@ import { Paginacao } from "@/components/ui/Paginacao";
 import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { TableSearch } from "@/components/ui/TableSearch";
 import { SortableTh } from "@/components/ui/SortableTh";
+import { MOTIVOS_NAO_FECHAMENTO } from "./motivos";
 import ItemConfiguravelForm, {
   MOTIVO_OPERACAO_LABEL,
   type DefCaracteristica,
@@ -652,9 +653,19 @@ function OrcamentoReview({
               Aprovar
             </Button>
           </form>
-          <form action={decidirOrcamentoAction}>
+          <form action={decidirOrcamentoAction} className="flex items-center gap-1.5">
             <input type="hidden" name="id" value={orcamento.id} />
             <input type="hidden" name="decisao" value="rejeitado" />
+            <Select name="motivo_rejeicao" defaultValue="" required aria-label="Motivo da rejeição">
+              <option value="" disabled>
+                motivo da rejeição
+              </option>
+              {MOTIVOS_NAO_FECHAMENTO.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </Select>
             <Button type="submit" variant="danger">
               Rejeitar
             </Button>

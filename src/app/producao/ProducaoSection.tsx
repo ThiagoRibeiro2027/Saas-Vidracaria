@@ -425,7 +425,7 @@ export default function ProducaoSection({
                                           obraNome: ped.obra_id ? obraNome(ped.obra_id) : null,
                                           itemLabel: itemLabel(pi.item_id),
                                           lotes: (opLotesPorOrdem.get(op.id) ?? []).map((l) => ({ numero: l.numero, status: l.status })),
-                                          urlDestino: `${window.location.origin}/producao?tab=ordens&destacar_op=${op.id}`,
+                                          urlDestino: `${window.location.origin}/producao/apontar/${op.id}`,
                                         })
                                       }
                                     >

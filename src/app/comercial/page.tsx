@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import OrcamentosSection from "./OrcamentosSection";
 import OportunidadesSection from "./OportunidadesSection";
 import ClientesSection from "./ClientesSection";
-import VisaoGeralSection from "./VisaoGeralSection";
+import VisaoGeralSection, { type IndicadoresOrcamentos } from "./VisaoGeralSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { calcularPaginacao, lerParametrosPaginacao } from "@/lib/paginacao";
@@ -286,6 +286,15 @@ export default async function ComercialPage({
     supabase.from("orcamentos").select("id", { count: "exact", head: true }).eq("status", "aprovado"),
   ]);
 
+  // Melhorias 17/10/2026, item 6 — valores/conversão/motivos (uma agregação
+  // no banco). Só pra quem pode ver orçamentos; os contadores acima já
+  // existiam sem esse gate, os valores em R$ não.
+  let indicadoresOrcamentos: IndicadoresOrcamentos | null = null;
+  if (canView) {
+    const { data } = await supabase.rpc("comercial_indicadores_orcamentos");
+    indicadoresOrcamentos = (data as IndicadoresOrcamentos | null) ?? null;
+  }
+
   // Aba Clientes — colunas completas, paginada, só quando ativa (mesmo
   // padrão lazy-por-aba já usado em Financeiro/RH/Engenharia). O lookup
   // leve acima (pessoas/papeis/obras) continua sempre ativo, pros
@@ -424,6 +433,7 @@ export default async function ComercialPage({
               orcamentosAprovados: orcamentosAprovadosCount ?? 0,
               oportunidadesAbertas: oportunidadesAbertas.length,
               clientesAtivos: clientesElegiveis.length,
+              orcamentos: indicadoresOrcamentos,
             }}
           />
         </div>

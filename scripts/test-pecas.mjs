@@ -1289,6 +1289,39 @@ async function main() {
     // 817,35 / (1 - 0,30) = 1167,642857... => 1167,64
     check("preço sugerido = custo / (1 - margem) = 1167,64", comMargem?.preco_sugerido === 1167.64 && comMargem?.margem_percentual === 30 && comMargem?.motivo_sem_preco === null);
 
+    // --- Melhorias 17/10/2026, item 11 — margem por item do orçamento
+    {
+      const { data: m50 } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk, p_margem_override: 50 });
+      check("margem do item (50%) sobrepõe a da empresa: 817,35 / 0,5 = 1634,70", m50?.preco_sugerido === 1634.7 && m50?.margem_percentual === 50
+        && m50?.margem_personalizada === true && m50?.margem_padrao_empresa === 30);
+      const { data: m0 } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk, p_margem_override: 0 });
+      check("margem 0 é válida (preço = custo)", m0?.preco_sugerido === 817.35 && m0?.margem_percentual === 0);
+      const { error: eM100 } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk, p_margem_override: 100 });
+      const { error: eMNeg } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk, p_margem_override: -5 });
+      check("margem do item >= 100 ou negativa é rejeitada", !!eM100 && !!eMNeg);
+
+      const { data: linhaMargemId, error: eLinhaMargem } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+        p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: null, p_margem_override: 50,
+      });
+      check("salvar item com margem própria funciona", !eLinhaMargem && !!linhaMargemId, eLinhaMargem);
+      const { data: linhaMargem } = await admin.from("orcamento_itens").select("preco_unitario, margem_percentual").eq("id", linhaMargemId).single();
+      check("linha grava preço 1634,70 e margem 50", Number(linhaMargem?.preco_unitario) === 1634.7 && Number(linhaMargem?.margem_percentual) === 50, linhaMargem);
+
+      const { data: linhaEmpId } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+        p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: null,
+      });
+      const { data: linhaEmp } = await admin.from("orcamento_itens").select("preco_unitario, margem_percentual").eq("id", linhaEmpId).single();
+      check("sem margem própria grava a margem da empresa (30)", Number(linhaEmp?.preco_unitario) === 1167.64 && Number(linhaEmp?.margem_percentual) === 30, linhaEmp);
+
+      const { data: linhaManualId } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+        p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: 999, p_margem_override: 50,
+      });
+      const { data: linhaManual } = await admin.from("orcamento_itens").select("preco_unitario, margem_percentual").eq("id", linhaManualId).single();
+      check("preço digitado à mão não grava margem", Number(linhaManual?.preco_unitario) === 999 && linhaManual?.margem_percentual === null, linhaManual);
+
+      await admin.from("orcamento_itens").delete().in("id", [linhaMargemId, linhaEmpId, linhaManualId]);
+    }
+
     // --- gravação atômica
     const { error: eSalvarSemPerm } = await noPermTenant.client.rpc("upsert_orcamento_item_configurado", {
       p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: null,

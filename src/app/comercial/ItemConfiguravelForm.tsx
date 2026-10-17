@@ -18,7 +18,7 @@ export type DefCaracteristica = {
 
 type ValorSalvo = { peca_caracteristica_id: string; valor_numero: number | null; valor_texto: string | null };
 
-type ItemExistente = { id: string; quantidade: number; preco_unitario: number };
+type ItemExistente = { id: string; quantidade: number; preco_unitario: number; margem_percentual?: number | null };
 
 type Componente = {
   item_id: string;
@@ -48,6 +48,8 @@ type Calculo = {
   custo_mao_obra?: number | null;
   custo_total?: number;
   margem_percentual?: number | null;
+  margem_padrao_empresa?: number | null;
+  margem_personalizada?: boolean;
   preco_sugerido?: number | null;
   motivo_sem_preco?: string | null;
   caracteristicas_pendentes?: string[];
@@ -82,7 +84,7 @@ function mensagemSemPreco(calculo: Calculo): string | null {
     case "custo_mao_obra_incompleto":
       return "Há operação sem tempo ou custo/hora (veja acima) — digite o preço manualmente.";
     case "margem_nao_configurada":
-      return "Margem de preço da empresa não configurada (Configurações → Margem de preço) — digite o preço manualmente.";
+      return "Margem de preço da empresa não configurada (Configurações → Margem de preço) — informe a margem deste item ou digite o preço manualmente.";
     default:
       return null;
   }
@@ -148,6 +150,8 @@ export default function ItemConfiguravelForm({
     }
     return inicial;
   });
+  // Melhorias 17/10/2026, item 11 — vazio = usa a margem da empresa.
+  const [margem, setMargem] = useState(item?.margem_percentual != null ? String(item.margem_percentual) : "");
   const [precoManual, setPrecoManual] = useState(item ? String(item.preco_unitario) : "");
   // Item novo segue o preço sugerido até o vendedor digitar o dele. Item já
   // gravado só volta a seguir se o preço salvo for igual ao sugerido — assim
@@ -163,12 +167,16 @@ export default function ItemConfiguravelForm({
 
   const valores = montarValores(definicoes, digitado);
   const valoresKey = JSON.stringify(valores);
+  const margemTexto = margem.trim().replace(",", ".");
+  const margemNumero = margemTexto === "" ? null : Number(margemTexto);
+  const margemInvalida = margemNumero !== null && (!Number.isFinite(margemNumero) || margemNumero < 0 || margemNumero >= 100);
+  const margemEnviada = margemInvalida ? null : margemNumero;
 
   useEffect(() => {
     const id = ++requisicao.current;
     const temporizador = setTimeout(async () => {
       setCalculando(true);
-      const r = await calcularPrecoConfiguradorAction(itemId, JSON.parse(valoresKey) as Valores);
+      const r = await calcularPrecoConfiguradorAction(itemId, JSON.parse(valoresKey) as Valores, margemEnviada);
       // Server Actions respondem uma de cada vez; só vale a resposta da
       // consulta mais recente, senão um resultado antigo sobrescreve o novo.
       if (id !== requisicao.current) return;
@@ -189,7 +197,7 @@ export default function ItemConfiguravelForm({
       }
     }, 400);
     return () => clearTimeout(temporizador);
-  }, [itemId, valoresKey, item]);
+  }, [itemId, valoresKey, item, margemEnviada]);
 
   const sugerido = calculo?.preco_sugerido ?? null;
   const precoExibido = seguirSugestao ? (sugerido !== null ? String(sugerido) : "") : precoManual;
@@ -204,7 +212,8 @@ export default function ItemConfiguravelForm({
     precoNumero >= 0 &&
     Number.isFinite(quantidadeNumero) &&
     quantidadeNumero > 0 &&
-    faltando.length === 0;
+    faltando.length === 0 &&
+    !margemInvalida;
 
   function alterarValor(id: string, valor: string) {
     setDigitado((atual) => ({ ...atual, [id]: valor }));
@@ -225,6 +234,7 @@ export default function ItemConfiguravelForm({
       valores,
       // Seguindo a sugestão, o servidor recalcula o preço (não envia valor).
       precoOverride: seguirSugestao && sugerido !== null ? null : precoNumero,
+      margemOverride: margemEnviada,
     });
     setSalvando(false);
     if ("error" in r) {
@@ -291,6 +301,25 @@ export default function ItemConfiguravelForm({
       )}
 
       <div className="flex flex-wrap items-center gap-1.5">
+        <label className="flex items-center gap-1 text-xs text-text">
+          Margem %
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            max="99.99"
+            value={margem}
+            onChange={(e) => {
+              setMargem(e.target.value);
+              setSalvo(false);
+              onDirtyChange?.(true);
+            }}
+            placeholder={calculo?.margem_padrao_empresa != null ? `${calculo.margem_padrao_empresa} (empresa)` : "da empresa"}
+            title="Margem deste item. Em branco, usa a margem padrão da empresa."
+            className="w-[110px]"
+          />
+        </label>
+        {margemInvalida && <span className="text-xs text-danger">entre 0 e 99,99</span>}
         <label className="flex items-center gap-1 text-xs text-text">
           Preço unit.
           <Input
@@ -403,7 +432,11 @@ function PainelCalculo({ calculo, calculando }: { calculo: Calculo | null; calcu
         <span>Material: {currency(calculo.custo_material ?? 0)}</span>
         {calculo.custo_mao_obra != null && <span>Mão de obra: {currency(calculo.custo_mao_obra)}</span>}
         <span className="font-medium">Custo total: {currency(calculo.custo_total ?? 0)}</span>
-        {calculo.margem_percentual != null && <span>Margem: {calculo.margem_percentual}%</span>}
+        {calculo.margem_percentual != null && (
+          <span>
+            Margem: {calculo.margem_percentual}%{calculo.margem_personalizada ? " (deste item)" : " (da empresa)"}
+          </span>
+        )}
         {calculo.preco_sugerido != null && (
           <span className="font-medium">Preço sugerido: {currency(calculo.preco_sugerido)}</span>
         )}

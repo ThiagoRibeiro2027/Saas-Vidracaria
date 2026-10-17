@@ -32,7 +32,7 @@ function activeTabSlug(node: TreeNode, pathname: string, searchParams: URLSearch
   if (!node.children || pathname !== node.href) return undefined;
   const fromQuery = searchParams.get("tab");
   if (fromQuery) return fromQuery;
-  return node.children.find((c) => "tab" in c && c.tab !== undefined)?.tab;
+  return node.children.find((c) => "tab" in c && c.tab !== undefined && !("selfPath" in c && c.selfPath))?.tab;
 }
 
 // Todos os hrefs de nós-com-filhos, em qualquer profundidade, cuja subárvore
@@ -106,7 +106,13 @@ function NavNode({
   const hasChildren = !!node.children?.length;
   const isOpen = hasChildren && openSet.has(node.href);
   const childTab = "tab" in node ? node.tab : undefined;
-  const active = childTab !== undefined ? childTab === activeTab : subtreeContainsRoute(node, pathname);
+  const selfPath = "selfPath" in node && node.selfPath;
+  const active =
+    childTab !== undefined
+      ? selfPath
+        ? node.href.split("?")[0] === pathname && (searchParams.get("tab") ?? "geral") === childTab
+        : childTab === activeTab
+      : subtreeContainsRoute(node, pathname);
   const ownActiveTab = activeTabSlug(node, pathname, searchParams);
 
   return (

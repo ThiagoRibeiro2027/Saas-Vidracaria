@@ -15,6 +15,7 @@ import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { TableSearch } from "@/components/ui/TableSearch";
 import { SortableTh } from "@/components/ui/SortableTh";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { MOTIVOS_NAO_FECHAMENTO } from "./motivos";
 
 type Pessoa = { id: string; nome: string };
 
@@ -73,18 +74,7 @@ const ESTAGIO_TONE: Record<Estagio, "neutral" | "success" | "danger"> = {
   perdida: "danger",
 };
 
-const MOTIVOS_PERDA = [
-  { value: "preco", label: "Preço" },
-  { value: "prazo", label: "Prazo" },
-  { value: "concorrente", label: "Concorrente" },
-  { value: "condicao_comercial", label: "Condição comercial" },
-  { value: "especificacao", label: "Especificação" },
-  { value: "cliente_desistiu", label: "Cliente desistiu" },
-  { value: "projeto_cancelado", label: "Projeto cancelado" },
-  { value: "falta_orcamento", label: "Falta de orçamento" },
-  { value: "produto_inadequado", label: "Produto inadequado" },
-  { value: "outros", label: "Outros" },
-];
+const MOTIVOS_PERDA = MOTIVOS_NAO_FECHAMENTO;
 
 const motivoPerdaLabel = (value: string | null) =>
   value ? (MOTIVOS_PERDA.find((m) => m.value === value)?.label ?? value) : null;

@@ -90,8 +90,15 @@ export async function decidirOrcamentoAction(formData: FormData) {
     throw new Error("Decisão inválida.");
   }
 
+  // Melhorias 17/10/2026, item 6: rejeitar exige o motivo (validado no banco).
+  const motivoRejeicao = decisao === "rejeitado" ? String(formData.get("motivo_rejeicao") ?? "") || null : null;
+
   const supabase = await createClient();
-  const { error } = await supabase.rpc("decidir_orcamento", { p_id: id, p_decisao: decisao });
+  const { error } = await supabase.rpc("decidir_orcamento", {
+    p_id: id,
+    p_decisao: decisao,
+    p_motivo_rejeicao: motivoRejeicao,
+  });
   if (error) throw new Error(error.message);
 
   revalidatePath("/comercial");
@@ -175,10 +182,15 @@ export async function vincularOportunidadeOrcamentoAction(formData: FormData) {
 export async function calcularPrecoConfiguradorAction(
   itemId: string,
   valores: Record<string, { n?: number; t?: string }>,
+  margemOverride: number | null = null,
 ): Promise<{ error: string } | { data: Record<string, unknown> }> {
   if (!itemId) return { error: "Item inválido." };
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("calcular_preco_configurador", { p_item_id: itemId, p_valores: valores });
+  const { data, error } = await supabase.rpc("calcular_preco_configurador", {
+    p_item_id: itemId,
+    p_valores: valores,
+    p_margem_override: margemOverride,
+  });
   if (error) return { error: error.message };
   return { data: data as Record<string, unknown> };
 }
@@ -194,11 +206,16 @@ export async function salvarItemConfiguradoAction(input: {
   quantidade: number;
   valores: Record<string, { n?: number; t?: string }>;
   precoOverride: number | null;
+  // Melhorias 17/10/2026, item 11 — margem deste item (null = margem da empresa).
+  margemOverride: number | null;
 }): Promise<{ error: string } | { ok: true }> {
   if (!input.orcamentoId || !input.itemId) return { error: "Orçamento e item são obrigatórios." };
   if (!Number.isFinite(input.quantidade) || input.quantidade <= 0) return { error: "Quantidade deve ser maior que zero." };
   if (input.precoOverride !== null && (!Number.isFinite(input.precoOverride) || input.precoOverride < 0)) {
     return { error: "Preço unitário inválido." };
+  }
+  if (input.margemOverride !== null && (!Number.isFinite(input.margemOverride) || input.margemOverride < 0 || input.margemOverride >= 100)) {
+    return { error: "Margem deve estar entre 0 e menos de 100." };
   }
 
   const supabase = await createClient();
@@ -209,6 +226,7 @@ export async function salvarItemConfiguradoAction(input: {
     p_quantidade: input.quantidade,
     p_valores: input.valores,
     p_preco_override: input.precoOverride,
+    p_margem_override: input.margemOverride,
   });
   if (error) return { error: error.message };
 
@@ -385,6 +403,22 @@ export async function anonimizarPessoaAction(pessoaId: string, motivo: string | 
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("anonimizar_pessoa", {
+    p_pessoa_id: pessoaId,
+    p_motivo: motivo,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/comercial");
+}
+
+// Melhorias 17/10/2026, item 7 — apaga o CPF/CNPJ completo e guarda só a
+// versão mascarada (034.***.***-00); nome, telefone, e-mail e endereço ficam.
+// Diferente de anonimizarPessoaAction (pedido do titular, LGPD art. 18).
+export async function ocultarDocumentoPessoaAction(pessoaId: string, motivo: string | null) {
+  if (!pessoaId) throw new Error("Pessoa é obrigatória.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("ocultar_documento_pessoa", {
     p_pessoa_id: pessoaId,
     p_motivo: motivo,
   });

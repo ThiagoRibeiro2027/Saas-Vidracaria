@@ -127,6 +127,10 @@ export async function upsertItemAction(formData: FormData) {
   // 20261012235145 sobre por que isso não pode ser 0 por padrão).
   const percentualQuebraRaw = String(formData.get("percentual_quebra") ?? "").trim();
   const percentualQuebra = percentualQuebraRaw ? Number(percentualQuebraRaw) : null;
+  // Melhorias 17/10/2026, item 5: variante de cor. As regras de verdade
+  // (cor obrigatória com item-base, sem variante de variante) ficam no banco.
+  const itemPaiId = String(formData.get("item_pai_id") ?? "") || null;
+  const cor = String(formData.get("cor") ?? "").trim() || null;
 
   if (
     !codigo ||
@@ -150,6 +154,8 @@ export async function upsertItemAction(formData: FormData) {
     p_unidade_principal: unidadePrincipal,
     p_situacao: situacao,
     p_percentual_quebra: percentualQuebra,
+    p_item_pai_id: itemPaiId,
+    p_cor: cor,
   });
   if (error) throw new Error(error.message);
 

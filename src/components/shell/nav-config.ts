@@ -35,6 +35,9 @@ export type NavChild = {
   label: string;
   href: string;
   tab?: string;
+  // A aba (`tab`) pertence ao pathname do PRÓPRIO filho (ex.: /estoque), não
+  // ao do pai — o destaque se resolve sozinho, sem depender do `?tab=` do pai.
+  selfPath?: boolean;
   // Mesmo papel do NavItem.exact, necessário no filho-raiz de módulos com
   // sub-rota real (ex. Compras "/compras") — sem isso o prefix-match da
   // Sidebar marcaria essa raiz como ativa em qualquer sub-rota irmã.
@@ -148,44 +151,31 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       { label: "Instalação — Campo (PWA)", href: "/campo", icon: Smartphone },
       // Estoque, Compras e Suprimentos são a mesma alçada de negócio
-      // (2026-09-29) — unidos num só item de topo, com Suprimentos como
-      // principal (é quem abre ao clicar no rótulo); Estoque e Compras
-      // entram como sub-módulos, cada um com a navegação interna que já
-      // tinha (Compras continua em rotas reais, não ?tab=; ver
-      // ComprasTabs.tsx, removido das páginas mas com o comentário do
-      // porquê).
+      // (2026-09-29). Melhorias 17/10/2026, item 12: sem sub-grupos
+      // "Estoque"/"Compras" — todas as rotinas dos dois numa lista única sob
+      // Suprimentos. Os filhos de /estoque usam `selfPath` (a aba pertence
+      // ao próprio pathname deles, não ao de Suprimentos).
       {
         label: "Suprimentos",
         href: "/suprimentos",
         icon: PackageSearch,
         children: [
-          {
-            label: "Estoque",
-            href: "/estoque",
-            children: [
-              { label: "Visão geral", href: "/estoque", tab: "geral" },
-              { label: "Saldo por item", href: "/estoque?tab=saldo", tab: "saldo" },
-              { label: "Reserva para pedidos", href: "/estoque?tab=reserva", tab: "reserva" },
-              { label: "Registrar sobra", href: "/estoque?tab=sobra", tab: "sobra" },
-              { label: "Peças dimensionais", href: "/estoque?tab=dimensional", tab: "dimensional" },
-            ],
-          },
-          {
-            label: "Compras",
-            href: "/compras",
-            children: [
-              { label: "Fornecedores e Políticas", href: "/compras", exact: true },
-              { label: "Solicitações", href: "/compras/solicitacoes" },
-              { label: "Cotações", href: "/compras/cotacoes" },
-              { label: "Pedidos", href: "/compras/pedidos" },
-              { label: "Recebimentos", href: "/compras/recebimentos" },
-              { label: "Avaliação de Fornecedores", href: "/compras/fornecedores" },
-              { label: "Mapa de Necessidades", href: "/compras/mapa" },
-              { label: "Orçado × Realizado", href: "/compras/orcamento" },
-              { label: "Dashboard", href: "/compras/dashboard" },
-              { label: "Configurações", href: "/compras/configuracoes" },
-            ],
-          },
+          { label: "Necessidades de compra", href: "/suprimentos", exact: true },
+          { label: "Estoque (visão geral)", href: "/estoque", tab: "geral", selfPath: true },
+          { label: "Saldo por item", href: "/estoque?tab=saldo", tab: "saldo", selfPath: true },
+          { label: "Reserva para pedidos", href: "/estoque?tab=reserva", tab: "reserva", selfPath: true },
+          { label: "Registrar sobra", href: "/estoque?tab=sobra", tab: "sobra", selfPath: true },
+          { label: "Peças dimensionais", href: "/estoque?tab=dimensional", tab: "dimensional", selfPath: true },
+          { label: "Fornecedores e Políticas", href: "/compras", exact: true },
+          { label: "Solicitações de compra", href: "/compras/solicitacoes" },
+          { label: "Cotações", href: "/compras/cotacoes" },
+          { label: "Pedidos de compra", href: "/compras/pedidos" },
+          { label: "Recebimentos", href: "/compras/recebimentos" },
+          { label: "Avaliação de fornecedores", href: "/compras/fornecedores" },
+          { label: "Mapa de necessidades", href: "/compras/mapa" },
+          { label: "Orçado × Realizado", href: "/compras/orcamento" },
+          { label: "Dashboard de compras", href: "/compras/dashboard" },
+          { label: "Configurações de compras", href: "/compras/configuracoes" },
         ],
       },
     ],

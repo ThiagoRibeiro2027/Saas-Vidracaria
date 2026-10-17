@@ -76,13 +76,14 @@ export const ENTIDADES_IMPORTACAO: readonly EntidadeImportacao[] = [
     rotulo: "Itens (produtos/materiais)",
     modulo: "Engenharia",
     rpc: "importar_itens",
-    campos: ["codigo", "descricao", "tipo", "classificacao", "unidade_principal", "percentual_quebra"],
+    campos: ["codigo", "descricao", "tipo", "classificacao", "unidade_principal", "percentual_quebra", "cor", "item_pai_codigo"],
     colunaIdentificador: "codigo",
     colunaRotulo: "descricao",
     caminhoRevalidar: "/engenharia",
     descricao:
       "Produto e material são o mesmo cadastro, diferenciados pelo tipo. O código é a chave. " +
-      "percentual_quebra é opcional (Melhorias 12/10/2026, item 4) — em branco, fica sem quebra conhecida.",
+      "percentual_quebra é opcional (Melhorias 12/10/2026, item 4) — em branco, fica sem quebra conhecida. " +
+      "Variante de cor: preencha item_pai_codigo (código do item-base) e cor; a linha do item-base deve vir antes, no mesmo arquivo, ou já existir.",
   },
   {
     chave: "pessoa_papeis",

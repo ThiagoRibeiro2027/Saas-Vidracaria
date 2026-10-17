@@ -91,6 +91,21 @@ export async function apontarProducaoAction(
   if (error) return { error: error.message };
 
   revalidatePath("/producao");
+  revalidatePath("/producao/apontar/[id]", "page");
+}
+
+// Melhorias 17/10/2026, item 10 — "Iniciar" do operador (tela mobile aberta
+// pelo QR da etiqueta). Devolve o erro em vez de lançar, pra tela mostrar
+// inline no celular em vez da página de erro genérica.
+export async function iniciarOperacaoLoteAction(opLoteOperacaoId: string): Promise<{ error: string } | undefined> {
+  if (!opLoteOperacaoId) return { error: "Operação inválida." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("iniciar_operacao_lote", { p_op_lote_operacao_id: opLoteOperacaoId });
+  if (error) return { error: error.message };
+
+  revalidatePath("/producao");
+  revalidatePath("/producao/apontar/[id]", "page");
 }
 
 export async function concluirOrdemProducaoAction(formData: FormData) {

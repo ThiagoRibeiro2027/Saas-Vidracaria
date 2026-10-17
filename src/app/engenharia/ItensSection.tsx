@@ -44,7 +44,20 @@ type Item = {
   // catálogo — só quem opta por controle por peça física preenche.
   dimensao_tipo: "linear" | "area" | null;
   peso_por_unidade_dimensao: number | null;
+  // Melhorias 17/10/2026, item 5 — variante de cor de um item-base.
+  cor: string | null;
+  item_pai_id: string | null;
 };
+
+function sugerirCodigoVariante(codigoPai: string, cor: string) {
+  const corSlug = cor
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return corSlug ? `${codigoPai}-${corSlug}` : "";
+}
 
 // Mesmo padrão de Orçamentos (OrcamentosSection.tsx, 2026-10-03): lista
 // compacta e paginada no servidor; o formulário completo (e o controle
@@ -56,19 +69,23 @@ export default function ItensSection({
   paginacao,
   canManage,
   unidadesDisponiveis,
+  paiCodigoPorId,
 }: {
   rows: Item[];
   paginacao: PaginacaoInfo;
   canManage: boolean;
   // Melhorias 12/10/2026, item 8 — unidades ativas em Configurações Gerais.
   unidadesDisponiveis: string[];
+  paiCodigoPorId: Record<string, string>;
 }) {
   const [viewId, setViewId] = useState<string | null>(null);
+  const [varianteDe, setVarianteDe] = useState<Item | null>(null);
   const criando = viewId === "novo";
   const viewing = !criando ? (rows.find((r) => r.id === viewId) ?? null) : null;
 
   function aoSalvar() {
     setViewId(null);
+    setVarianteDe(null);
   }
 
   return (
@@ -103,6 +120,7 @@ export default function ItensSection({
             <SortableTh field="codigo">Código</SortableTh>
             <SortableTh field="descricao">Descrição</SortableTh>
             <SortableTh field="tipo">Tipo</SortableTh>
+            <Th>Cor</Th>
             <Th>Unidade</Th>
             <Th>% Quebra</Th>
             <Th>Situação</Th>
@@ -114,6 +132,7 @@ export default function ItensSection({
               <Td className="font-medium text-text">{row.codigo}</Td>
               <Td>{row.descricao}</Td>
               <Td className="text-text-muted">{TIPO_LABEL[row.tipo] ?? row.tipo}</Td>
+              <Td className="text-text-muted">{row.cor ?? "—"}</Td>
               <Td className="text-text-muted">{row.unidade_principal}</Td>
               <Td className="text-text-muted">{row.percentual_quebra === null ? "—" : `${row.percentual_quebra}%`}</Td>
               <Td>
@@ -125,7 +144,7 @@ export default function ItensSection({
           ))}
           {rows.length === 0 && (
             <tr>
-              <Td colSpan={5} className="text-text-muted">
+              <Td colSpan={7} className="text-text-muted">
                 Nenhum item cadastrado ainda.
               </Td>
             </tr>
@@ -134,13 +153,48 @@ export default function ItensSection({
       </DenseTable>
 
       <Modal
-        open={criando || viewing !== null}
-        onClose={() => setViewId(null)}
-        title={criando ? "Novo item" : (viewing?.codigo ?? "Item")}
+        open={criando || viewing !== null || varianteDe !== null}
+        onClose={() => {
+          setViewId(null);
+          setVarianteDe(null);
+        }}
+        title={
+          varianteDe
+            ? `Nova variante de cor — ${varianteDe.codigo}`
+            : criando
+              ? "Novo item"
+              : (viewing?.codigo ?? "Item")
+        }
         size="md"
       >
-        {(criando || viewing) && (
-          <ItemForm row={viewing} canManage={canManage} onSaved={aoSalvar} unidadesDisponiveis={unidadesDisponiveis} />
+        {varianteDe ? (
+          <ItemForm row={null} pai={varianteDe} canManage={canManage} onSaved={aoSalvar} unidadesDisponiveis={unidadesDisponiveis} />
+        ) : (
+          (criando || viewing) && (
+            <>
+              {viewing?.item_pai_id && (
+                <p className="mb-2 text-xs text-text-muted">
+                  Variante de cor {viewing.cor ? `"${viewing.cor}" ` : ""}do item-base{" "}
+                  <strong>{paiCodigoPorId[viewing.item_pai_id] ?? "—"}</strong>.
+                </p>
+              )}
+              <ItemForm row={viewing} canManage={canManage} onSaved={aoSalvar} unidadesDisponiveis={unidadesDisponiveis} />
+              {viewing && !viewing.item_pai_id && canManage && (
+                <div className="mt-3 border-t border-border pt-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setVarianteDe(viewing);
+                      setViewId(null);
+                    }}
+                  >
+                    + Variante de cor
+                  </Button>
+                </div>
+              )}
+            </>
+          )
         )}
       </Modal>
     </section>
@@ -149,11 +203,14 @@ export default function ItensSection({
 
 function ItemForm({
   row,
+  pai,
   canManage,
   onSaved,
   unidadesDisponiveis,
 }: {
   row: Item | null;
+  // Presente só ao criar uma variante de cor: pré-preenche a partir do item-base.
+  pai?: Item;
   canManage: boolean;
   onSaved: () => void;
   unidadesDisponiveis: string[];
@@ -168,6 +225,13 @@ function ItemForm({
       : unidadesDisponiveis;
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [codigo, setCodigo] = useState(row?.codigo ?? "");
+  const [codigoEditado, setCodigoEditado] = useState(false);
+  const base = row ?? pai ?? null;
+
+  function aoMudarCor(valor: string) {
+    if (pai && !codigoEditado) setCodigo(sugerirCodigoVariante(pai.codigo, valor));
+  }
 
   async function enviar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -187,11 +251,28 @@ function ItemForm({
     <div className="flex flex-col gap-3">
       <form onSubmit={enviar} className="flex flex-col gap-2">
         {row && <input type="hidden" name="id" value={row.id} />}
+        {pai && <input type="hidden" name="item_pai_id" value={pai.id} />}
+        {row?.item_pai_id && <input type="hidden" name="item_pai_id" value={row.item_pai_id} />}
+        {(pai || row?.item_pai_id) && (
+          <Input
+            name="cor"
+            placeholder="cor (ex.: Branco, Preto fosco)"
+            defaultValue={row?.cor ?? ""}
+            onChange={(e) => aoMudarCor(e.target.value)}
+            required
+            disabled={!canManage}
+            className="w-56"
+          />
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           <Input
             name="codigo"
             placeholder="código"
-            defaultValue={row?.codigo ?? ""}
+            value={codigo}
+            onChange={(e) => {
+              setCodigo(e.target.value);
+              setCodigoEditado(true);
+            }}
             readOnly={!!row}
             required
             disabled={!canManage}
@@ -200,14 +281,14 @@ function ItemForm({
           <Input
             name="descricao"
             placeholder="descrição"
-            defaultValue={row?.descricao ?? ""}
+            defaultValue={base?.descricao ?? ""}
             required
             disabled={!canManage}
             className="w-56"
           />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Select name="tipo" defaultValue={row?.tipo ?? "materia_prima"} disabled={!canManage}>
+          <Select name="tipo" defaultValue={base?.tipo ?? "materia_prima"} disabled={!canManage}>
             {TIPOS.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -217,13 +298,13 @@ function ItemForm({
           <Input
             name="classificacao"
             placeholder="classificação (opcional)"
-            defaultValue={row?.classificacao ?? ""}
+            defaultValue={base?.classificacao ?? ""}
             disabled={!canManage}
             className="w-40"
           />
           <Select
             name="unidade_principal"
-            defaultValue={row?.unidade_principal ?? ""}
+            defaultValue={base?.unidade_principal ?? ""}
             required
             disabled={!canManage}
             className="w-24"
@@ -244,7 +325,7 @@ function ItemForm({
             min="0"
             placeholder="% quebra"
             title="Percentual de quebra deste item (substitui a configuração por tipo de material)"
-            defaultValue={row?.percentual_quebra ?? ""}
+            defaultValue={base?.percentual_quebra ?? ""}
             disabled={!canManage}
             className="w-24"
           />

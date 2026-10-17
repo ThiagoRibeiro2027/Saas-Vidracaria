@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:homologacao": "sh scripts/dev-homologacao.sh",
+    "homolog:login": "node scripts/seed-homologacao-login.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

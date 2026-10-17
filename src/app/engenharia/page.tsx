@@ -332,8 +332,18 @@ async function ItensTab({
     .eq("ativo", true)
     .order("unidade");
 
+  // Melhorias 17/10/2026, item 5 — código do item-base de cada variante da
+  // página (o item-base pode estar fora da página paginada).
+  const paiIds = [...new Set((itens ?? []).map((i) => i.item_pai_id).filter((v): v is string => !!v))];
+  const paiCodigoPorId: Record<string, string> = {};
+  if (paiIds.length > 0) {
+    const { data: pais } = await supabase.from("itens").select("id, codigo").in("id", paiIds);
+    for (const p of pais ?? []) paiCodigoPorId[p.id] = p.codigo;
+  }
+
   return (
     <ItensSection
+      paiCodigoPorId={paiCodigoPorId}
       rows={itens ?? []}
       paginacao={paginacao}
       canManage={canManage}

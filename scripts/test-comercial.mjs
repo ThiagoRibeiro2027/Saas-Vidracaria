@@ -351,7 +351,7 @@ async function main() {
     check("orçamento aprovado não pode ter item removido", !!removeError);
 
     const { error: decidirDeNovoError } = await admTenant.client.rpc("decidir_orcamento", {
-      p_id: orcamentoId, p_decisao: "rejeitado",
+      p_id: orcamentoId, p_decisao: "rejeitado", p_motivo_rejeicao: "preco",
     });
     check("orçamento já decidido não pode ser decidido de novo", !!decidirDeNovoError);
   }

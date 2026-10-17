@@ -359,6 +359,8 @@ async function main() {
   const cenarioD = await prepararPedidoComPeca("D", { quantidadePedido: 3, quantidadePorUnidade: 4 });
   await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: cenarioD.pedidoId });
   await admTenant.client.rpc("liberar_pedido", { p_id: cenarioD.pedidoId });
+  // Item-peça exige engenharia liberada antes da OP (trava de 17/10/2026).
+  await admTenant.client.rpc("liberar_engenharia", { p_pedido_item_id: cenarioD.pedidoItemId, p_observacoes: null });
   const { data: opDId } = await admTenant.client.rpc("criar_ordem_producao", { p_pedido_item_id: cenarioD.pedidoItemId, p_quantidade: 2 });
   {
     const { data, error } = await admTenant.client.rpc("gerar_necessidades_de_ordem_producao", { p_ordem_producao_id: opDId });
