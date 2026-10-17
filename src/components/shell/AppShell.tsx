@@ -19,16 +19,20 @@ type Notificacao = {
 // exige checar a outra.
 const BARE_PREFIXES = ["/login", "/mfa/", "/change-password", "/campo"];
 
+type InfoBuild = { commit: string | null; homologacao: boolean };
+
 export function AppShell({
   children,
   displayName,
   companyName,
   notificacoes,
+  infoBuild,
 }: {
   children: ReactNode;
   displayName: string;
   companyName: string | null;
   notificacoes: Notificacao[];
+  infoBuild: InfoBuild;
 }) {
   const pathname = usePathname();
   const isBare = BARE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
@@ -38,7 +42,7 @@ export function AppShell({
   return (
     <div className="flex h-full min-h-dvh">
       <Suspense fallback={<aside className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar-bg md:flex" />}>
-        <Sidebar />
+        <Sidebar infoBuild={infoBuild} />
       </Suspense>
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar displayName={displayName} companyName={companyName} notificacoes={notificacoes} />

@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
+import { obterInfoBuild } from "@/lib/build-info";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -50,6 +51,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   // @ts-expect-error -- relação aninhada tipada como array pelo supabase-js
   const corPrimariaRaw: string | null | undefined = profile?.companies?.cor_primaria;
   const corPrimaria = corPrimariaRaw && HEX_COLOR.test(corPrimariaRaw) ? corPrimariaRaw : null;
+  const infoBuild = obterInfoBuild();
 
   return (
     <html
@@ -62,6 +64,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           displayName={profile?.display_name ?? "usuário"}
           companyName={companyName ?? null}
           notificacoes={notificacoes ?? []}
+          infoBuild={infoBuild}
         >
           {children}
         </AppShell>

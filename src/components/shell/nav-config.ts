@@ -22,6 +22,7 @@ import {
   Upload,
   Plug,
   FileSignature,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 
@@ -259,6 +260,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Arquivos", href: "/files", icon: FileStack },
       { label: "Exportar dados", href: "/export", icon: Download },
       { label: "Importação", href: "/importacao", icon: Upload },
+      { label: "Atualizações", href: "/atualizacoes", icon: Megaphone },
     ],
   },
 ];

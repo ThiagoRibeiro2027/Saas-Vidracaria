@@ -145,7 +145,7 @@ function NavNode({
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ infoBuild }: { infoBuild: { commit: string | null; homologacao: boolean } }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -213,6 +213,15 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      {(infoBuild.commit || infoBuild.homologacao) && (
+        <div className="mt-auto flex items-center gap-1.5 px-3 pt-4 text-[11px] text-sidebar-fg/60">
+          {infoBuild.homologacao && (
+            <span className="rounded-md bg-white/10 px-2 py-0.5 font-medium text-sidebar-fg/80">Homologação</span>
+          )}
+          {infoBuild.commit && <span className="truncate font-mono">{infoBuild.commit}</span>}
+        </div>
+      )}
     </aside>
   );
 }
