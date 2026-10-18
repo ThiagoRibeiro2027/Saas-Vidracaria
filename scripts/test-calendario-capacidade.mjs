@@ -153,6 +153,55 @@ async function main() {
     check("calcular_capacidade_recurso = 10 h × dias úteis da janela de hoje (com calendário)", Number(cap?.[0]?.capacidade_disponivel_horas) === esperado, { esperado, cap });
   }
 
+  console.log("\n6. Capacidade parte das horas do horário de funcionamento (recurso sem horas próprias)");
+  {
+    // sábado de 4 h, para os dias da janela terem horas diferentes (8 h na semana, 4 h no sábado)
+    await a.client.rpc("upsert_company_work_schedule", { p_dias: [{ dia_semana: 6, trabalha: true, inicio: "08:00", fim: "12:00", almoco_minutos: 0 }] });
+    const hoje = new Date();
+    const horasEmpresaNaJanela = async () => {
+      let soma = 0;
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(hoje.getTime() + i * 86400000).toISOString().slice(0, 10);
+        const { data } = await admin.rpc("_info_dia_empresa", { p_company_id: a.company.id, p_data: d });
+        const info = Array.isArray(data) ? data[0] : data;
+        if (info?.trabalha) soma += Number(info.horas ?? 0);
+      }
+      return soma;
+    };
+    const diasJanela = await dias(a.company, hoje.toISOString().slice(0, 10), 7);
+    const horasEmpresa = await horasEmpresaNaJanela();
+
+    const { data: semHorasId, error: eSem } = await a.client.rpc("criar_recurso_produtivo", { p_codigo: "CAL-02", p_nome: "Sem horas próprias", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: null });
+    check("fixture: recurso sem horas próprias criado", !eSem && !!semHorasId, eSem);
+    const { data: capSem } = await a.client.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: semHorasId, p_dias: 7 });
+    check(
+      `recurso sem horas próprias usa o expediente da empresa na janela (${horasEmpresa} h)`,
+      Number(capSem?.[0]?.capacidade_disponivel_horas) === horasEmpresa && horasEmpresa > 0,
+      { horasEmpresa, capSem },
+    );
+
+    const { data: comHorasId } = await a.client.rpc("criar_recurso_produtivo", { p_codigo: "CAL-03", p_nome: "Com horas próprias", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: 10 });
+    const { data: capCom } = await a.client.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: comHorasId, p_dias: 7 });
+    check(
+      `recurso com horas próprias (10 h) usa as dele em cada dia de produção (10 × ${diasJanela})`,
+      Number(capCom?.[0]?.capacidade_disponivel_horas) === 10 * diasJanela,
+      { diasJanela, capCom },
+    );
+
+    const { data: lista } = await a.client.rpc("listar_capacidade_recursos", { p_dias: 7 });
+    check(
+      "listar_capacidade_recursos() traz os dois com os mesmos valores",
+      Number((lista ?? []).find((r) => r.recurso_produtivo_id === semHorasId)?.capacidade_disponivel_horas) === horasEmpresa &&
+        Number((lista ?? []).find((r) => r.recurso_produtivo_id === comHorasId)?.capacidade_disponivel_horas) === 10 * diasJanela,
+    );
+
+    // empresa sem horário cadastrado: recurso sem horas próprias fica com 0
+    await admin.from("company_work_schedule").delete().eq("company_id", b.company.id);
+    const { data: semHorarioId } = await b.client.rpc("criar_recurso_produtivo", { p_codigo: "CAL-04", p_nome: "Sem horário", p_tipo: "maquina", p_setor: null, p_capacidade_horas_dia: null });
+    const { data: capB } = await b.client.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: semHorarioId, p_dias: 7 });
+    check("empresa sem horário cadastrado + recurso sem horas próprias = 0 h", Number(capB?.[0]?.capacidade_disponivel_horas) === 0, capB);
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

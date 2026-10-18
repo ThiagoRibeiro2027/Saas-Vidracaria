@@ -118,6 +118,16 @@
       Fora desta entrega: horas disponíveis por recurso no calendário mensal
       (hoje o mês mostra o expediente da empresa).
 
-## Pendentes:
+- [x] Recursos e capacidade abastecidos com as horas do horário de funcionamento.
+      — Implementado em 18/10/2026 **promovido à main em 18/10/2026**: a capacidade parte das horas efetivas do horário de
+      funcionamento. Recurso SEM horas próprias usa, em cada dia de produção
+      da janela, as horas da empresa daquele dia (seg 8 h, sáb 4 h...);
+      recurso COM horas próprias (ex.: máquina em 2 turnos) continua usando as
+      dele. Dias sem produção (fim de semana, feriado, folga) não contam.
+      Empresa sem horário cadastrado e recurso sem horas = 0. Migration
+      `20261020010000_capacidade_horas_da_empresa.sql`. O campo "h/dia" no
+      cadastro do recurso virou opcional (em branco = expediente da empresa).
 
-- [] Os recursos e capacidades devem ser abastecidos com as horas disponiveis cadastradas no horário de funcionamento, até porque, estas são as horas efetivas trabalhadas.
+## Pendentes
+
+Nenhum item pendente nesta lista.
