@@ -77,6 +77,47 @@
       margem; o texto "proposta" do pedido original foi descartado quando
       "Gerar proposta" saiu do sistema.
 
+- [x] Pedidos: aviso de confirmação ao cancelar e opção de reabrir o pedido.
+      — Implementado em 18/10/2026 **só em homologação (não promovido à
+      main)**: "Cancelar" pergunta antes; o pedido cancelado ganha "Reabrir
+      pedido" (em Pedidos e no bloco "Pedido" do Orçamento), voltando a
+      "recebido" com o mesmo número e itens (as pendências já encerradas no
+      cancelamento continuam encerradas). Reabertura auditada. Migration
+      `20261019000000_excluir_variaveis_e_reabrir_pedido.sql`.
+- [x] Variáveis do configurador: excluir e recolher os campos de cadastro.
+      — Implementado em 18/10/2026 **só em homologação (não promovido à
+      main)**: botões "Excluir" (variável) e "Excluir categoria", com
+      confirmação; excluir variável em uso é permitido e as peças mantêm o
+      campo como avulso. Cadastros ("+ Nova categoria", "+ Nova variável") e
+      cada categoria são listas que recolhem. Mesma migration acima.
+
+- [x] Margem de preço com impostos, regime tributário e markup.
+      — Implementado em 18/10/2026 **só em homologação (não promovido à
+      main)**: novo cadastro em Configurações → Margem de preço (regime:
+      MEI, Simples, Presumido, Real; percentuais de Simples, ICMS, PIS,
+      COFINS, ISS, IPI, comissão, despesas fixas e custo financeiro/frete).
+      Preço sugerido = custo ÷ (1 − (encargos + margem de lucro)); o markup
+      (multiplicador do **custo**) aparece na configuração e no orçamento.
+      Sem encargos cadastrados, o preço é idêntico ao de antes. A margem por
+      item continua trocando só o lucro. O sistema não sugere alíquotas (a
+      empresa digita; confirmar com o contador). Migration
+      `20261019010000_markup_encargos_preco.sql`.
+
+- [x] Recursos e capacidade: horário de funcionamento (1ª etapa).
+      — Implementado em 18/10/2026 **só em homologação (não promovido à
+      main)**: nova aba Configurações → Horário de funcionamento (dias da
+      semana, início, fim e intervalo; padrão seg–sex 8 h). A capacidade dos
+      recursos passou de "horas/dia × 7 dias" para "horas/dia × dias úteis da
+      janela de 7 dias". Migration
+      `20261019020000_horario_funcionamento_capacidade.sql`. A capacidade do
+      recurso continua valendo nos dias úteis da empresa (sem limitar pelas
+      horas da empresa); recurso sem capacidade cadastrada segue valendo 0.
+
 ## Pendentes
 
-Nenhum item pendente nesta lista.
+- [ ] Capacidade, 2ª etapa: calendário mensal com feriados nacionais e
+      municipais (nacionais pré-carregados; municipais cadastrados pela
+      empresa; pontes/dias extras) para prever as horas disponíveis por mês.
+      O ponto de encaixe já existe: `_dias_uteis_na_janela()` — a 2ª etapa só
+      precisa acrescentar as exceções por data, sem tocar de novo nas funções
+      de capacidade.

@@ -30,11 +30,13 @@ async function fetchAllRows<T>(
 type SupabaseClientLike = Awaited<ReturnType<typeof createClient>>;
 
 // Toda tabela de TENANT_TABLES tem "id" como chave primária, exceto
-// peca_categorias (N:N pura, chave composta peca_id+categoria_id) — sem
+// peca_categorias (N:N pura, chave composta peca_id+categoria_id) e
+// company_work_schedule (chave composta company_id+dia_semana) — sem
 // uma ordenação determinística, o .range() de fetchAllRows pode repetir ou
 // pular linha entre páginas.
 const ORDER_BY_OVERRIDE: Record<string, string[]> = {
   peca_categorias: ["peca_id", "categoria_id"],
+  company_work_schedule: ["company_id", "dia_semana"],
 };
 
 async function fetchAllFromTable(
@@ -100,6 +102,7 @@ const TENANT_TABLES = [
   "item_materiais_alternativos",
   "measurement_rules",
   "company_measurement_units",
+  "company_work_schedule",
   // Produção
   "ordens_producao",
   "itens_producao",
@@ -182,6 +185,7 @@ const TENANT_TABLES = [
   "financeiro_aprovacoes",
   "approval_thresholds",
   "pricing_settings",
+  "pricing_cost_components",
   // Fiscal
   "documentos_fiscais",
   "documento_fiscal_tentativas",

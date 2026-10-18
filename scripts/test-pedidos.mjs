@@ -269,6 +269,36 @@ async function main() {
     check("resolver pendência de pedido cancelado é rejeitado", !!resolverError);
   }
 
+  console.log("\n8.3 Reabrir pedido cancelado (Melhorias 18/10/2026, item 1)");
+  {
+    const massa5 = await prepararOrcamentoAprovado(admTenant, "5");
+    const { data: pedidoId5 } = await admTenant.client.rpc("converter_orcamento_em_pedido", { p_orcamento_id: massa5.orcamentoId });
+    const { data: antes } = await admin.from("pedidos").select("numero").eq("id", pedidoId5).single();
+
+    const { error: eNaoCancelado } = await admTenant.client.rpc("reabrir_pedido", { p_id: pedidoId5 });
+    check("reabrir pedido que não está cancelado é rejeitado", !!eNaoCancelado);
+
+    await admTenant.client.rpc("cancelar_pedido", { p_id: pedidoId5 });
+    const { error: eSemPerm } = await noPermTenant.client.rpc("reabrir_pedido", { p_id: pedidoId5 });
+    check("sem pedidos.manage não reabre", !!eSemPerm);
+    const { error: eOutro } = await otherTenant.client.rpc("reabrir_pedido", { p_id: pedidoId5 });
+    check("tenant B não reabre pedido do tenant A", !!eOutro);
+
+    const { error: eReabrir } = await admTenant.client.rpc("reabrir_pedido", { p_id: pedidoId5 });
+    check("reabrir pedido cancelado funciona", !eReabrir, eReabrir);
+    const { data: depois } = await admin.from("pedidos").select("status, numero").eq("id", pedidoId5).single();
+    check("volta a 'recebido', com o mesmo número", depois?.status === "recebido" && depois?.numero === antes?.numero, depois);
+
+    const { error: eConferencia } = await admTenant.client.rpc("iniciar_conferencia_pedido", { p_id: pedidoId5 });
+    check("depois de reaberto, a conferência pode ser iniciada de novo", !eConferencia, eConferencia);
+
+    const { data: itens } = await admin.from("pedido_itens").select("id").eq("pedido_id", pedidoId5);
+    check("os itens do pedido foram preservados", (itens ?? []).length >= 1);
+
+    const { data: log } = await admin.from("activity_logs").select("id").eq("action", "pedidos.pedido_reaberto").eq("entity_id", pedidoId5);
+    check("reabertura auditada", (log ?? []).length === 1);
+  }
+
   console.log("\n8.2 Conversão revalida itens ativos do orçamento (achado do code-review)");
   {
     const massa4 = await prepararOrcamentoAprovado(admTenant, "4");
@@ -320,6 +350,7 @@ async function main() {
         "pedidos.pendencia_resolvida",
         "pedidos.pedido_liberado",
         "pedidos.pedido_cancelado",
+        "pedidos.pedido_reaberto",
       ]);
     const actions = new Set((events ?? []).map((e) => e.action));
     check("pedido_convertido_de_orcamento registrado", actions.has("pedidos.pedido_convertido_de_orcamento"));
@@ -328,6 +359,7 @@ async function main() {
     check("pendencia_resolvida registrado", actions.has("pedidos.pendencia_resolvida"));
     check("pedido_liberado registrado", actions.has("pedidos.pedido_liberado"));
     check("pedido_cancelado registrado", actions.has("pedidos.pedido_cancelado"));
+    check("pedido_reaberto registrado", actions.has("pedidos.pedido_reaberto"));
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

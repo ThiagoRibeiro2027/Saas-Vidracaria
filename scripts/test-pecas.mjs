@@ -1289,6 +1289,58 @@ async function main() {
     // 817,35 / (1 - 0,30) = 1167,642857... => 1167,64
     check("preço sugerido = custo / (1 - margem) = 1167,64", comMargem?.preco_sugerido === 1167.64 && comMargem?.margem_percentual === 30 && comMargem?.motivo_sem_preco === null);
 
+    // --- Melhorias 18/10/2026, item 3 — impostos/encargos + markup
+    {
+      const { data: semEncargos } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+      check("sem encargos cadastrados: markup = 1/(1-0,30) e encargos 0", semEncargos?.encargos_percentual === 0 && semEncargos?.markup === 1.4286);
+
+      const { error: eEncSemPerm } = await noPermTenant.client.rpc("upsert_pricing_cost_components", { p_regime: "simples_nacional", p_simples_nacional: 6 });
+      check("sem configuracoes.manage não cadastra encargos", !!eEncSemPerm);
+      const { error: eRegime } = await admTenant.client.rpc("upsert_pricing_cost_components", { p_regime: "inventado" });
+      const { error: ePerc100 } = await admTenant.client.rpc("upsert_pricing_cost_components", { p_regime: "mei", p_icms: 100 });
+      const { error: eNeg } = await admTenant.client.rpc("upsert_pricing_cost_components", { p_regime: "mei", p_icms: -1 });
+      check("regime inválido, percentual >= 100 ou negativo são rejeitados", !!eRegime && !!ePerc100 && !!eNeg);
+      const { error: eSoma } = await admTenant.client.rpc("upsert_pricing_cost_components", { p_regime: "lucro_presumido", p_icms: 40, p_comissao: 30 });
+      check("soma de encargos + margem (30) >= 100 é rejeitada", !!eSoma);
+
+      const { error: eEncOk } = await admTenant.client.rpc("upsert_pricing_cost_components", {
+        p_regime: "simples_nacional", p_simples_nacional: 6, p_comissao: 4,
+      });
+      check("ADMIN cadastra regime + encargos (10%)", !eEncOk, eEncOk);
+      const { data: encRow } = await admTenant.client.from("pricing_cost_components").select("regime_tributario, soma_encargos").eq("company_id", admTenant.company.id).single();
+      check("encargos persistidos, soma 10 e regime Simples", Number(encRow?.soma_encargos) === 10 && encRow?.regime_tributario === "simples_nacional", encRow);
+      const { data: encOutro } = await otherTenant.client.from("pricing_cost_components").select("id").eq("company_id", admTenant.company.id);
+      check("outro tenant não enxerga os encargos", (encOutro ?? []).length === 0);
+
+      const { data: comEnc } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+      // 817,35 / (1 - 0,10 - 0,30) = 817,35 / 0,6 = 1362,25
+      check("preço = custo / (1 - (encargos 10% + lucro 30%)) = 1362,25", comEnc?.preco_sugerido === 1362.25 && comEnc?.markup === 1.6667
+        && comEnc?.encargos_percentual === 10 && comEnc?.regime_tributario === "simples_nacional", comEnc);
+
+      const { data: ovEnc } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk, p_margem_override: 50 });
+      // override troca só o lucro: 817,35 / (1 - 0,10 - 0,50) = 2043,375 => 2043,38
+      check("margem do item troca só o lucro; encargos seguem os da empresa (817,35 / 0,4 = 2043,38)", ovEnc?.preco_sugerido === 2043.38 && ovEnc?.margem_personalizada === true, ovEnc);
+
+      const { data: estouro } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk, p_margem_override: 95 });
+      check("override que faz encargos + lucro >= 100 não sugere preço (encargos_invalidos)", estouro?.preco_sugerido === null && estouro?.motivo_sem_preco === "encargos_invalidos", estouro);
+      const { error: eSalvarEstouro } = await admTenant.client.rpc("upsert_orcamento_item_configurado", {
+        p_id: null, p_orcamento_id: orcamentoId, p_item_id: portaItemId, p_quantidade: 1, p_valores: valoresOk, p_preco_override: null, p_margem_override: 95,
+      });
+      check("salvar com essa combinação, sem preço digitado, é rejeitado", !!eSalvarEstouro);
+
+      const { error: eMargemEstoura } = await admTenant.client.rpc("upsert_margem_preco", { p_percentual: 92 });
+      check("margem de lucro que estoura com os encargos (10 + 92) é rejeitada", !!eMargemEstoura);
+
+      const { data: logEnc } = await admin.from("activity_logs").select("id").eq("company_id", admTenant.company.id).eq("action", "config.encargos_preco_upserted");
+      check("cadastro de encargos auditado", (logEnc ?? []).length >= 1);
+
+      // volta ao estado sem encargos: as seções seguintes assumem só a margem de lucro
+      const { error: eZerar } = await admTenant.client.rpc("upsert_pricing_cost_components", { p_regime: null });
+      check("zerar os encargos devolve a fórmula antiga (1167,64)", !eZerar, eZerar);
+      const { data: volta } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk });
+      check("preço volta a custo / (1 - margem) = 1167,64", volta?.preco_sugerido === 1167.64 && volta?.encargos_percentual === 0, volta);
+    }
+
     // --- Melhorias 17/10/2026, item 11 — margem por item do orçamento
     {
       const { data: m50 } = await admTenant.client.rpc("calcular_preco_configurador", { p_item_id: portaItemId, p_valores: valoresOk, p_margem_override: 50 });

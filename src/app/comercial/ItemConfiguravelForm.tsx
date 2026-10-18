@@ -50,6 +50,9 @@ type Calculo = {
   margem_percentual?: number | null;
   margem_padrao_empresa?: number | null;
   margem_personalizada?: boolean;
+  encargos_percentual?: number | null;
+  markup?: number | null;
+  regime_tributario?: string | null;
   preco_sugerido?: number | null;
   motivo_sem_preco?: string | null;
   caracteristicas_pendentes?: string[];
@@ -83,6 +86,8 @@ function mensagemSemPreco(calculo: Calculo): string | null {
       return "Há material sem histórico de compra (veja acima) — digite o preço manualmente.";
     case "custo_mao_obra_incompleto":
       return "Há operação sem tempo ou custo/hora (veja acima) — digite o preço manualmente.";
+    case "encargos_invalidos":
+      return "A soma de impostos/encargos com a margem chega a 100% ou mais (Configurações → Margem de preço) — digite o preço manualmente.";
     case "margem_nao_configurada":
       return "Margem de preço da empresa não configurada (Configurações → Margem de preço) — informe a margem deste item ou digite o preço manualmente.";
     default:
@@ -437,6 +442,10 @@ function PainelCalculo({ calculo, calculando }: { calculo: Calculo | null; calcu
             Margem: {calculo.margem_percentual}%{calculo.margem_personalizada ? " (deste item)" : " (da empresa)"}
           </span>
         )}
+        {calculo.encargos_percentual != null && calculo.encargos_percentual > 0 && (
+          <span>Impostos/encargos: {calculo.encargos_percentual}%</span>
+        )}
+        {calculo.markup != null && <span>Markup: ×{calculo.markup}</span>}
         {calculo.preco_sugerido != null && (
           <span className="font-medium">Preço sugerido: {currency(calculo.preco_sugerido)}</span>
         )}

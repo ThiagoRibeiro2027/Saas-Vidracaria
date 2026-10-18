@@ -257,7 +257,7 @@ export default async function ComercialPage({
     canManagePedidos && orcamentoIds.length > 0
       ? supabase
           .from("pedidos")
-          .select("id, numero, orcamento_id")
+          .select("id, numero, orcamento_id, status")
           .in("orcamento_id", orcamentoIds)
       : Promise.resolve({ data: [] as never[] }),
   ]);

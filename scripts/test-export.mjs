@@ -87,7 +87,7 @@ const TENANT_TABLES = [
   "pedido_item_divergencia_preco",
   "itens", "pecas", "peca_categorias", "peca_caracteristicas", "peca_composicao",
   "peca_composicao_comprimentos_barra", "peca_regras", "peca_revisoes", "engenharia_versoes",
-  "itens_pecas_dimensionais", "item_materiais_alternativos", "measurement_rules", "company_measurement_units",
+  "itens_pecas_dimensionais", "item_materiais_alternativos", "measurement_rules", "company_measurement_units", "company_work_schedule",
   "ordens_producao", "itens_producao", "op_lotes", "op_lote_operacoes", "op_lote_operacao_recursos",
   "lotes_fabris", "lote_fabril_itens", "roteiros_produtivos", "roteiro_operacoes", "recursos_produtivos",
   "producao_apontamentos", "producao_horizontes", "producao_status_labels", "sequenciamento_decisoes",
@@ -106,7 +106,7 @@ const TENANT_TABLES = [
   "orcamentos_compra", "importacoes",
   "titulos_financeiros", "titulos_pagar", "cobrancas", "pagamentos_titulo_compra", "recebimentos_titulo",
   "contas_bancarias", "movimentacoes_bancarias", "financeiro_alcada_etapas", "financeiro_aprovacao_etapas",
-  "financeiro_aprovacoes", "approval_thresholds", "pricing_settings",
+  "financeiro_aprovacoes", "approval_thresholds", "pricing_settings", "pricing_cost_components",
   "documentos_fiscais", "documento_fiscal_tentativas",
   "contratos",
   "funcionarios", "funcionario_documentos", "funcionario_afastamentos",
@@ -149,7 +149,7 @@ async function main() {
 
   console.log("\n3. Toda tabela da lista é consultável sem erro de SQL (RLS real, não service role)");
   {
-    const orderByOverride = { peca_categorias: ["peca_id", "categoria_id"] };
+    const orderByOverride = { peca_categorias: ["peca_id", "categoria_id"], company_work_schedule: ["company_id", "dia_semana"] };
     let semErro = 0;
     const comErro = [];
     for (const table of TENANT_TABLES) {

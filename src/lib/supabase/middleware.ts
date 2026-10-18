@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { POS_LOGIN_COOKIE } from "@/lib/auth/pos-login";
 
 // Renova a sessão a cada requisição e aplica os únicos dois gates que são
 // aceitáveis fora do banco: (1) exigir MFA verificado + sessão aal2 para
@@ -40,6 +41,25 @@ export async function updateSession(request: NextRequest) {
     return redirectResponse;
   }
 
+  // Quem chega deslogado por um link direto (ex.: QR da etiqueta da OP) volta
+  // para ele depois do login. Guardado em cookie curto (10 min, httpOnly) em
+  // vez de query string: não aparece na URL nem em log de acesso, e o destino
+  // é revalidado em signInAction antes de qualquer redirect.
+  function redirectToLogin() {
+    const redirectResponse = redirectTo("/login");
+    const destino = request.nextUrl.pathname + request.nextUrl.search;
+    if (request.method === "GET" && request.nextUrl.pathname !== "/") {
+      redirectResponse.cookies.set(POS_LOGIN_COOKIE, destino, {
+        httpOnly: true,
+        sameSite: "lax",
+        maxAge: 600,
+        path: "/",
+        secure: request.nextUrl.protocol === "https:",
+      });
+    }
+    return redirectResponse;
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -48,7 +68,7 @@ export async function updateSession(request: NextRequest) {
   const isLoginRoute = pathname.startsWith("/login");
 
   if (!user) {
-    return isLoginRoute ? response : redirectTo("/login");
+    return isLoginRoute ? response : redirectToLogin();
   }
 
   if (isLoginRoute) {

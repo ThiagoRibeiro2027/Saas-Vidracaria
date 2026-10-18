@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { criarVariavelCategoriaAction, criarVariavelTemplateAction, atualizarVariavelTemplateAction } from "./actions";
+import {
+  criarVariavelCategoriaAction,
+  criarVariavelTemplateAction,
+  atualizarVariavelTemplateAction,
+  excluirVariavelTemplateAction,
+  excluirVariavelCategoriaAction,
+} from "./actions";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -79,12 +85,15 @@ export default function VariaveisConfiguradorSection({
 
 function NovaCategoriaForm() {
   return (
-    <form action={criarVariavelCategoriaAction} className="mt-3 flex flex-wrap items-center gap-1.5">
-      <Input name="nome" placeholder="nova categoria (ex.: Perfil, Vidro)" required className="w-56" />
-      <Button type="submit" variant="primary">
-        Criar categoria
-      </Button>
-    </form>
+    <details className="mt-3 rounded-md border border-border p-2">
+      <summary className="cursor-pointer text-xs font-medium text-text">+ Nova categoria</summary>
+      <form action={criarVariavelCategoriaAction} className="mt-2 flex flex-wrap items-center gap-1.5">
+        <Input name="nome" placeholder="nova categoria (ex.: Perfil, Vidro)" required className="w-56" />
+        <Button type="submit" variant="primary">
+          Criar categoria
+        </Button>
+      </form>
+    </details>
   );
 }
 
@@ -99,7 +108,14 @@ function CategoriaCard({
 }) {
   return (
     <Card padding="xs">
-      <strong className="text-sm text-text">{categoria.nome}</strong>
+      <details open>
+      <summary className="flex cursor-pointer items-center gap-2 text-sm text-text">
+        <strong>{categoria.nome}</strong>
+        <span className="text-xs text-text-muted">
+          ({templates.length} {templates.length === 1 ? "variável" : "variáveis"})
+        </span>
+      </summary>
+      {canManage && <ExcluirCategoriaButton categoria={categoria} totalVariaveis={templates.length} />}
 
       <DenseTable className="mt-1.5">
         <thead>
@@ -127,7 +143,13 @@ function CategoriaCard({
         </tbody>
       </DenseTable>
 
-      {canManage && <NovaVariavelForm categoriaId={categoria.id} />}
+      {canManage && (
+        <details className="mt-1.5 rounded-md border border-border p-2">
+          <summary className="cursor-pointer text-xs font-medium text-text">+ Nova variável</summary>
+          <NovaVariavelForm categoriaId={categoria.id} />
+        </details>
+      )}
+      </details>
     </Card>
   );
 }
@@ -162,9 +184,12 @@ function TemplateRow({ template, canManage }: { template: Template; canManage: b
           <StatusPill tone={template.ativo ? "success" : "neutral"}>{template.ativo ? "Ativa" : "Inativa"}</StatusPill>
         </Td>
         <Td>
-          <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(true)}>
-            Editar
-          </Button>
+          <div className="flex items-start gap-1.5">
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditando(true)}>
+              Editar
+            </Button>
+            <ExcluirVariavelButton template={template} />
+          </div>
         </Td>
       </tr>
     );
@@ -233,6 +258,64 @@ function TemplateRow({ template, canManage }: { template: Template; canManage: b
         </form>
       </Td>
     </tr>
+  );
+}
+
+// Melhorias 18/10/2026, item 4 — exclusão com confirmação. Excluir variável em
+// uso é permitido: as peças mantêm o campo como avulso.
+function ExcluirVariavelButton({ template }: { template: Template }) {
+  const [pendente, setPendente] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function excluir() {
+    if (
+      !window.confirm(
+        `Excluir a variável "${template.nome}"? As peças que já a usam continuam funcionando, com o campo como avulso (sem vínculo com o catálogo). Não dá para desfazer.`,
+      )
+    ) {
+      return;
+    }
+    setPendente(true);
+    setErro(null);
+    const res = await excluirVariavelTemplateAction(template.id);
+    if (res?.error) setErro(res.error);
+    setPendente(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <Button type="button" variant="danger" size="sm" onClick={excluir} disabled={pendente}>
+        {pendente ? "Excluindo..." : "Excluir"}
+      </Button>
+      {erro && <span className="text-xs text-danger">{erro}</span>}
+    </div>
+  );
+}
+
+function ExcluirCategoriaButton({ categoria, totalVariaveis }: { categoria: Categoria; totalVariaveis: number }) {
+  const [pendente, setPendente] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function excluir() {
+    const aviso =
+      totalVariaveis > 0
+        ? ` Isso também exclui as ${totalVariaveis} variáveis dela; as peças que as usam continuam funcionando, com os campos como avulsos.`
+        : "";
+    if (!window.confirm(`Excluir a categoria "${categoria.nome}"?${aviso} Não dá para desfazer.`)) return;
+    setPendente(true);
+    setErro(null);
+    const res = await excluirVariavelCategoriaAction(categoria.id);
+    if (res?.error) setErro(res.error);
+    setPendente(false);
+  }
+
+  return (
+    <div className="mt-1 flex items-center gap-2">
+      <Button type="button" variant="danger" size="sm" onClick={excluir} disabled={pendente}>
+        {pendente ? "Excluindo..." : "Excluir categoria"}
+      </Button>
+      {erro && <span className="text-xs text-danger">{erro}</span>}
+    </div>
   );
 }
 

@@ -329,6 +329,62 @@ async function main() {
     check("tenant B não enxerga unidades do tenant A", (crossUnits ?? []).length === 0);
   }
 
+  console.log("\n10. Excluir variável/categoria do configurador (Melhorias 18/10/2026, item 4)");
+  {
+    const { data: itemPecaId } = await admTenant.client.rpc("upsert_item", {
+      p_id: null, p_codigo: "PECA-VAR-1", p_descricao: "Peça de teste (variáveis)", p_tipo: "produto_acabado",
+      p_classificacao: "esquadria", p_unidade_principal: "UN", p_situacao: "ativo",
+    });
+    const { data: pecaId } = await admTenant.client.rpc("criar_peca", { p_item_id: itemPecaId, p_descricao_tecnica: null });
+    const { data: catId } = await admTenant.client.rpc("criar_variavel_categoria", { p_nome: "Perfil (excluir)" });
+    const { data: tplEmUsoId } = await admTenant.client.rpc("criar_variavel_template", {
+      p_categoria_id: catId, p_nome: "Cor do perfil", p_tipo: "opcao", p_unidade: null, p_opcoes: ["Branco", "Preto"], p_obrigatoria_padrao: true,
+    });
+    const { data: tplLivreId } = await admTenant.client.rpc("criar_variavel_template", {
+      p_categoria_id: catId, p_nome: "Acabamento", p_tipo: "texto", p_unidade: null, p_opcoes: null, p_obrigatoria_padrao: false,
+    });
+    const { data: caracId, error: eAnexo } = await admTenant.client.rpc("anexar_variavel_peca", { p_peca_id: pecaId, p_template_id: tplEmUsoId, p_obrigatoria: true });
+    check("fixture: variável anexada a uma peça", !eAnexo && !!caracId, eAnexo);
+
+    const { error: eSemPerm } = await noPermTenant.client.rpc("excluir_variavel_template", { p_id: tplLivreId });
+    check("sem configuracoes.manage não exclui variável", !!eSemPerm);
+    const { error: eOutra } = await otherTenant.client.rpc("excluir_variavel_template", { p_id: tplLivreId });
+    check("outra empresa não exclui variável do tenant A", !!eOutra);
+    const { error: eCatSemPerm } = await noPermTenant.client.rpc("excluir_variavel_categoria", { p_id: catId });
+    const { error: eCatOutra } = await otherTenant.client.rpc("excluir_variavel_categoria", { p_id: catId });
+    check("sem permissão / outra empresa não excluem categoria", !!eCatSemPerm && !!eCatOutra);
+
+    const { error: eLivre } = await admTenant.client.rpc("excluir_variavel_template", { p_id: tplLivreId });
+    const { data: livreRow } = await admin.from("variavel_templates").select("id").eq("id", tplLivreId);
+    check("variável sem uso é excluída", !eLivre && (livreRow ?? []).length === 0, eLivre);
+
+    const { error: eEmUso } = await admTenant.client.rpc("excluir_variavel_template", { p_id: tplEmUsoId });
+    check("variável EM USO em peça também pode ser excluída", !eEmUso, eEmUso);
+    const { data: carac } = await admin.from("peca_caracteristicas").select("id, nome, tipo, opcoes, template_id").eq("id", caracId).single();
+    check(
+      "a característica da peça continua, como campo avulso (template_id nulo, nome e opções preservados)",
+      !!carac && carac.template_id === null && carac.nome === "Cor do perfil" && carac.opcoes?.includes("Preto"),
+      carac,
+    );
+
+    const { data: tplCat2 } = await admTenant.client.rpc("criar_variavel_template", {
+      p_categoria_id: catId, p_nome: "Espessura", p_tipo: "numero", p_unidade: "mm", p_opcoes: null, p_obrigatoria_padrao: true,
+    });
+    const { data: carac2Id } = await admTenant.client.rpc("anexar_variavel_peca", { p_peca_id: pecaId, p_template_id: tplCat2, p_obrigatoria: true });
+    const { error: eCat } = await admTenant.client.rpc("excluir_variavel_categoria", { p_id: catId });
+    check("categoria com variável em uso é excluída", !eCat, eCat);
+    const { data: catRows } = await admin.from("variavel_categorias").select("id").eq("id", catId);
+    const { data: tplRows } = await admin.from("variavel_templates").select("id").eq("categoria_id", catId);
+    check("categoria e suas variáveis sumiram do catálogo", (catRows ?? []).length === 0 && (tplRows ?? []).length === 0);
+    const { data: carac2 } = await admin.from("peca_caracteristicas").select("template_id, nome").eq("id", carac2Id).single();
+    check("característica da peça da categoria excluída continua, avulsa", carac2?.template_id === null && carac2?.nome === "Espessura", carac2);
+
+    const { data: logs } = await admin.from("activity_logs").select("action").eq("company_id", admTenant.company.id)
+      .in("action", ["config.variavel_template_excluida", "config.variavel_categoria_excluida"]);
+    const acoes = new Set((logs ?? []).map((l) => l.action));
+    check("exclusões auditadas", acoes.has("config.variavel_template_excluida") && acoes.has("config.variavel_categoria_excluida"));
+  }
+
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);
   process.exit(failed > 0 ? 1 : 0);
 }

@@ -291,6 +291,17 @@ async function criarUsuarioComPermissoes(company, identifier, roleKey, acoes) {
   return client;
 }
 
+// Melhorias 18/10/2026, item 2: a capacidade passou a contar só os dias úteis
+// da empresa na janela de 7 dias corridos (antes: ×7 fixo). O nº de dias
+// úteis da janela de hoje depende do dia da semana em que o teste roda, então
+// os asserts comparam com o helper do banco em vez de um número fixo.
+async function diasUteisDaJanela7(companyId) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const { data, error } = await admin.rpc("_dias_uteis_na_janela", { p_company_id: companyId, p_inicio: hoje, p_dias: 7 });
+  if (error) throw error;
+  return Number(data);
+}
+
 async function main() {
   console.log("Preparando tenants (admin, sem-permissão, outro tenant)...");
   const admTenant = await createTenant(`producao-test-admin-${RUN}`, "Produção Admin Teste", "9c01", "ADMIN");
@@ -1000,7 +1011,8 @@ async function main() {
     });
     const cap = capRows?.[0];
     check("calcula capacidade sem erro", !capError && !!cap);
-    check("capacidade disponível = capacidade_horas_dia × dias (10×7=70)", Number(cap?.capacidade_disponivel_horas) === 70);
+    const diasUteis = await diasUteisDaJanela7(admTenant.company.id);
+    check(`capacidade disponível = capacidade_horas_dia × dias úteis da janela (10×${diasUteis}=${10 * diasUteis})`, Number(cap?.capacidade_disponivel_horas) === 10 * diasUteis);
     check("capacidade necessária reflete tempo_previsto × saldo pendente (20h)", Number(cap?.capacidade_necessaria_horas) === 20);
     check("classificação 'normal' quando necessário < disponível", cap?.classificacao === "normal");
 
@@ -1048,9 +1060,10 @@ async function main() {
       check("programa manutenção preventiva dentro da janela de 7 dias", !programaError && !!preventivaId);
 
       const { data: capAntes } = await admTenant.client.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: usinId, p_dias: 7 });
+      const diasUteisManut = await diasUteisDaJanela7(admTenant.company.id);
       check(
-        "capacidade disponível desconta a duração estimada da preventiva (8×7 - 4 = 52)",
-        Number(capAntes?.[0]?.capacidade_disponivel_horas) === 52,
+        `capacidade disponível desconta a duração estimada da preventiva (8×${diasUteisManut} - 4 = ${8 * diasUteisManut - 4})`,
+        Number(capAntes?.[0]?.capacidade_disponivel_horas) === 8 * diasUteisManut - 4,
       );
 
       const depoisDeAmanha = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -1074,8 +1087,8 @@ async function main() {
 
       const { data: capDepois } = await admTenant.client.rpc("calcular_capacidade_recurso", { p_recurso_produtivo_id: usinId, p_dias: 7 });
       check(
-        "capacidade volta ao normal após cancelar a preventiva (8×7 = 56)",
-        Number(capDepois?.[0]?.capacidade_disponivel_horas) === 56,
+        `capacidade volta ao normal após cancelar a preventiva (8×${diasUteisManut} = ${8 * diasUteisManut})`,
+        Number(capDepois?.[0]?.capacidade_disponivel_horas) === 8 * diasUteisManut,
       );
 
       const { data: crossPreventivas } = await otherTenant.client.from("manutencoes_preventivas").select("id").eq("id", preventivaId);
@@ -1225,9 +1238,10 @@ async function main() {
     const { data: gargalosAntes, error: gargalosError } = await admTenant.client.rpc("listar_gargalos", { p_dias: 7 });
     check("listar_gargalos() executa sem erro", !gargalosError && Array.isArray(gargalosAntes));
     const gargaloEncontrado = gargalosAntes?.find((g) => g.recurso_produtivo_id === gargaloRecursoId);
+    const diasUteisGargalo = await diasUteisDaJanela7(admTenant.company.id);
     check(
-      "recurso em sobrecarga aparece em listar_gargalos() (7h disponível, 40h necessário)",
-      !!gargaloEncontrado && Number(gargaloEncontrado.capacidade_disponivel_horas) === 7 && Number(gargaloEncontrado.capacidade_necessaria_horas) === 40,
+      `recurso em sobrecarga aparece em listar_gargalos() (${diasUteisGargalo}h disponível, 40h necessário)`,
+      !!gargaloEncontrado && Number(gargaloEncontrado.capacidade_disponivel_horas) === diasUteisGargalo && Number(gargaloEncontrado.capacidade_necessaria_horas) === 40,
     );
 
     const { error: semPermGargalosError } = await noPermTenant.client.rpc("listar_gargalos", { p_dias: 7 });
@@ -2270,6 +2284,52 @@ async function main() {
 
     const { error: crossTolError } = await otherTenant.client.rpc("verificar_tolerancia_perda", { p_ordem_producao_id: opTolId });
     check("tenant B não verifica tolerância de OP do tenant A", !!crossTolError);
+  }
+
+  console.log("\nHorário de funcionamento e dias úteis (Melhorias 18/10/2026, item 2)");
+  {
+    const empresaId = admTenant.company.id;
+    const { data: sem } = await admTenant.client.from("company_work_schedule").select("dia_semana, trabalha, horas").order("dia_semana");
+    check(
+      "empresa nasce com seg–sex 8h e fim de semana sem expediente",
+      (sem ?? []).length === 7 && sem.filter((d) => d.trabalha).map((d) => d.dia_semana).join() === "1,2,3,4,5" && sem.every((d) => (d.trabalha ? Number(d.horas) === 8 : Number(d.horas) === 0)),
+      sem,
+    );
+
+    // 2026-10-19 é segunda-feira; 2026-10-17 é sábado.
+    const du = async (inicio, dias) => Number((await admin.rpc("_dias_uteis_na_janela", { p_company_id: empresaId, p_inicio: inicio, p_dias: dias })).data);
+    check("janela de 7 dias a partir de uma segunda = 5 dias úteis", (await du("2026-10-19", 7)) === 5);
+    check("janela de 7 dias a partir de um sábado = 5 dias úteis (sáb e dom fora)", (await du("2026-10-17", 7)) === 5);
+    check("sábado + domingo = 0 dia útil", (await du("2026-10-17", 2)) === 0);
+    check("janela de 14 dias = 10 dias úteis", (await du("2026-10-19", 14)) === 10);
+
+    const { error: eSemPerm } = await noPermTenant.client.rpc("upsert_company_work_schedule", { p_dias: [{ dia_semana: 6, trabalha: true, inicio: "08:00", fim: "12:00", almoco_minutos: 0 }] });
+    check("sem configuracoes.manage não altera o horário", !!eSemPerm);
+    const { error: eFim } = await admTenant.client.rpc("upsert_company_work_schedule", { p_dias: [{ dia_semana: 6, trabalha: true, inicio: "12:00", fim: "08:00", almoco_minutos: 0 }] });
+    const { error: eAlmoco } = await admTenant.client.rpc("upsert_company_work_schedule", { p_dias: [{ dia_semana: 6, trabalha: true, inicio: "08:00", fim: "10:00", almoco_minutos: 180 }] });
+    const { error: eDia } = await admTenant.client.rpc("upsert_company_work_schedule", { p_dias: [{ dia_semana: 9, trabalha: false }] });
+    const { error: eVazio } = await admTenant.client.rpc("upsert_company_work_schedule", { p_dias: [] });
+    check("fim antes do início, intervalo maior que o expediente, dia inválido e lista vazia são rejeitados", !!eFim && !!eAlmoco && !!eDia && !!eVazio);
+
+    const { error: eSab } = await admTenant.client.rpc("upsert_company_work_schedule", { p_dias: [{ dia_semana: 6, trabalha: true, inicio: "08:00", fim: "12:00", almoco_minutos: 0 }] });
+    check("ADMIN passa a trabalhar sábado de manhã", !eSab, eSab);
+    const { data: sab } = await admTenant.client.from("company_work_schedule").select("horas, trabalha").eq("dia_semana", 6).single();
+    check("horas do dia calculadas no banco (08–12 = 4h)", sab?.trabalha === true && Number(sab?.horas) === 4, sab);
+    check("com sábado útil, a janela de 7 dias a partir de uma segunda = 6", (await du("2026-10-19", 7)) === 6);
+
+    const { error: eVolta } = await admTenant.client.rpc("upsert_company_work_schedule", { p_dias: [{ dia_semana: 6, trabalha: false }] });
+    const { data: sabOff } = await admTenant.client.from("company_work_schedule").select("horas, inicio, trabalha").eq("dia_semana", 6).single();
+    check("desmarcar o dia zera horas e expediente", !eVolta && sabOff?.trabalha === false && Number(sabOff?.horas) === 0 && sabOff?.inicio === null, sabOff);
+
+    const { data: outroHorario } = await otherTenant.client.from("company_work_schedule").select("company_id");
+    check("empresa B só enxerga o próprio horário", (outroHorario ?? []).every((r) => r.company_id === otherTenant.company.id) && (outroHorario ?? []).length === 7);
+
+    const { data: logsHorario } = await admin.from("activity_logs").select("id").eq("company_id", empresaId).eq("action", "config.horario_funcionamento_upserted");
+    check("alteração do horário auditada", (logsHorario ?? []).length >= 2);
+
+    // empresa sem nenhuma linha (não deveria existir após o backfill) mantém o comportamento antigo
+    await admin.from("company_work_schedule").delete().eq("company_id", otherTenant.company.id);
+    check("empresa sem horário cadastrado cai no comportamento antigo (todos os dias contam)", Number((await admin.rpc("_dias_uteis_na_janela", { p_company_id: otherTenant.company.id, p_inicio: "2026-10-19", p_dias: 7 })).data) === 7);
   }
 
   console.log(`\nResultado: ${passed} passaram, ${failed} falharam.`);

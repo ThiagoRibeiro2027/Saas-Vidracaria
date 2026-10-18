@@ -239,6 +239,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Margem de preço", href: "/configuracoes?tab=preco", tab: "preco" },
           { label: "Variáveis do configurador", href: "/configuracoes?tab=variaveis", tab: "variaveis" },
           { label: "Unidades de medida", href: "/configuracoes?tab=unidades", tab: "unidades" },
+          { label: "Horário de funcionamento", href: "/configuracoes?tab=horario", tab: "horario" },
         ],
       },
     ],

@@ -75,6 +75,20 @@ export async function cancelarPedidoAction(formData: FormData) {
   revalidatePath("/pedidos");
 }
 
+// Melhorias 18/10/2026, item 1 — devolve o pedido cancelado a "recebido"
+// (mesmo número e itens). Devolve o erro em vez de lançar, pra tela
+// (Pedidos e Orçamentos) mostrar inline.
+export async function reabrirPedidoAction(pedidoId: string): Promise<{ error: string } | undefined> {
+  if (!pedidoId) return { error: "Pedido inválido." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("reabrir_pedido", { p_id: pedidoId });
+  if (error) return { error: error.message };
+
+  revalidatePath("/pedidos");
+  revalidatePath("/comercial");
+}
+
 // ADR-012 Fase 3 — decisão explícita e auditada do operador sobre a
 // sugestão de atualização de preço gerada quando a BOM definitiva da
 // Engenharia diverge do custo que formou o preço no orçamento. O preço

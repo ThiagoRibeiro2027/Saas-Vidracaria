@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -35,6 +35,7 @@ export function AppShell({
   infoBuild: InfoBuild;
 }) {
   const pathname = usePathname();
+  const [menuAberto, setMenuAberto] = useState(false);
   const isBare = BARE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   if (isBare) return <>{children}</>;
@@ -42,10 +43,15 @@ export function AppShell({
   return (
     <div className="flex h-full min-h-dvh">
       <Suspense fallback={<aside className="hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar-bg md:flex" />}>
-        <Sidebar infoBuild={infoBuild} />
+        <Sidebar infoBuild={infoBuild} aberto={menuAberto} onFechar={() => setMenuAberto(false)} />
       </Suspense>
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar displayName={displayName} companyName={companyName} notificacoes={notificacoes} />
+        <Topbar
+          displayName={displayName}
+          companyName={companyName}
+          notificacoes={notificacoes}
+          onAbrirMenu={() => setMenuAberto(true)}
+        />
         <main className="flex-1 overflow-y-auto bg-page-bg">{children}</main>
       </div>
     </div>

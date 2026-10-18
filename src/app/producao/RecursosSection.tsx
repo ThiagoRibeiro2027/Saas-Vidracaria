@@ -209,8 +209,9 @@ export default function RecursosSection({
       <h2 className="text-sm font-semibold text-text">Recursos produtivos e capacidade (TÓPICO 4 §31-32)</h2>
       <p className="mt-1 text-xs text-text-muted">
         Máquinas, equipamentos, linhas, postos, equipes, operadores, ferramentas e dispositivos.
-        Capacidade disponível (horas/dia × 7 dias) × necessária (tempo previsto das operações
-        pendentes que usam o recurso) — leitura pro PCP decidir, sem sequenciamento automático.
+        Capacidade disponível (horas/dia × dias úteis dos próximos 7 dias, conforme o horário de
+        funcionamento em Configurações) × necessária (tempo previsto das operações pendentes que
+        usam o recurso) — leitura pro PCP decidir, sem sequenciamento automático.
       </p>
 
       {canManage && (

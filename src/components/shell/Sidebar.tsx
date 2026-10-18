@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { HOME_ITEM, NAV_GROUPS, type NavChild, type NavItem } from "./nav-config";
 
 type TreeNode = NavItem | NavChild;
@@ -151,7 +151,17 @@ function NavNode({
   );
 }
 
-export function Sidebar({ infoBuild }: { infoBuild: { commit: string | null; homologacao: boolean } }) {
+export function Sidebar({
+  infoBuild,
+  aberto,
+  onFechar,
+}: {
+  infoBuild: { commit: string | null; homologacao: boolean };
+  // Celular: o menu vira uma gaveta que abre pelo botão da Topbar. No desktop
+  // (md+) continua fixo ao lado e esses dois props não têm efeito.
+  aberto: boolean;
+  onFechar: () => void;
+}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -189,12 +199,31 @@ export function Sidebar({ infoBuild }: { infoBuild: { commit: string | null; hom
   }
 
   return (
-    <aside className="hidden w-64 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar-bg px-3 py-4 md:flex">
-      <div className="mb-4 px-3">
+    <>
+      {aberto && <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={onFechar} aria-hidden="true" />}
+    <aside
+      className={`${
+        aberto ? "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] shadow-xl" : "hidden"
+      } shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar-bg px-3 py-4 md:static md:z-auto md:flex md:w-64 md:max-w-none md:shadow-none`}
+    >
+      <div className="mb-4 flex items-center justify-between px-3">
         <span className="text-sm font-semibold text-sidebar-fg-active">Vidraçaria</span>
+        <button
+          type="button"
+          onClick={onFechar}
+          aria-label="Fechar menu"
+          className="rounded-md p-1 text-sidebar-fg/70 hover:bg-white/5 hover:text-sidebar-fg-active md:hidden"
+        >
+          <X size={18} />
+        </button>
       </div>
 
-      <nav className="flex flex-col gap-4">
+      <nav
+        className="flex flex-col gap-4"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("a")) onFechar();
+        }}
+      >
         <NavLink item={HOME_ITEM} active={ownRouteMatches(HOME_ITEM, pathname)} />
 
         {NAV_GROUPS.map((group) => (
@@ -229,5 +258,6 @@ export function Sidebar({ infoBuild }: { infoBuild: { commit: string | null; hom
         </div>
       )}
     </aside>
+    </>
   );
 }

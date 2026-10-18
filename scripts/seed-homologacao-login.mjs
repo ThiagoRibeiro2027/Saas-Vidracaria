@@ -37,7 +37,7 @@ function statusLocal() {
 async function criarOuAtualizarUsuario(admin, email, password) {
   const { data: created, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
   if (created?.user) return created.user.id;
-  const jaExistia = /already registered|already exists|email_exists/i.test(error?.message ?? error?.code ?? "");
+  const jaExistia = /already (been )?registered|already exists|email_exists/i.test(error?.message ?? error?.code ?? "");
   if (!jaExistia) {
     console.error(`[seed] criar usuário ${email} falhou:`, error);
   }

@@ -4,6 +4,8 @@ import { createHash } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { POS_LOGIN_COOKIE, destinoPosLoginSeguro } from "@/lib/auth/pos-login";
 import { getClientContext } from "@/lib/audit/log";
 
 // Mensagem única para qualquer falha de login (empresa, matrícula ou senha
@@ -163,6 +165,15 @@ async function logLoginSuccess(supabase: Awaited<ReturnType<typeof createClient>
   });
 }
 
+// Link direto aberto deslogado (ex.: QR da etiqueta da OP): o proxy guardou o
+// destino num cookie curto; aqui ele é lido, validado e apagado.
+async function consumirDestinoPosLogin(): Promise<string> {
+  const jar = await cookies();
+  const bruto = jar.get(POS_LOGIN_COOKIE)?.value;
+  if (bruto !== undefined) jar.delete(POS_LOGIN_COOKIE);
+  return destinoPosLoginSeguro(bruto);
+}
+
 export async function signInAction(
   _prevState: { error?: string } | undefined,
   formData: FormData,
@@ -197,7 +208,7 @@ export async function signInAction(
       return { error: GENERIC_ERROR };
     }
     await logLoginSuccess(supabase);
-    redirect("/");
+    redirect(await consumirDestinoPosLogin());
   }
 
   // Usuário de tenant: resolver empresa + matrícula -> e-mail técnico do
@@ -250,7 +261,7 @@ export async function signInAction(
   }
 
   await logLoginSuccess(supabase);
-  redirect("/");
+  redirect(await consumirDestinoPosLogin());
 }
 
 export async function signOutAction() {

@@ -14,6 +14,7 @@ import {
   aplicarAtualizacaoPrecoBomAction,
   ignorarDivergenciaPrecoBomAction,
 } from "./actions";
+import ReabrirPedidoButton from "./ReabrirPedidoButton";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -256,7 +257,14 @@ function PedidoExpandido({
               Liberar
             </Button>
           </form>
-          <form action={cancelarPedidoAction}>
+          <form
+            action={cancelarPedidoAction}
+            onSubmit={(e) => {
+              if (!window.confirm(`Cancelar o pedido ${pedido.numero}? Depois de cancelado, ele só pode ser reaberto pelo botão "Reabrir pedido".`)) {
+                e.preventDefault();
+              }
+            }}
+          >
             <input type="hidden" name="id" value={pedido.id} />
             <Button
               type="submit"
@@ -266,6 +274,7 @@ function PedidoExpandido({
               Cancelar
             </Button>
           </form>
+          {pedido.status === "cancelado" && <ReabrirPedidoButton pedidoId={pedido.id} numero={pedido.numero} />}
         </div>
       )}
 

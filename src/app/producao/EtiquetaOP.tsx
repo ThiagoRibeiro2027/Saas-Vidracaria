@@ -103,6 +103,13 @@ export default function EtiquetaOP({ dados, onFechar }: { dados: EtiquetaOPData;
         </dl>
 
         <p className="mt-2 text-[10px] text-text-muted">Escaneie o código para ver a situação atual e apontar produção.</p>
+        <p className="mt-1 break-all font-mono text-[9px] text-text-muted">{dados.urlDestino}</p>
+        {/^https?:\/\/(localhost|127\.|\[::1\])/.test(dados.urlDestino) && (
+          <p className="mt-1 text-[10px] text-danger print:hidden">
+            Este QR aponta para este computador (localhost) e não abre em outro aparelho. Abra o sistema pelo
+            endereço da rede (ex.: http://192.168.x.x:3001) e gere a etiqueta de lá.
+          </p>
+        )}
 
         <div className="mt-3 flex gap-2 print:hidden">
           <Button type="button" variant="primary" size="sm" onClick={() => window.print()}>

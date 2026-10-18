@@ -74,6 +74,10 @@ const securityHeaders = [
 // homologação (porta 3001) rodam ao mesmo tempo sem conflito.
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Só vale no `next dev`: permite abrir a homologação pelo celular na mesma
+  // rede Wi-Fi (http://<IP-do-Mac>:3001). Sem isso o Next 16 bloqueia os
+  // recursos de desenvolvimento vindos de outro endereço que não localhost.
+  allowedDevOrigins: ["192.168.*.*", "10.*.*.*"],
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

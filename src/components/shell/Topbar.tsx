@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogOut, User as UserIcon } from "lucide-react";
+import { Bell, LogOut, Menu, User as UserIcon } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { signOutAction } from "@/app/login/actions";
 import { marcarNotificacaoLidaAction } from "@/app/notificacoes/actions";
@@ -36,10 +36,13 @@ export function Topbar({
   displayName,
   companyName,
   notificacoes,
+  onAbrirMenu,
 }: {
   displayName: string;
   companyName: string | null;
   notificacoes: Notificacao[];
+  // Só aparece no celular (md:hidden) — no desktop o menu lateral já é fixo.
+  onAbrirMenu: () => void;
 }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
@@ -48,7 +51,17 @@ export function Topbar({
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4">
-      <div className="text-sm text-text-muted">{companyName ?? ""}</div>
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onAbrirMenu}
+          aria-label="Abrir menu"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-text-muted hover:bg-page-bg md:hidden"
+        >
+          <Menu size={20} />
+        </button>
+        <div className="truncate text-sm text-text-muted">{companyName ?? ""}</div>
+      </div>
 
       <div className="flex items-center gap-2">
         <div className="relative" ref={notifRef}>

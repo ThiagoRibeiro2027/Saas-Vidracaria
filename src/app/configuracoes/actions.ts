@@ -53,6 +53,76 @@ export async function upsertMargemPrecoAction(formData: FormData) {
   revalidatePath("/configuracoes");
 }
 
+// Melhorias 18/10/2026, item 3 — impostos e encargos que entram no preço
+// sugerido (preço = custo ÷ (1 − (encargos + margem)/100)). Quem digita os
+// percentuais é a empresa; o sistema não sugere alíquotas.
+const CAMPOS_ENCARGOS = [
+  "simples_nacional",
+  "icms",
+  "pis",
+  "cofins",
+  "iss",
+  "ipi",
+  "comissao",
+  "despesas_fixas",
+  "custo_financeiro_frete",
+] as const;
+
+export async function upsertEncargosPrecoAction(formData: FormData) {
+  const regime = String(formData.get("regime_tributario") ?? "").trim() || null;
+  if (regime !== null && !["mei", "simples_nacional", "lucro_presumido", "lucro_real"].includes(regime)) {
+    throw new Error("Regime tributário inválido.");
+  }
+  const valores: Record<string, number> = {};
+  for (const campo of CAMPOS_ENCARGOS) {
+    const raw = String(formData.get(campo) ?? "").trim().replace(",", ".");
+    const n = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n >= 100) {
+      throw new Error("Cada percentual deve ser maior ou igual a 0 e menor que 100.");
+    }
+    valores[campo] = n;
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_pricing_cost_components", {
+    p_regime: regime,
+    p_simples_nacional: valores.simples_nacional,
+    p_icms: valores.icms,
+    p_pis: valores.pis,
+    p_cofins: valores.cofins,
+    p_iss: valores.iss,
+    p_ipi: valores.ipi,
+    p_comissao: valores.comissao,
+    p_despesas_fixas: valores.despesas_fixas,
+    p_custo_financeiro_frete: valores.custo_financeiro_frete,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+}
+
+// Melhorias 18/10/2026, item 2 — horário de funcionamento da empresa. As
+// horas do dia são calculadas no banco (início, fim e intervalo); aqui só
+// monta a semana a partir do formulário.
+export async function upsertHorarioFuncionamentoAction(formData: FormData) {
+  const dias: { dia_semana: number; trabalha: boolean; inicio: string | null; fim: string | null; almoco_minutos: number }[] = [];
+  for (let dia = 0; dia <= 6; dia++) {
+    const trabalha = formData.get(`trabalha_${dia}`) === "on";
+    const inicio = String(formData.get(`inicio_${dia}`) ?? "").trim() || null;
+    const fim = String(formData.get(`fim_${dia}`) ?? "").trim() || null;
+    const almoco = Number(String(formData.get(`almoco_${dia}`) ?? "0").trim() || 0);
+    if (!Number.isFinite(almoco) || almoco < 0) throw new Error("O intervalo deve ser um número de minutos maior ou igual a 0.");
+    dias.push({ dia_semana: dia, trabalha, inicio, fim, almoco_minutos: Math.round(almoco) });
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_company_work_schedule", { p_dias: dias });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/producao");
+}
+
 // Catálogo de variáveis configuráveis (Pré-engenharia, 2026-10-04) —
 // cadastrado aqui (empresa) e consumido em Engenharia → Pré-engenharia,
 // por isso revalida as duas rotas.
@@ -126,6 +196,29 @@ export async function atualizarVariavelTemplateAction(formData: FormData) {
     p_ativo: ativo,
   });
   if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/engenharia");
+}
+
+// Exclusão do catálogo (Melhorias 18/10/2026, item 4). Devolve o erro em vez
+// de lançar, pra tela mostrar inline. Excluir variável/categoria EM USO é
+// permitido: as peças mantêm a característica como campo avulso.
+export async function excluirVariavelTemplateAction(id: string): Promise<{ error: string } | undefined> {
+  if (!id) return { error: "Variável inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("excluir_variavel_template", { p_id: id });
+  if (error) return { error: error.message };
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/engenharia");
+}
+
+export async function excluirVariavelCategoriaAction(id: string): Promise<{ error: string } | undefined> {
+  if (!id) return { error: "Categoria inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("excluir_variavel_categoria", { p_id: id });
+  if (error) return { error: error.message };
 
   revalidatePath("/configuracoes");
   revalidatePath("/engenharia");

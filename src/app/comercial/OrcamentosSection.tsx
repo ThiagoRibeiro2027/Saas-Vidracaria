@@ -42,6 +42,7 @@ import type { Paginacao as PaginacaoInfo } from "@/lib/paginacao";
 import { TableSearch } from "@/components/ui/TableSearch";
 import { SortableTh } from "@/components/ui/SortableTh";
 import { MOTIVOS_NAO_FECHAMENTO } from "./motivos";
+import ReabrirPedidoButton from "@/app/pedidos/ReabrirPedidoButton";
 import ItemConfiguravelForm, {
   MOTIVO_OPERACAO_LABEL,
   type DefCaracteristica,
@@ -102,7 +103,7 @@ type Caracteristica = {
   valor_texto: string | null;
 };
 
-type PedidoResumo = { id: string; numero: string; orcamento_id: string };
+type PedidoResumo = { id: string; numero: string; orcamento_id: string; status: string };
 
 const STATUS_LABEL: Record<Orcamento["status"], string> = {
   rascunho: "Rascunho",
@@ -710,6 +711,7 @@ function ConversaoPedido({
     <div className="flex flex-col gap-1.5 rounded border border-border-subtle bg-page-bg p-3">
       <h3 className="text-xs font-semibold text-text">Pedido</h3>
       {pedido ? (
+        <>
         <p className="text-xs text-text">
           Convertido em{" "}
           <a
@@ -718,8 +720,10 @@ function ConversaoPedido({
           >
             pedido {pedido.numero}
           </a>
-          .
+          {pedido.status === "cancelado" ? " — cancelado." : "."}
         </p>
+        {pedido.status === "cancelado" && <ReabrirPedidoButton pedidoId={pedido.id} numero={pedido.numero} />}
+        </>
       ) : (
         <form action={converterOrcamentoAction}>
           <input type="hidden" name="orcamento_id" value={orcamento.id} />
