@@ -6,10 +6,11 @@ import MargemPrecoSection from "./MargemPrecoSection";
 import VariaveisConfiguradorSection from "./VariaveisConfiguradorSection";
 import UnidadesMedidaSection from "./UnidadesMedidaSection";
 import HorarioFuncionamentoSection from "./HorarioFuncionamentoSection";
+import CalendarioSection, { type DiaCalendario, type ExcecaoCalendario, type OpcoesCalendario } from "./CalendarioSection";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { PageHeader } from "@/components/ui/PageHeader";
 
-type TabSlug = "numeracao" | "medicao" | "alcada" | "preco" | "variaveis" | "unidades" | "horario";
+type TabSlug = "numeracao" | "medicao" | "alcada" | "preco" | "variaveis" | "unidades" | "horario" | "calendario";
 
 // ADR-013 (Identidade D), Fase 4.
 const TAB_TITLE: Record<TabSlug, string> = {
@@ -22,6 +23,7 @@ const TAB_TITLE: Record<TabSlug, string> = {
   unidades: "Unidades de medida",
   // Melhorias 18/10/2026, item 2.
   horario: "Horário de funcionamento",
+  calendario: "Calendário de produção",
 };
 
 // TÓPICO 15 — recorte mínimo do M1 (PLANO DE ENTREGA — MVP DO PILOTO v1.0,
@@ -34,9 +36,9 @@ const TAB_TITLE: Record<TabSlug, string> = {
 export default async function ConfiguracoesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; mes?: string }>;
 }) {
-  const { tab } = await searchParams;
+  const { tab, mes } = await searchParams;
   const supabase = await createClient();
   const { data: canView } = await supabase.rpc("has_permission", {
     p_resource: "configuracoes",
@@ -101,8 +103,24 @@ export default async function ConfiguracoesPage({
     { slug: "variaveis", label: "Variáveis do configurador" },
     { slug: "unidades", label: "Unidades de medida" },
     { slug: "horario", label: "Horário de funcionamento" },
+    { slug: "calendario", label: "Calendário de produção" },
   ];
   const activeTab: TabSlug = availableTabs.some((t) => t.slug === tab) ? (tab as TabSlug) : "numeracao";
+
+  // Calendário de produção (Melhorias 18/10/2026) — só carrega quando a aba está ativa.
+  let calendario: { ano: number; mes: number; dias: DiaCalendario[]; excecoes: ExcecaoCalendario[]; opcoes: OpcoesCalendario } | null = null;
+  if (activeTab === "calendario") {
+    const hoje = new Date();
+    const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(mes ?? "");
+    const ano = m ? Number(m[1]) : hoje.getFullYear();
+    const mesNum = m ? Number(m[2]) : hoje.getMonth() + 1;
+    const [{ data: dias }, { data: excecoes }, { data: opcoes }] = await Promise.all([
+      supabase.rpc("calendario_mensal", { p_ano: ano, p_mes: mesNum }),
+      supabase.from("company_calendar_exceptions").select("data, tipo, descricao, horas").gte("data", `${ano}-01-01`).lte("data", `${ano}-12-31`).order("data"),
+      supabase.from("company_calendar_settings").select("considerar_feriados_nacionais, considerar_pontos_facultativos").maybeSingle(),
+    ]);
+    calendario = { ano, mes: mesNum, dias: (dias ?? []) as DiaCalendario[], excecoes: (excecoes ?? []) as ExcecaoCalendario[], opcoes: (opcoes ?? null) as OpcoesCalendario };
+  }
 
   return (
     <>
@@ -141,6 +159,9 @@ export default async function ConfiguracoesPage({
         )}
         {activeTab === "unidades" && <UnidadesMedidaSection rows={companyUnits ?? []} canManage={!!canManage} />}
         {activeTab === "horario" && <HorarioFuncionamentoSection rows={workSchedule ?? []} canManage={!!canManage} />}
+        {activeTab === "calendario" && calendario && (
+          <CalendarioSection ano={calendario.ano} mes={calendario.mes} dias={calendario.dias} excecoes={calendario.excecoes} opcoes={calendario.opcoes} canManage={!!canManage} />
+        )}
       </div>
       </div>
     </>

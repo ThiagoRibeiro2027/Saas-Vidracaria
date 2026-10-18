@@ -123,6 +123,50 @@ export async function upsertHorarioFuncionamentoAction(formData: FormData) {
   revalidatePath("/producao");
 }
 
+// Calendário da empresa (Melhorias 18/10/2026, capacidade 2ª etapa): feriados
+// nacionais são calculados no banco; aqui só opções e exceções por data.
+export async function upsertCalendarSettingsAction(formData: FormData) {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_calendar_settings", {
+    p_feriados_nacionais: formData.get("feriados_nacionais") === "on",
+    p_pontos_facultativos: formData.get("pontos_facultativos") === "on",
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/producao");
+}
+
+export async function upsertCalendarExceptionAction(formData: FormData) {
+  const data = String(formData.get("data") ?? "").trim();
+  const tipo = String(formData.get("tipo") ?? "");
+  const descricao = String(formData.get("descricao") ?? "").trim();
+  const horasRaw = String(formData.get("horas") ?? "").trim().replace(",", ".");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error("Informe uma data válida.");
+  if (!["feriado_municipal", "ponte", "folga", "dia_extra"].includes(tipo)) throw new Error("Tipo inválido.");
+  if (!descricao) throw new Error("Informe uma descrição.");
+  const horas = tipo === "dia_extra" && horasRaw !== "" ? Number(horasRaw) : null;
+  if (horas !== null && (!Number.isFinite(horas) || horas <= 0 || horas > 24)) throw new Error("Horas devem estar entre 0 e 24.");
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("upsert_calendar_exception", { p_data: data, p_tipo: tipo, p_descricao: descricao, p_horas: horas });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/producao");
+}
+
+// Devolve o erro (em vez de lançar) pra tela mostrar inline.
+export async function removeCalendarExceptionAction(data: string): Promise<{ error: string } | undefined> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return { error: "Data inválida." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_calendar_exception", { p_data: data });
+  if (error) return { error: error.message };
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/producao");
+}
+
 // Catálogo de variáveis configuráveis (Pré-engenharia, 2026-10-04) —
 // cadastrado aqui (empresa) e consumido em Engenharia → Pré-engenharia,
 // por isso revalida as duas rotas.

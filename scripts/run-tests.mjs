@@ -66,6 +66,7 @@ const TEST_SCRIPTS = [
   "scripts/test-comercial-indicadores.mjs",
   "scripts/test-ocultar-documento-pessoa.mjs",
   "scripts/test-iniciar-operacao.mjs",
+  "scripts/test-calendario-capacidade.mjs",
   "scripts/test-pecas.mjs",
   "scripts/test-compras.mjs",
   "scripts/test-bancario.mjs",

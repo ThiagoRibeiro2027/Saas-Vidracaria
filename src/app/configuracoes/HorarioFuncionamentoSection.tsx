@@ -69,8 +69,8 @@ export default function HorarioFuncionamentoSection({ rows, canManage }: { rows:
       <h2 className="text-sm font-semibold text-text">Horário de funcionamento</h2>
       <p className="mt-1 text-xs text-text-muted">
         Dias e horários em que a empresa produz. A capacidade dos recursos (Produção → Recursos e capacidade) conta só os dias
-        marcados aqui — sábado e domingo ficam de fora, a menos que você os marque. Feriados e o calendário mensal virão numa
-        próxima etapa.
+        marcados aqui — sábado e domingo ficam de fora, a menos que você os marque. Feriados, folgas e dias extras ficam em
+        Calendário de produção.
       </p>
 
       <form action={upsertHorarioFuncionamentoAction} className="mt-3">

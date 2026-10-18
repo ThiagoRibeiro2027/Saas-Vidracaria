@@ -210,7 +210,7 @@ export default function RecursosSection({
       <p className="mt-1 text-xs text-text-muted">
         Máquinas, equipamentos, linhas, postos, equipes, operadores, ferramentas e dispositivos.
         Capacidade disponível (horas/dia × dias úteis dos próximos 7 dias, conforme o horário de
-        funcionamento em Configurações) × necessária (tempo previsto das operações pendentes que
+        funcionamento e o calendário de produção, em Configurações) × necessária (tempo previsto das operações pendentes que
         usam o recurso) — leitura pro PCP decidir, sem sequenciamento automático.
       </p>
 

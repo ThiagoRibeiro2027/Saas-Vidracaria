@@ -87,7 +87,7 @@ const TENANT_TABLES = [
   "pedido_item_divergencia_preco",
   "itens", "pecas", "peca_categorias", "peca_caracteristicas", "peca_composicao",
   "peca_composicao_comprimentos_barra", "peca_regras", "peca_revisoes", "engenharia_versoes",
-  "itens_pecas_dimensionais", "item_materiais_alternativos", "measurement_rules", "company_measurement_units", "company_work_schedule",
+  "itens_pecas_dimensionais", "item_materiais_alternativos", "measurement_rules", "company_measurement_units", "company_work_schedule", "company_calendar_settings", "company_calendar_exceptions",
   "ordens_producao", "itens_producao", "op_lotes", "op_lote_operacoes", "op_lote_operacao_recursos",
   "lotes_fabris", "lote_fabril_itens", "roteiros_produtivos", "roteiro_operacoes", "recursos_produtivos",
   "producao_apontamentos", "producao_horizontes", "producao_status_labels", "sequenciamento_decisoes",
@@ -149,7 +149,7 @@ async function main() {
 
   console.log("\n3. Toda tabela da lista é consultável sem erro de SQL (RLS real, não service role)");
   {
-    const orderByOverride = { peca_categorias: ["peca_id", "categoria_id"], company_work_schedule: ["company_id", "dia_semana"] };
+    const orderByOverride = { peca_categorias: ["peca_id", "categoria_id"], company_work_schedule: ["company_id", "dia_semana"], company_calendar_settings: ["company_id"], company_calendar_exceptions: ["company_id", "data"] };
     let semErro = 0;
     const comErro = [];
     for (const table of TENANT_TABLES) {

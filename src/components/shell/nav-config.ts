@@ -240,6 +240,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Variáveis do configurador", href: "/configuracoes?tab=variaveis", tab: "variaveis" },
           { label: "Unidades de medida", href: "/configuracoes?tab=unidades", tab: "unidades" },
           { label: "Horário de funcionamento", href: "/configuracoes?tab=horario", tab: "horario" },
+          { label: "Calendário de produção", href: "/configuracoes?tab=calendario", tab: "calendario" },
         ],
       },
     ],
